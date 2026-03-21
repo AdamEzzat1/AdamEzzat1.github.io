@@ -1,0 +1,1437 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.3.340">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Adam Ezzat">
+<meta name="dcterms.date" content="2026-03-21">
+<meta name="description" content="A deep dive into CJC — a zero-dependency, deterministic scientific computing language built from scratch in Rust.">
+
+<title>Adam Ezzat - Introducing CJC: Why I’m Building a Deterministic Scientific Computing Language</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../../">
+<script src="../../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<script src="../../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-dark.min.css" rel="prefetch" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+<style>html{ scroll-behavior: smooth; }</style>
+<script src="../../../site_libs/quarto-diagram/mermaid.min.js"></script>
+<script src="../../../site_libs/quarto-diagram/mermaid-init.js"></script>
+<link href="../../../site_libs/quarto-diagram/mermaid.css" rel="stylesheet">
+
+
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../../index.html">
+    <span class="navbar-title">Adam Ezzat</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../../index.html" rel="" target="">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../about.html" rel="" target="">
+ <span class="menu-text">About</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../projects.html" rel="" target="">
+ <span class="menu-text">Projects</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../blog/index.html" rel="" target="">
+ <span class="menu-text">Blog</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/AdamEzzat1" rel="" target=""><i class="bi bi-github" role="img" aria-label="GitHub">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://linkedin.com/in/adamezzat" rel="" target=""><i class="bi bi-linkedin" role="img" aria-label="LinkedIn">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+            <div class="quarto-navbar-tools">
+  <a href="" class="quarto-color-scheme-toggle quarto-navigation-tool  px-1" onclick="window.quartoToggleColorScheme(); return false;" title="Toggle dark mode"><i class="bi"></i></a>
+</div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#what-is-cjc" id="toc-what-is-cjc" class="nav-link active" data-scroll-target="#what-is-cjc">What Is CJC?</a></li>
+  <li><a href="#why-build-a-new-language" id="toc-why-build-a-new-language" class="nav-link" data-scroll-target="#why-build-a-new-language">Why Build a New Language?</a></li>
+  <li><a href="#core-ideas" id="toc-core-ideas" class="nav-link" data-scroll-target="#core-ideas">Core Ideas</a>
+  <ul class="collapse">
+  <li><a href="#determinism-as-architecture" id="toc-determinism-as-architecture" class="nav-link" data-scroll-target="#determinism-as-architecture">Determinism as Architecture</a></li>
+  <li><a href="#nearly-zero-external-dependencies" id="toc-nearly-zero-external-dependencies" class="nav-link" data-scroll-target="#nearly-zero-external-dependencies">Nearly Zero External Dependencies</a></li>
+  <li><a href="#dual-execution-engines" id="toc-dual-execution-engines" class="nav-link" data-scroll-target="#dual-execution-engines">Dual Execution Engines</a></li>
+  <li><a href="#nogc-verification" id="toc-nogc-verification" class="nav-link" data-scroll-target="#nogc-verification">NoGC Verification</a></li>
+  </ul></li>
+  <li><a href="#what-cjc-can-do-today" id="toc-what-cjc-can-do-today" class="nav-link" data-scroll-target="#what-cjc-can-do-today">What CJC Can Do Today</a>
+  <ul class="collapse">
+  <li><a href="#functions-recursion-and-control-flow" id="toc-functions-recursion-and-control-flow" class="nav-link" data-scroll-target="#functions-recursion-and-control-flow">Functions, Recursion, and Control Flow</a></li>
+  <li><a href="#closures-and-higher-order-functions" id="toc-closures-and-higher-order-functions" class="nav-link" data-scroll-target="#closures-and-higher-order-functions">Closures and Higher-Order Functions</a></li>
+  <li><a href="#structs-enums-and-pattern-matching" id="toc-structs-enums-and-pattern-matching" class="nav-link" data-scroll-target="#structs-enums-and-pattern-matching">Structs, Enums, and Pattern Matching</a></li>
+  <li><a href="#complex-numbers" id="toc-complex-numbers" class="nav-link" data-scroll-target="#complex-numbers">Complex Numbers</a></li>
+  <li><a href="#byte-strings-and-regex" id="toc-byte-strings-and-regex" class="nav-link" data-scroll-target="#byte-strings-and-regex">Byte Strings and Regex</a></li>
+  <li><a href="#tensors-and-linear-algebra" id="toc-tensors-and-linear-algebra" class="nav-link" data-scroll-target="#tensors-and-linear-algebra">Tensors and Linear Algebra</a></li>
+  <li><a href="#neural-network-forward-pass" id="toc-neural-network-forward-pass" class="nav-link" data-scroll-target="#neural-network-forward-pass">Neural Network Forward Pass</a></li>
+  <li><a href="#gradient-descent" id="toc-gradient-descent" class="nav-link" data-scroll-target="#gradient-descent">Gradient Descent</a></li>
+  <li><a href="#statistics-and-distributions" id="toc-statistics-and-distributions" class="nav-link" data-scroll-target="#statistics-and-distributions">Statistics and Distributions</a></li>
+  <li><a href="#data-manipulation" id="toc-data-manipulation" class="nav-link" data-scroll-target="#data-manipulation">Data Manipulation</a></li>
+  <li><a href="#signal-processing" id="toc-signal-processing" class="nav-link" data-scroll-target="#signal-processing">Signal Processing</a></li>
+  <li><a href="#regression-and-model-selection" id="toc-regression-and-model-selection" class="nav-link" data-scroll-target="#regression-and-model-selection">Regression and Model Selection</a></li>
+  </ul></li>
+  <li><a href="#neural-networks-proven-in-cjc" id="toc-neural-networks-proven-in-cjc" class="nav-link" data-scroll-target="#neural-networks-proven-in-cjc">Neural Networks Proven in CJC</a>
+  <ul class="collapse">
+  <li><a href="#feedforward-mlp-multi-layer-perceptron" id="toc-feedforward-mlp-multi-layer-perceptron" class="nav-link" data-scroll-target="#feedforward-mlp-multi-layer-perceptron">Feedforward MLP (Multi-Layer Perceptron)</a></li>
+  <li><a href="#reinforce-policy-network-reinforcement-learning" id="toc-reinforce-policy-network-reinforcement-learning" class="nav-link" data-scroll-target="#reinforce-policy-network-reinforcement-learning">REINFORCE Policy Network (Reinforcement Learning)</a></li>
+  <li><a href="#physics-informed-neural-network-pinn" id="toc-physics-informed-neural-network-pinn" class="nav-link" data-scroll-target="#physics-informed-neural-network-pinn">Physics-Informed Neural Network (PINN)</a></li>
+  <li><a href="#physics-informed-ml-piml" id="toc-physics-informed-ml-piml" class="nav-link" data-scroll-target="#physics-informed-ml-piml">Physics-Informed ML (PIML)</a></li>
+  <li><a href="#convolutional-neural-networks-cnn" id="toc-convolutional-neural-networks-cnn" class="nav-link" data-scroll-target="#convolutional-neural-networks-cnn">Convolutional Neural Networks (CNN)</a></li>
+  <li><a href="#attention-mechanism-transformer-building-block" id="toc-attention-mechanism-transformer-building-block" class="nav-link" data-scroll-target="#attention-mechanism-transformer-building-block">Attention Mechanism (Transformer Building Block)</a></li>
+  <li><a href="#deep-network-stress-tests" id="toc-deep-network-stress-tests" class="nav-link" data-scroll-target="#deep-network-stress-tests">Deep Network Stress Tests</a></li>
+  <li><a href="#what-this-proves" id="toc-what-this-proves" class="nav-link" data-scroll-target="#what-this-proves">What This Proves</a></li>
+  </ul></li>
+  <li><a href="#beyond-neural-networks" id="toc-beyond-neural-networks" class="nav-link" data-scroll-target="#beyond-neural-networks">Beyond Neural Networks</a></li>
+  <li><a href="#whats-native-and-why-that-matters" id="toc-whats-native-and-why-that-matters" class="nav-link" data-scroll-target="#whats-native-and-why-that-matters">What’s Native — and Why That Matters</a>
+  <ul class="collapse">
+  <li><a href="#native-serialization-with-content-hashing" id="toc-native-serialization-with-content-hashing" class="nav-link" data-scroll-target="#native-serialization-with-content-hashing">Native Serialization with Content Hashing</a></li>
+  <li><a href="#native-accumulation-kahan-and-binned-summation" id="toc-native-accumulation-kahan-and-binned-summation" class="nav-link" data-scroll-target="#native-accumulation-kahan-and-binned-summation">Native Accumulation (Kahan and Binned Summation)</a></li>
+  <li><a href="#the-compound-benefit" id="toc-the-compound-benefit" class="nav-link" data-scroll-target="#the-compound-benefit">The Compound Benefit</a></li>
+  </ul></li>
+  <li><a href="#the-cli-toolchain" id="toc-the-cli-toolchain" class="nav-link" data-scroll-target="#the-cli-toolchain">The CLI Toolchain</a></li>
+  <li><a href="#why-cjc-is-still-in-beta" id="toc-why-cjc-is-still-in-beta" class="nav-link" data-scroll-target="#why-cjc-is-still-in-beta">Why CJC Is Still in Beta</a></li>
+  <li><a href="#what-comes-next" id="toc-what-comes-next" class="nav-link" data-scroll-target="#what-comes-next">What Comes Next</a></li>
+  <li><a href="#why-share-this-now" id="toc-why-share-this-now" class="nav-link" data-scroll-target="#why-share-this-now">Why Share This Now?</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Introducing CJC: Why I’m Building a Deterministic Scientific Computing Language</h1>
+<p class="subtitle lead">What CJC is, why it exists, what it can already do, and where it stands today.</p>
+  <div class="quarto-categories">
+    <div class="quarto-category">CJC</div>
+    <div class="quarto-category">compilers</div>
+    <div class="quarto-category">scientific-computing</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    A deep dive into CJC — a zero-dependency, deterministic scientific computing language built from scratch in Rust.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Adam Ezzat </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">March 21, 2026</p>
+    </div>
+  </div>
+  
+    <div>
+    <div class="quarto-title-meta-heading">Modified</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date-modified">March 21, 2026</p>
+    </div>
+  </div>
+    
+  </div>
+  
+
+</header>
+
+<div class="reading-time">
+🕑 ~25 min read
+</div>
+<div class="stats-row">
+<div class="stat">
+<span class="number">20</span><span class="stat-label">Rust crates</span>
+</div>
+<div class="stat">
+<span class="number">0</span><span class="stat-label">dependencies</span>
+</div>
+<div class="stat">
+<span class="number">6.4 MB</span><span class="stat-label">single binary</span>
+</div>
+<div class="stat">
+<span class="number">5,300+</span><span class="stat-label">tests passing</span>
+</div>
+</div>
+<div class="callout callout-style-simple callout-tip no-icon callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Key Takeaways
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<ul>
+<li>CJC guarantees <strong>bit-identical</strong> numerical results across runs — same seed, same output, always</li>
+<li>The entire language ships as a <strong>6.4 MB zero-dependency binary</strong> — no pip, no npm, nothing</li>
+<li>Real ML architectures (REINFORCE, PINNs, CNNs, attention) work end-to-end in pure CJC</li>
+<li>5,300+ tests enforce determinism, dual-engine parity, and correctness</li>
+</ul>
+</div>
+</div>
+<section id="what-is-cjc" class="level2">
+<h2 class="anchored" data-anchor-id="what-is-cjc">What Is CJC?</h2>
+<p>CJC — <strong>Computation Jacobian Core</strong> — is a programming language I’m building from scratch for deterministic scientific computing. It’s written in Rust, organized as a 20-crate workspace, with nearly all functionality implemented from scratch using only the Rust standard library.</p>
+<p>The language covers the full execution stack: a lexer, recursive descent parser, type checker, two intermediate representations (HIR and MIR), an optimizer, two execution engines, and a runtime with over 300 built-in functions for math, statistics, linear algebra, machine learning, signal processing, and data manipulation.</p>
+<div class="callout callout-style-simple callout-note no-icon">
+<div class="callout-body d-flex">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-body-container">
+<p><strong>CJC is currently in beta.</strong> The core compiler pipeline and runtime are functional and backed by 5,300+ passing tests, but the language is still under active development and is not production-ready. I’m sharing it now because the ideas behind it are worth discussing even before everything is polished.</p>
+</div>
+</div>
+</div>
+</section>
+<section id="why-build-a-new-language" class="level2">
+<h2 class="anchored" data-anchor-id="why-build-a-new-language">Why Build a New Language?</h2>
+<p>I didn’t set out to build a programming language. I set out to solve a problem: I wanted reproducible numerical results.</p>
+<p>In most scientific computing environments, running the same program twice can produce slightly different results. Floating-point reduction order changes between runs. Hash maps iterate in random order. Thread scheduling affects accumulation. RNG state leaks across boundaries. These aren’t bugs — they’re properties of systems that weren’t designed with determinism as a constraint.</p>
+<p>I wanted a system where the same program with the same seed produces <strong>bit-identical output</strong> every time, on every platform. Not approximately the same — exactly the same.</p>
+<p>That constraint turned out to touch everything: memory layout, collection types, floating-point arithmetic, random number generation, parallelism. The deeper I went, the clearer it became that bolting determinism onto an existing language would mean fighting the language at every turn. So I built one where determinism is structural.</p>
+</section>
+<section id="core-ideas" class="level2">
+<h2 class="anchored" data-anchor-id="core-ideas">Core Ideas</h2>
+<section id="determinism-as-architecture" class="level3">
+<h3 class="anchored" data-anchor-id="determinism-as-architecture">Determinism as Architecture</h3>
+<p>CJC enforces determinism at every layer:</p>
+<ul>
+<li><strong>Ordered collections everywhere.</strong> <code>BTreeMap</code> and <code>BTreeSet</code> instead of hash-based containers. Iteration order is always defined.</li>
+<li><strong>Stable floating-point reductions.</strong> All summations use Kahan or binned accumulators. No naive left-folds that depend on evaluation order.</li>
+<li><strong>No FMA in SIMD kernels.</strong> Fused multiply-add produces different rounding than separate multiply and add. CJC avoids FMA to keep results identical across CPU architectures.</li>
+<li><strong>Seeded, explicit RNG.</strong> The random number generator is SplitMix64 with explicit seed threading. No global state, no entropy sources.</li>
+<li><strong>Deterministic parallelism.</strong> Parallel operations are structured so that results don’t depend on thread count or scheduling.</li>
+</ul>
+<p>This isn’t a mode you opt into. It’s how the language works. The determinism guarantee is verified in the test suite — for example, the SciML tests train a physics-informed model twice with the same seed and assert that every parameter is bit-identical:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co">// From tests/sciml_determinism.rs</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> r1 <span class="op">=</span> piml_heat_1d_train(<span class="dv">6</span><span class="op">,</span> <span class="dv">20</span><span class="op">,</span> <span class="dv">30</span><span class="op">,</span> <span class="dv">0.01</span><span class="op">,</span> <span class="dv">1000</span><span class="op">,</span> <span class="dv">1e-3</span><span class="op">,</span> <span class="dv">1.0</span><span class="op">,</span> <span class="dv">10.0</span><span class="op">,</span> <span class="dv">42</span>)<span class="op">;</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> r2 <span class="op">=</span> piml_heat_1d_train(<span class="dv">6</span><span class="op">,</span> <span class="dv">20</span><span class="op">,</span> <span class="dv">30</span><span class="op">,</span> <span class="dv">0.01</span><span class="op">,</span> <span class="dv">1000</span><span class="op">,</span> <span class="dv">1e-3</span><span class="op">,</span> <span class="dv">1.0</span><span class="op">,</span> <span class="dv">10.0</span><span class="op">,</span> <span class="dv">42</span>)<span class="op">;</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (i<span class="op">,</span> (<span class="op">&amp;</span>a<span class="op">,</span> <span class="op">&amp;</span>b)) <span class="kw">in</span> r1<span class="op">.</span>final_params<span class="op">.</span>iter()</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">.</span>zip(r2<span class="op">.</span>final_params<span class="op">.</span>iter())<span class="op">.</span>enumerate()</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a><span class="op">{</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="pp">assert_eq!</span>(a<span class="op">.</span>to_bits()<span class="op">,</span> b<span class="op">.</span>to_bits()<span class="op">,</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Param {} not bit-identical"</span><span class="op">,</span> i)<span class="op">;</span></span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Not approximately equal. Bit-identical. <code>to_bits()</code> compares the raw IEEE 754 representation.</p>
+</section>
+<section id="nearly-zero-external-dependencies" class="level3">
+<h3 class="anchored" data-anchor-id="nearly-zero-external-dependencies">Nearly Zero External Dependencies</h3>
+<p>The entire system — 20 Rust crates, nearly zero external dependencies — compiles to a <strong>6.4 MB single binary</strong>. That one file contains everything: lexer, parser, type checker, two execution engines, optimizer, ~300 builtins, tensor library, linear algebra kernels, regex engine, AD engine, data manipulation DSL, serialization, visualization, and 15+ CLI subcommands. Nearly all built from scratch using only the Rust standard library.</p>
+<p>For comparison: Python is ~50 MB (before packages), Node.js is ~70 MB, R is ~30 MB, Julia is ~300 MB. CJC ships the entire scientific computing stack in a binary smaller than a typical JPEG photo collection.</p>
+<p>This is a deliberate choice. External dependencies introduce version churn, platform variance, and complexity that’s hard to audit. For a system that promises bit-identical results, every component needs to be under direct control. And for deployment — whether to a server, a CI runner, or eventually an embedded device — a single small binary with no runtime dependencies is hard to beat.</p>
+</section>
+<section id="dual-execution-engines" class="level3">
+<h3 class="anchored" data-anchor-id="dual-execution-engines">Dual Execution Engines</h3>
+<p>CJC has two execution paths:</p>
+<ol type="1">
+<li><strong>AST interpreter</strong> (<code>cjc-eval</code>): walks the syntax tree directly. Simple, easy to debug, good for prototyping.</li>
+<li><strong>MIR executor</strong> (<code>cjc-mir-exec</code>): lowers through HIR → MIR, applies optimization passes (constant folding, dead code elimination), and runs on a register machine.</li>
+</ol>
+<p>Both engines must produce identical results for every program. Parity tests enforce this. If the engines disagree, that’s a bug — and the test suite catches it.</p>
+</section>
+<section id="nogc-verification" class="level3">
+<h3 class="anchored" data-anchor-id="nogc-verification">NoGC Verification</h3>
+<p>CJC includes a static verifier that can prove code paths are free of garbage collection. The NoGC verifier performs transitive call-graph analysis to ensure that annotated functions — and everything they call — operate within reference-counted, copy-on-write memory without triggering GC.</p>
+<p>This matters for latency-sensitive workloads where GC pauses are unacceptable.</p>
+</section>
+</section>
+<section id="what-cjc-can-do-today" class="level2">
+<h2 class="anchored" data-anchor-id="what-cjc-can-do-today">What CJC Can Do Today</h2>
+<p>Rather than listing capabilities in the abstract, here’s what the language actually looks like. Every example below comes from real files in the repository — demo programs, test fixtures, or integration tests.</p>
+<section id="functions-recursion-and-control-flow" class="level3">
+<h3 class="anchored" data-anchor-id="functions-recursion-and-control-flow">Functions, Recursion, and Control Flow</h3>
+<p>CJC has the core building blocks you’d expect: typed functions, recursion, <code>if</code>/<code>else</code>, <code>while</code> loops, <code>for</code> loops with range iteration, and <code>break</code>/<code>continue</code>:</p>
+<div class="code-label">
+Recursion, loops, and break
+</div>
+<pre><code>fn factorial(n: i64) -&gt; i64 {
+    if n &lt;= 1 {
+        return 1;
+    }
+    n * factorial(n - 1)
+}
+print(factorial(10));
+
+fn find_first_divisible(limit: i64, divisor: i64) -&gt; i64 {
+    let mut result: i64 = 0;
+    for k in 1..limit {
+        if k % divisor == 0 {
+            result = k;
+            break;
+        }
+    }
+    result
+}
+print(find_first_divisible(100, 7));</code></pre>
+<p>Function parameters require type annotations — this is intentional. In a language built for numerical correctness, implicit type coercion is a source of surprises.</p>
+</section>
+<section id="closures-and-higher-order-functions" class="level3">
+<h3 class="anchored" data-anchor-id="closures-and-higher-order-functions">Closures and Higher-Order Functions</h3>
+<p>CJC supports lambda expressions with capture analysis. The compiler performs lambda lifting during HIR lowering, converting closures into top-level functions with explicit environment parameters:</p>
+<div class="code-label">
+Lambda with capture, passed as higher-order function
+</div>
+<pre><code>fn apply(f: fn(i64) -&gt; i64, x: i64) -&gt; i64 {
+    f(x)
+}
+
+fn main() -&gt; i64 {
+    let double = |x: i64| x * 2;
+    let result: i64 = apply(double, 21);
+    print(f"result: {result}");
+    result
+}</code></pre>
+<p>This isn’t just syntactic sugar — the capture analysis feeds into the NoGC verifier. If a closure captures a reference that would require GC, the verifier flags it.</p>
+</section>
+<section id="structs-enums-and-pattern-matching" class="level3">
+<h3 class="anchored" data-anchor-id="structs-enums-and-pattern-matching">Structs, Enums, and Pattern Matching</h3>
+<p>CJC supports algebraic data types with structural destructuring:</p>
+<pre><code>struct Point {
+    x: f64,
+    y: f64
+}
+
+fn distance(p: Any) -&gt; f64 {
+    sqrt(p.x * p.x + p.y * p.y)
+}
+
+let p = Point { x: 3.0, y: 4.0 };
+print(distance(p));</code></pre>
+<p>Match expressions support literal patterns, wildcards, and structural destructuring for tuples and structs:</p>
+<pre><code>fn classify(x: i64) -&gt; str {
+    match x {
+        0 =&gt; "zero",
+        1 =&gt; "one",
+        _ =&gt; "other",
+    }
+}
+print(classify(0));    // "zero"
+print(classify(99));   // "other"</code></pre>
+<p>There’s also an <code>Option</code> type with <code>Some</code>/<code>None</code> and <code>unwrap</code>/<code>unwrap_or</code>:</p>
+<pre><code>fn maybe_double(x: i64) -&gt; Option&lt;i64&gt; {
+    if x &gt; 0 {
+        Some(x * 2)
+    } else {
+        None
+    }
+}
+let a: Option&lt;i64&gt; = maybe_double(5);
+let b: Option&lt;i64&gt; = maybe_double(0);
+print(a.unwrap());         // 10
+print(b.unwrap_or(99));    // 99</code></pre>
+</section>
+<section id="complex-numbers" class="level3">
+<h3 class="anchored" data-anchor-id="complex-numbers">Complex Numbers</h3>
+<p>Built-in complex number support with arithmetic, conjugation, and norm computation:</p>
+<pre><code>let z = Complex(3.0, 4.0);
+let w = Complex(1.0, -2.0);
+let sum = z + w;
+let prod = z * w;
+print(z.abs());       // 5.0
+print(z.conj());      // Complex(3.0, -4.0)
+print(z.norm_sq());   // 25.0</code></pre>
+</section>
+<section id="byte-strings-and-regex" class="level3">
+<h3 class="anchored" data-anchor-id="byte-strings-and-regex">Byte Strings and Regex</h3>
+<p>CJC includes a zero-dependency NFA-based regex engine and byte-level string operations:</p>
+<pre><code>print("hello world" ~= /world/);       // true
+print("abc123" ~= /\d+/);              // true
+print("Hello" ~= /hello/i);            // true (case-insensitive)
+print("dog" ~= /cat|dog/);             // true
+
+let csv = b"hello,world";
+let parts = csv.split_byte(b',');
+print(parts.len());                     // 2</code></pre>
+</section>
+<section id="tensors-and-linear-algebra" class="level3">
+<h3 class="anchored" data-anchor-id="tensors-and-linear-algebra">Tensors and Linear Algebra</h3>
+<p>This is where CJC starts to show its numerical computing focus. Tensors are N-dimensional arrays with zero-copy COW (copy-on-write) buffers:</p>
+<div class="code-label">
+Matrix multiplication with shape verification
+</div>
+<pre><code>let A = Tensor.from_vec(
+    [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+    [2, 3]
+);
+let B = Tensor.from_vec(
+    [7.0,  8.0,
+     9.0,  10.0,
+     11.0, 12.0],
+    [3, 2]
+);
+
+let C = matmul(A, B);
+print(C);               // 2x2 matrix
+print(C.shape());        // [2, 2]
+
+assert_eq(C.get([0, 0]), 58.0);
+assert_eq(C.get([0, 1]), 64.0);
+assert_eq(C.get([1, 0]), 139.0);
+assert_eq(C.get([1, 1]), 154.0);</code></pre>
+<p>The runtime provides the full suite of decompositions and operations you’d need for serious linear algebra work:</p>
+<pre><code>let sq = Tensor.from_vec([4.0, 7.0, 2.0, 6.0], [2, 2]);
+print(det(sq));          // determinant
+print(trace(sq));        // trace
+
+let v1 = Tensor.from_vec([3.0, 4.0], [2]);
+print(norm(v1));         // 5.0
+print(dot(v1, v1));      // 25.0</code></pre>
+<p>Additional operations include SVD, QR, Cholesky, eigenvalue decomposition, matrix exponential, Schur decomposition, condition number, and multiple matrix norms (<code>norm_1</code>, <code>norm_inf</code>, <code>norm_frobenius</code>). All floating-point reductions go through Kahan or binned summation — there is no naive accumulation anywhere in the runtime.</p>
+</section>
+<section id="neural-network-forward-pass" class="level3">
+<h3 class="anchored" data-anchor-id="neural-network-forward-pass">Neural Network Forward Pass</h3>
+<p>CJC can express multi-layer neural networks with struct-based layer definitions and a pipe operator (<code>|&gt;</code>) for readable data flow:</p>
+<pre><code>struct Layer {
+    weights: Tensor,
+    bias: Tensor
+}
+
+fn forward(layer: Layer, input: Tensor) -&gt; Tensor {
+    matmul(input, layer.weights) |&gt; add_bias(layer.bias)
+}
+
+fn relu_scalar(x: f64) -&gt; f64 {
+    if x &gt; 0.0 { return x; }
+    return 0.0;
+}
+
+let x = Tensor.from_vec([1.0, 2.0, 3.0], [1, 3]);
+
+let layer1 = Layer {
+    weights: Tensor.from_vec(
+        [0.1, 0.2, -0.1, 0.3,
+         0.4, -0.2, 0.1, 0.5,
+        -0.3, 0.1, 0.2, -0.1], [3, 4]),
+    bias: Tensor.from_vec([0.1, -0.1, 0.05, 0.0], [1, 4])
+};
+
+let layer2 = Layer {
+    weights: Tensor.from_vec(
+        [0.2, -0.3, 0.1, 0.4,
+        -0.2, 0.1, 0.3, -0.1], [4, 2]),
+    bias: Tensor.from_vec([0.0, 0.1], [1, 2])
+};
+
+let h = forward(layer1, x);
+let h_relu = relu_1x4(h);
+let out = forward(layer2, h_relu);
+print("Network output:", out);</code></pre>
+<p>The runtime also provides built-in ML operations: <code>batch_norm</code>, <code>dropout_mask</code>, <code>sigmoid</code>, <code>relu</code>, <code>leaky_relu</code>, <code>attention</code>, <code>softmax</code>, learning rate schedulers (<code>lr_step_decay</code>, <code>lr_cosine</code>, <code>lr_linear_warmup</code>), loss functions (<code>mse_loss</code>, <code>cross_entropy_loss</code>, <code>huber_loss</code>), and regularization (<code>l1_penalty</code>, <code>l2_penalty</code>, <code>clip_grad</code>).</p>
+</section>
+<section id="gradient-descent" class="level3">
+<h3 class="anchored" data-anchor-id="gradient-descent">Gradient Descent</h3>
+<p>A simple but complete optimization loop — gradient descent on <code>f(x) = (x - 3)^2</code>:</p>
+<div class="code-label">
+Manual gradient descent converging to x = 3.0
+</div>
+<pre><code>fn f(x: f64) -&gt; f64 {
+    (x - 3.0) * (x - 3.0)
+}
+
+fn grad_f(x: f64) -&gt; f64 {
+    2.0 * (x - 3.0)
+}
+
+let x = 0.0;
+let lr = 0.1;
+let i = 0;
+
+while i &lt; 100 {
+    let g = grad_f(x);
+    x = x - lr * g;
+    i = i + 1;
+}
+
+print("Final x:", x);          // ~3.0
+print("Final f(x):", f(x));    // ~0.0
+
+assert(abs(x - 3.0) &lt; 0.001);
+assert(f(x) &lt; 0.000001);
+print("Gradient descent converged!");</code></pre>
+<p>For more complex cases, CJC has a full automatic differentiation engine — forward-mode via dual numbers and reverse-mode via tape-based gradient computation — that handles <code>sin</code>, <code>cos</code>, <code>exp</code>, <code>log</code>, <code>pow</code>, <code>sigmoid</code>, <code>relu</code>, and all standard arithmetic automatically.</p>
+</section>
+<section id="statistics-and-distributions" class="level3">
+<h3 class="anchored" data-anchor-id="statistics-and-distributions">Statistics and Distributions</h3>
+<p>The runtime includes 35+ statistical functions, 13 probability distributions, and 15 hypothesis tests:</p>
+<pre><code>let data = [23.1, 25.4, 22.8, 24.5, 26.1, 23.9, 24.2, 25.0, 22.5, 24.8];
+
+let data_t = Tensor.from_vec(data, [10]);
+print(data_t.mean());           // descriptive stats
+print(median(data));
+print(sd(data));
+print(variance(data));
+
+// Normal distribution
+print(normal_cdf(1.96));        // P(Z &lt; 1.96)
+print(normal_ppf(0.975));       // quantile function
+
+// Hypothesis testing
+let test_result = t_test(data, 24.0);
+print(test_result);
+
+// Correlation
+let x = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0];
+let y = [2.1, 4.0, 5.8, 8.1, 9.9, 12.2, 13.8, 16.1, 18.0, 20.1];
+print(cor(x, y));                // Pearson r</code></pre>
+<p>Beyond the basics, there are robust statistics (<code>trimmed_mean</code>, <code>winsorize</code>, <code>mad</code>), rank correlations (<code>spearman_cor</code>, <code>kendall_cor</code>, <code>partial_cor</code> with confidence intervals), weighted statistics (<code>weighted_mean</code>, <code>weighted_var</code>), and non-parametric tests (<code>wilcoxon_signed_rank</code>, <code>kruskal_wallis</code>, <code>mann_whitney</code>).</p>
+<p>Distributions include normal, beta, gamma, exponential, Weibull, Poisson, binomial, chi-squared, and Student’s t — each with PDF/PMF, CDF, and where applicable, quantile functions.</p>
+</section>
+<section id="data-manipulation" class="level3">
+<h3 class="anchored" data-anchor-id="data-manipulation">Data Manipulation</h3>
+<p>CJC includes a tidyverse-inspired data DSL with 73+ operations:</p>
+<pre><code>let csv_data = "name,age,city\nAlice,30,NYC\nBob,25,LA\nCharlie,35,NYC\nDiana,28,LA\n";
+let df = Csv.parse(csv_data);
+let view = df.view();
+
+// Filter rows where age &gt; 28
+let pred = dexpr_binop("&gt;", col("age"), 28);
+let filtered = view.filter(pred);
+
+// Select specific columns
+let selected = filtered.select(["name", "city"]);
+print(selected.column_names());</code></pre>
+<p>Group-by aggregation works like you’d expect from dplyr:</p>
+<pre><code>let csv = "dept,salary\nEng,100\nEng,120\nSales,80\nSales,90\nEng,110\n";
+let df = Csv.parse(csv);
+let view = df.view();
+
+let grouped = view.group_by(["dept"]);
+let result = grouped.summarise(
+    "n", tidy_count(),
+    "avg_sal", tidy_mean("salary")
+);</code></pre>
+<p>The data layer supports typed columns (int, float, string, boolean, categorical, datetime), joins (inner, left, right, anti, semi), pivoting (<code>pivot_longer</code>, <code>pivot_wider</code>), window functions (<code>lag</code>, <code>lead</code>, <code>cumsum</code>, <code>ntile</code>, <code>rank</code>, <code>dense_rank</code>), and lazy evaluation with COW semantics.</p>
+</section>
+<section id="signal-processing" class="level3">
+<h3 class="anchored" data-anchor-id="signal-processing">Signal Processing</h3>
+<p>FFT, inverse FFT, and windowing functions for spectral analysis:</p>
+<pre><code>let w = hann(8);        // Hann window
+let w = hamming(8);     // Hamming window
+let w = blackman(16);   // Blackman window</code></pre>
+<p>The runtime also supports <code>rfft</code>, 2D FFT/IFFT, and periodogram estimation.</p>
+</section>
+<section id="regression-and-model-selection" class="level3">
+<h3 class="anchored" data-anchor-id="regression-and-model-selection">Regression and Model Selection</h3>
+<p>Built-in regression functions for quick modeling:</p>
+<pre><code>let x = [1.0, 2.0, 3.0, 4.0, 5.0];
+let y = [3.0, 5.0, 7.0, 9.0, 11.0];
+let w = [1.0, 1.0, 1.0, 1.0, 1.0];
+let r = wls(x, y, w, 5, 1);    // weighted least squares
+let coeffs = r.coefficients;
+print(coeffs);</code></pre>
+<p>Additional modeling tools include <code>lm</code> (OLS), <code>logistic_regression</code>, <code>polyfit</code>/<code>polyval</code>, <code>kmeans</code>, <code>dbscan</code>, <code>pca</code>, <code>auc_roc</code>, and <code>confusion_matrix</code>.</p>
+</section>
+</section>
+<section id="neural-networks-proven-in-cjc" class="level2">
+<h2 class="anchored" data-anchor-id="neural-networks-proven-in-cjc">Neural Networks Proven in CJC</h2>
+<p>One of CJC’s design goals is to express real machine learning architectures — not through bindings to PyTorch or TensorFlow, but in base CJC using the language’s own tensor operations, automatic differentiation, and training utilities. Here’s what has been built and verified.</p>
+<section id="feedforward-mlp-multi-layer-perceptron" class="level3">
+<h3 class="anchored" data-anchor-id="feedforward-mlp-multi-layer-perceptron">Feedforward MLP (Multi-Layer Perceptron)</h3>
+<p>The most fundamental neural network — and the one used across multiple CJC demonstrations.</p>
+<div class="cell" data-fig-width="6">
+<div class="cell-output-display">
+<div>
+<div>
+<pre class="mermaid mermaid-js">flowchart LR
+    I["Input\nx [1, 3]"] --&gt; W1["Layer 1\nW₁ [3,4] + b₁\nReLU"] --&gt; W2["Layer 2\nW₂ [4,2] + b₂"] --&gt; O["Output\n[1, 2]"]
+</pre>
+</div>
+<p>Two-layer MLP with ReLU activation, expressed as struct-based layers with a pipe operator.</p>
+</div>
+</div>
+</div>
+<p>Using the same <code>Layer</code> struct and <code>forward()</code> function shown earlier, the key insight is that every weight is a plain <code>Tensor</code> you can inspect, serialize with <code>snap_hash()</code>, and verify for bit-identity across runs. The pipe operator (<code>|&gt;</code>) makes the data flow explicit and readable. In PyTorch, the equivalent <code>nn.Linear</code> hides the matmul/bias addition behind a class; here, the math is transparent.</p>
+<p>The benchmarks push this further: a <strong>50-layer deep network</strong> (width 64, batch 4) and a <strong>10-layer wide network</strong> (width 256, batch 16) are tested with <code>snap_hash()</code> checkpoints every few layers. Both produce bit-identical hashes across runs — verifying that even deep forward passes through random weight matrices stay deterministic.</p>
+</section>
+<section id="reinforce-policy-network-reinforcement-learning" class="level3">
+<h3 class="anchored" data-anchor-id="reinforce-policy-network-reinforcement-learning">REINFORCE Policy Network (Reinforcement Learning)</h3>
+<p>The chess RL benchmark implements a full policy gradient agent in pure CJC — not a toy example, but an agent that actually plays chess, selects moves via softmax sampling, and updates weights via REINFORCE.</p>
+<div class="cell" data-fig-width="7">
+<div class="cell-output-display">
+<div>
+<div>
+<pre class="mermaid mermaid-js">flowchart LR
+    B["Board 64sq\n+ Move from/to"] --&gt; F["Features\n[1, 66]"] --&gt; H["Hidden\nW₁ [66,16] + b₁\nReLU"] --&gt; S["Score\nW₂ [16,1]"] --&gt; A["Softmax\n→ Sample"]
+</pre>
+</div>
+<p>REINFORCE policy network for chess. Board state and move coordinates flow through a hidden layer to produce action probabilities.</p>
+</div>
+</div>
+</div>
+<div class="callout callout-style-simple callout-note no-icon callout-titled" title="Full REINFORCE forward pass and action selection code">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-2-contents" aria-controls="callout-2" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Full REINFORCE forward pass and action selection code
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-2" class="callout-2-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<pre><code>fn forward_move(W1: Tensor, b1: Tensor, W2: Tensor,
+                board_features: Tensor, from_sq: i64, to_sq: i64) -&gt; Any {
+    // Build 66-dim feature vector: 64 board squares + normalized from/to
+    let feat_data = [];
+    let i = 0;
+    while i &lt; 64 {
+        feat_data = array_push(feat_data, board_features.get([0, i]));
+        i = i + 1;
+    }
+    feat_data = array_push(feat_data, float(from_sq) / 63.0);
+    feat_data = array_push(feat_data, float(to_sq) / 63.0);
+    let input = Tensor.from_vec(feat_data, [1, 66]);
+
+    // Hidden layer: relu(input @ W1 + b1)
+    let hidden = (matmul(input, W1) + b1).relu();
+
+    // Score: hidden @ W2
+    let score_t = matmul(hidden, W2);
+    [score_t.get([0, 0])]
+}
+
+fn select_action(W1: Tensor, b1: Tensor, W2: Tensor,
+                 board_features: Tensor, moves: Any) -&gt; Any {
+    let num_moves = len(moves) / 2;
+    let scores = [];
+    let i = 0;
+    while i &lt; num_moves {
+        let result = forward_move(W1, b1, W2, board_features,
+                                  moves[i * 2], moves[i * 2 + 1]);
+        scores = array_push(scores, result[0]);
+        i = i + 1;
+    }
+    let scores_t = Tensor.from_vec(scores, [num_moves]);
+    let probs = scores_t.softmax();
+    let action_idx = categorical_sample(probs);
+    let log_prob = log(probs.get([action_idx]));
+    [float(action_idx), log_prob, float(num_moves)]
+}</code></pre>
+</div>
+</div>
+</div>
+<p><strong>Why this matters in CJC:</strong> This is a complete RL pipeline — feature construction, forward pass, softmax action selection, log-probability tracking, and gradient computation — written entirely in CJC with no framework. The agent manually computes <code>d(log_prob)/d(theta)</code> through softmax, ReLU, and matmul, including ReLU mask construction and chain rule through two layers.</p>
+<p>The key difference from doing this in Python: <strong>reproducibility is guaranteed</strong>. <code>categorical_sample()</code> uses CJC’s seeded SplitMix64 RNG. The softmax goes through Kahan summation. Running <code>cjc run chess_agent.cjc --seed 42</code> produces the exact same game, the exact same moves, the exact same weight updates, every time. 49 tests verify this. In PyTorch, achieving this level of reproducibility requires <code>torch.manual_seed()</code>, <code>torch.use_deterministic_algorithms(True)</code>, disabling CUDA non-determinism, and even then floating-point reduction order may vary.</p>
+</section>
+<section id="physics-informed-neural-network-pinn" class="level3">
+<h3 class="anchored" data-anchor-id="physics-informed-neural-network-pinn">Physics-Informed Neural Network (PINN)</h3>
+<p>CJC’s AD engine supports PINNs — neural networks that learn to satisfy differential equations, not just fit data.</p>
+<div class="cell" data-fig-width="6">
+<div class="cell-output-display">
+<div>
+<div>
+<pre class="mermaid mermaid-js">flowchart TB
+    X["Position x"] --&gt; N["MLP [1→32→32→1]\ntanh activation"] --&gt; U["Prediction u_hat"]
+    U --&gt; DL["Data Loss\nMSE"]
+    U --&gt; PL["Physics Loss\nu_xx + u ≈ 0"]
+    U --&gt; BL["Boundary Loss\nu(0)=0, u(pi)=0"]
+    DL --&gt; T["Total Loss"]
+    PL --&gt; T
+    BL --&gt; T
+    T -.-&gt;|"Adam optimizer"| N
+</pre>
+</div>
+<p>PINN for the harmonic oscillator. The composite loss combines data fitting, PDE residual, and boundary conditions.</p>
+</div>
+</div>
+</div>
+<p>The harmonic oscillator example uses a <code>[1, 32, 32, 1]</code> MLP with tanh activation trained to solve <code>u_xx + u = 0</code>:</p>
+<ul>
+<li><strong>Data loss</strong>: MSE against observed points (optionally noisy)</li>
+<li><strong>Physics loss</strong>: the PDE residual <code>u_xx + u</code> computed via finite differences through the network, penalized toward zero</li>
+<li><strong>Boundary loss</strong>: <code>u(0)</code> and <code>u(π)</code> enforced to match known boundary conditions</li>
+<li><strong>Total loss</strong>: <code>data + physics_weight * physics + boundary_weight * boundary</code></li>
+<li><strong>Optimizer</strong>: Adam with learning rate scheduling</li>
+</ul>
+<p>The exact solution is <code>sin(x)</code>, and the trained network converges to it with verified L2 error below tolerance.</p>
+<p><strong>Why this matters in CJC:</strong> PINNs are a case where determinism isn’t just nice — it’s scientifically necessary. When you’re claiming a network satisfies a PDE, you need to reproduce the training run exactly to verify the claim. CJC’s deterministic AD engine, seeded RNG, and Kahan-summed loss computations mean the verification is airtight. The test suite trains the same PINN twice with seed 42 and asserts that every parameter is bit-identical using <code>to_bits()</code> comparison on the raw IEEE 754 representation.</p>
+</section>
+<section id="physics-informed-ml-piml" class="level3">
+<h3 class="anchored" data-anchor-id="physics-informed-ml-piml">Physics-Informed ML (PIML)</h3>
+<p>A simpler but equally rigorous approach: polynomial regression with a physics residual penalty, applied to the 1D heat equation <code>u_xx = f(x)</code>.</p>
+<div class="cell" data-fig-width="5">
+<div class="cell-output-display">
+<div>
+<div>
+<pre class="mermaid mermaid-js">flowchart LR
+    C["Polynomial Model\nc₀, c₁, ..., cₙ"] --&gt; D["Data Loss\nMSE vs observed"]
+    C --&gt; P["Physics Loss\nu_xx − f(x) ≈ 0"]
+    C --&gt; B["Boundary Loss\nu(0)=0, u(1)=0"]
+</pre>
+</div>
+<p>PIML for the 1D heat equation. Polynomial coefficients are optimized to fit data while satisfying the PDE.</p>
+</div>
+</div>
+</div>
+<p>The model learns polynomial coefficients that simultaneously fit noisy observations and satisfy the PDE. Boundary conditions are enforced through weighted penalty terms. The exact solution is <code>sin(πx)</code>, and the optimized polynomial converges to it.</p>
+</section>
+<section id="convolutional-neural-networks-cnn" class="level3">
+<h3 class="anchored" data-anchor-id="convolutional-neural-networks-cnn">Convolutional Neural Networks (CNN)</h3>
+<p>CJC’s tensor runtime includes native 1D and 2D convolution, maxpooling, and the full pipeline for building convolutional architectures.</p>
+<div class="cell" data-fig-width="7">
+<div class="cell-output-display">
+<div>
+<div>
+<pre class="mermaid mermaid-js">flowchart LR
+    I["Input\n[4,3,28,28]"] --&gt; C["Conv2D\n32 filters 3x3"] --&gt; R["ReLU"] --&gt; BN["BatchNorm"] --&gt; MP["MaxPool2D\n2x2"] --&gt; O["Output\n[4,32,13,13]"]
+</pre>
+</div>
+<p>CNN pipeline in CJC. Native conv2d, ReLU, batch normalization, and maxpooling — all deterministic.</p>
+</div>
+</div>
+</div>
+<pre><code>// 2D convolution: batch of images through learned filters
+let input = Tensor.randn([4, 3, 28, 28]);   // batch=4, channels=3, 28x28
+let filters = Tensor.randn([32, 3, 3, 3]);  // 32 output channels, 3x3 kernel
+let bias = Tensor.zeros([32]);
+let conv_out = input.conv2d(filters, bias, 1);   // -&gt; [4, 32, 26, 26]
+
+// Activation + normalization + pooling
+let activated = conv_out.relu();
+let pooled = activated.maxpool2d(2, 2);          // -&gt; [4, 32, 13, 13]</code></pre>
+<p>CJC also supports 1D convolution with circular padding (<code>conv1d_circular</code>) for signal processing, and the full set of CNN building blocks: <code>batch_norm</code>, <code>dropout_mask</code>, arbitrary strides, and multi-channel operations.</p>
+<p><strong>Why this matters in CJC:</strong> Convolutions are one of the most numerically sensitive operations in deep learning — small floating-point differences in the kernel computation compound across spatial dimensions. CJC’s convolution implementation uses the same deterministic accumulation as everything else (Kahan summation over the kernel window), which means a CNN forward pass produces identical feature maps on every run. In frameworks like PyTorch, <code>torch.nn.Conv2d</code> on CUDA can produce different results between runs unless you explicitly opt into deterministic mode — and even then, performance suffers.</p>
+</section>
+<section id="attention-mechanism-transformer-building-block" class="level3">
+<h3 class="anchored" data-anchor-id="attention-mechanism-transformer-building-block">Attention Mechanism (Transformer Building Block)</h3>
+<p>Scaled dot-product attention — the core primitive of transformer architectures — is implemented as a native tensor operation.</p>
+<div class="cell" data-fig-width="7">
+<div class="cell-output-display">
+<div>
+<div>
+<pre class="mermaid mermaid-js">flowchart LR
+    Q["Q [batch, seq, d_k]"] --&gt; MM["Q · K^T"]
+    K["K [batch, seq, d_k]"] --&gt; MM
+    MM --&gt; SC["÷ sqrt(d_k)"] --&gt; SM["Softmax"] --&gt; MV["× V"]
+    V["V [batch, seq, d_k]"] --&gt; MV
+    MV --&gt; O["Output\n[batch, seq, d_k]"]
+</pre>
+</div>
+<p>Scaled dot-product attention — softmax(QK^T / sqrt(d_k)) * V — as a single native CJC operation.</p>
+</div>
+</div>
+</div>
+<pre><code>// Scaled dot-product attention: softmax(Q @ K^T / sqrt(d_k)) @ V
+let Q = Tensor.randn([2, 8, 64]);   // [batch, seq_len, d_k]
+let K = Tensor.randn([2, 8, 64]);
+let V = Tensor.randn([2, 8, 64]);
+let output = attention(Q, K, V);      // -&gt; [2, 8, 64]</code></pre>
+<p>This computes <code>softmax(QK^T / sqrt(d_k)) * V</code> with batch matrix multiplication and deterministic softmax. It’s the core primitive you’d need to build transformer-style architectures.</p>
+<p><strong>Why this matters in CJC:</strong> Attention involves two matrix multiplications and a softmax — three operations where floating-point non-determinism typically creeps in. The softmax denominator is a sum over exponentials that’s sensitive to evaluation order. CJC’s implementation uses Kahan-summed softmax and deterministic batch matmul, producing identical attention weights on every run. For research applications where you need to compare attention patterns between model variants, this level of reproducibility is essential.</p>
+</section>
+<section id="deep-network-stress-tests" class="level3">
+<h3 class="anchored" data-anchor-id="deep-network-stress-tests">Deep Network Stress Tests</h3>
+<p>Beyond the architecture-specific examples above, CJC includes benchmark programs that push neural network forward passes to realistic scale:</p>
+<table class="table">
+<colgroup>
+<col style="width: 17%">
+<col style="width: 11%">
+<col style="width: 11%">
+<col style="width: 11%">
+<col style="width: 33%">
+<col style="width: 15%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Benchmark</th>
+<th>Depth</th>
+<th>Width</th>
+<th>Batch</th>
+<th>Parameters per Layer</th>
+<th>Verified</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>bench_nn_deep</code></td>
+<td>50 layers</td>
+<td>64</td>
+<td>4</td>
+<td>4,160</td>
+<td>Bit-identical across runs via <code>snap_hash</code></td>
+</tr>
+<tr class="even">
+<td><code>bench_nn_wide</code></td>
+<td>10 layers</td>
+<td>256</td>
+<td>16</td>
+<td>65,792</td>
+<td>Bit-identical across runs via <code>snap_hash</code></td>
+</tr>
+</tbody>
+</table>
+<p>Both benchmarks insert <code>snap_hash()</code> checkpoints every few layers, producing cryptographic hashes of intermediate activations. Running twice with <code>--seed 42</code> produces identical hashes at every checkpoint — proving that determinism holds even through deep chains of matmul → bias → ReLU → normalization.</p>
+</section>
+<section id="what-this-proves" class="level3">
+<h3 class="anchored" data-anchor-id="what-this-proves">What This Proves</h3>
+<p>These aren’t theoretical capabilities. Each architecture has been implemented, run through both execution engines, and verified with assertions. The REINFORCE agent plays chess. The PINN converges to the analytical solution. The CNN processes real tensor shapes. The deep network benchmarks verify hash-level determinism through 50 sequential layers.</p>
+<p>And all of them produce <strong>bit-identical results</strong> across runs — something no mainstream ML framework guarantees without significant configuration overhead and performance trade-offs. In CJC, determinism isn’t an opt-in mode. It’s how computation works.</p>
+</section>
+</section>
+<section id="beyond-neural-networks" class="level2">
+<h2 class="anchored" data-anchor-id="beyond-neural-networks">Beyond Neural Networks</h2>
+<p>CJC isn’t just a machine learning language. The numerical infrastructure supports a much broader range of scientific computing work — all with the same determinism guarantees.</p>
+<table class="table">
+<colgroup>
+<col style="width: 32%">
+<col style="width: 68%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Domain</th>
+<th>Key Capabilities</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>ODE/PDE Solvers</strong></td>
+<td>Euler, RK4, adaptive RK45, 1D Laplacian, diffusion stepping, adjoint sensitivity</td>
+</tr>
+<tr class="even">
+<td><strong>Optimization</strong></td>
+<td>Gradient descent, BFGS, L-BFGS, Nelder-Mead, bisection, Brent, Newton, secant</td>
+</tr>
+<tr class="odd">
+<td><strong>Regression</strong></td>
+<td>OLS, weighted least squares, logistic regression, polynomial fitting</td>
+</tr>
+<tr class="even">
+<td><strong>Clustering</strong></td>
+<td>K-means (k-means++ init), DBSCAN, agglomerative (4 linkage methods), PCA</td>
+</tr>
+<tr class="odd">
+<td><strong>Time Series</strong></td>
+<td>ACF, PACF, EWMA, seasonal decomposition, stationarity tests (ADF, KPSS, Phillips-Perron)</td>
+</tr>
+<tr class="even">
+<td><strong>Interpolation</strong></td>
+<td>Cubic natural splines, linear, nearest-neighbor, Horner polynomial evaluation</td>
+</tr>
+</tbody>
+</table>
+<p>As a concrete example, here’s an adaptive ODE solver stepping through a system:</p>
+<div class="code-label">
+Adaptive RK45 integration with step size control
+</div>
+<pre><code>let result = ode_solve_rk45(
+    |t: f64, y: f64| -0.5 * y,   // dy/dt = -0.5y (exponential decay)
+    0.0,                           // t_start
+    10.0,                          // t_end
+    1.0,                           // y_initial
+    1e-6                           // tolerance
+);
+print("Final y:", result);         // ~0.00674 (matches exp(-5))</code></pre>
+<p>Every solver uses Kahan-summed intermediate steps and seeded RNG for stochastic methods — deterministic by construction.</p>
+</section>
+<section id="whats-native-and-why-that-matters" class="level2">
+<h2 class="anchored" data-anchor-id="whats-native-and-why-that-matters">What’s Native — and Why That Matters</h2>
+<p>Everything mentioned above runs inside a single 6.4 MB binary with nearly zero external dependencies. That’s unusual, and it’s worth explaining why.</p>
+<table class="table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 30%">
+<col style="width: 44%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Component</th>
+<th>What It Does</th>
+<th>Why Native Matters</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Regex</strong> (<code>cjc-regex</code>)</td>
+<td>Thompson NFA engine — O(n) linear time, no backtracking</td>
+<td>Eliminates ReDoS vulnerabilities and supply chain risk</td>
+</tr>
+<tr class="even">
+<td><strong>RNG</strong> (SplitMix64)</td>
+<td>Seeded, explicit state, <code>fork()</code> for parallel streams</td>
+<td>Same seed = same output on every platform, always</td>
+</tr>
+<tr class="odd">
+<td><strong>Visualization</strong> (<code>cjc-vizor</code>)</td>
+<td>Grammar-of-graphics with SVG/BMP output</td>
+<td>No subprocess, no JS engine, no network calls</td>
+</tr>
+<tr class="even">
+<td><strong>DataFrame</strong> (<code>cjc-data</code>)</td>
+<td>73+ tidyverse-style ops, lazy eval, typed columns</td>
+<td>Grouping and aggregation inherit determinism automatically</td>
+</tr>
+</tbody>
+</table>
+<p>Two components deserve deeper explanation because they’re foundational to CJC’s determinism guarantee:</p>
+<section id="native-serialization-with-content-hashing" class="level3">
+<h3 class="anchored" data-anchor-id="native-serialization-with-content-hashing">Native Serialization with Content Hashing</h3>
+<p>CJC’s serialization format (<code>cjc-snap</code>) produces canonical binary representations with <strong>SHA-256 content hashing</strong> — hand-rolled, zero dependencies. The same value always produces the same bytes, regardless of insertion order or reference identity. If you checkpoint a model and restore it, the restore is exact. This is what makes <code>snap_hash()</code> verification possible throughout the test suite.</p>
+</section>
+<section id="native-accumulation-kahan-and-binned-summation" class="level3">
+<h3 class="anchored" data-anchor-id="native-accumulation-kahan-and-binned-summation">Native Accumulation (Kahan and Binned Summation)</h3>
+<p>Every floating-point reduction in CJC goes through either Kahan compensated summation or binned accumulators — tensor reductions, statistical functions, loss computations, gradient accumulation, all of it. Naive <code>sum += x</code> loses precision as arrays grow and produces different results depending on evaluation order. Kahan summation maintains accuracy to near full IEEE 754 precision. Binned accumulators go further, providing reproducible results <em>independent of summation order</em>. This is the mechanism that makes bit-identical determinism possible at the floating-point level.</p>
+</section>
+<section id="the-compound-benefit" class="level3">
+<h3 class="anchored" data-anchor-id="the-compound-benefit">The Compound Benefit</h3>
+<p>Any one of these components in isolation would be a nice feature. Together, they create something more: a system where you can load data (CSV), manipulate it (DataFrame), fit a model (regression/clustering/neural network), differentiate through it (AD engine), visualize the results (Vizor), serialize the checkpoint (Snap), and know that every step produced deterministic, bit-identical output — all within a single 6.4 MB binary that you can copy to any machine and run.</p>
+<p>No <code>pip install</code>. No <code>npm install</code>. No version conflicts. No “works on my machine.” Just the binary, the source file, and the seed.</p>
+</section>
+</section>
+<section id="the-cli-toolchain" class="level2">
+<h2 class="anchored" data-anchor-id="the-cli-toolchain">The CLI Toolchain</h2>
+<p>CJC ships with 15+ CLI subcommands:</p>
+<div class="sourceCode" id="cb22"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cjc</span> run program.cjc              <span class="co"># execute a program</span></span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a><span class="ex">cjc</span> run program.cjc <span class="at">--seed</span> 42    <span class="co"># explicit RNG seed</span></span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a><span class="ex">cjc</span> run program.cjc <span class="at">--mir-opt</span>    <span class="co"># MIR-optimized execution</span></span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a><span class="ex">cjc</span> check program.cjc            <span class="co"># type-check without running</span></span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a><span class="ex">cjc</span> repl                         <span class="co"># interactive REPL</span></span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a><span class="ex">cjc</span> trace program.cjc            <span class="co"># execution tracing</span></span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a><span class="ex">cjc</span> bench program.cjc            <span class="co"># benchmarking</span></span>
+<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a><span class="ex">cjc</span> doctor                       <span class="co"># health/validation checks</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Additional commands include <code>inspect</code>, <code>schema</code>, <code>flow</code> (control flow graphs), <code>drift</code> (determinism drift detection), <code>mem</code> (memory profiling), <code>pack</code> (binary serialization), and <code>forge</code> (code generation).</p>
+</section>
+<section id="why-cjc-is-still-in-beta" class="level2">
+<h2 class="anchored" data-anchor-id="why-cjc-is-still-in-beta">Why CJC Is Still in Beta</h2>
+<p>The core is solid: the compiler pipeline works end-to-end, both execution engines agree, the test suite is extensive, and the runtime covers a wide surface area. But several areas need more work:</p>
+<ul>
+<li><strong>Type inference</strong> is limited — most types require explicit annotation</li>
+<li><strong>Generics</strong> are parsed but not fully enforced at the type level</li>
+<li><strong>The module system</strong> exists but needs refinement for multi-file projects</li>
+<li><strong>REPL</strong> lacks readline support</li>
+<li><strong>Optimizer</strong> has room for more passes beyond constant folding and DCE</li>
+<li><strong>Documentation</strong> is sparse outside of test coverage</li>
+</ul>
+<p>I’m not rushing to call this production-ready. The point is to build something correct first, then make it convenient. CJC is in a state where it can express real programs and produce trustworthy results, but the developer experience still has rough edges.</p>
+</section>
+<section id="what-comes-next" class="level2">
+<h2 class="anchored" data-anchor-id="what-comes-next">What Comes Next</h2>
+<p>The near-term roadmap includes:</p>
+<ul>
+<li><strong>If-expressions</strong>: converting <code>if</code> from a statement to an expression (<code>let x = if cond { a } else { b }</code>)</li>
+<li><strong>Default parameters and variadic functions</strong>: making function signatures more flexible</li>
+<li><strong>MIR-integrated autodiff</strong>: ensuring gradient computation works through the optimized execution path</li>
+<li><strong>Module system improvements</strong>: reliable multi-file program support</li>
+<li><strong>Solver infrastructure</strong>: ODE and PDE solver primitives for numerical libraries to build on</li>
+<li><strong>Sparse linear algebra</strong>: eigenvalue solvers (Lanczos, Arnoldi) with deterministic iteration</li>
+</ul>
+<p>Longer term, I’m interested in what it means to run a fully deterministic, zero-dependency numerical language on resource-constrained hardware. The architecture is designed with that possibility in mind, but it’s a future direction, not a current capability.</p>
+</section>
+<section id="why-share-this-now" class="level2">
+<h2 class="anchored" data-anchor-id="why-share-this-now">Why Share This Now?</h2>
+<p>CJC isn’t finished, but the ideas behind it are clear enough to discuss. Deterministic scientific computing is a real problem. Building the entire stack from scratch is an unusual approach. And the results so far — a 6.4 MB binary containing an entire scientific computing language, 5,300+ tests passing, end-to-end ML benchmarks, bit-identical execution — suggest the approach is viable.</p>
+<p>If you’re interested in compiler design, numerical methods, reproducible computing, or just the experience of building a language from the ground up, I’ll be writing more here as the project develops.</p>
+<p>Next up: I’ll write about what it took to build a dual-engine compiler pipeline in Rust — and the design decisions that made parity testing between an AST interpreter and a register machine actually tractable.</p>
+<div class="callout callout-style-simple callout-tip no-icon callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Follow the project
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>CJC is open source and under active development. The project is in beta — functional and tested, but not yet production-ready. Follow <a href="https://linkedin.com/in/adamezzat"><span class="citation" data-cites="adamezzat">@adamezzat</span></a> for updates as new features land.</p>
+</div>
+</div>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const disableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'prefetch';
+    }
+  }
+  const enableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'stylesheet';
+    }
+  }
+  const manageTransitions = (selector, allowTransitions) => {
+    const els = window.document.querySelectorAll(selector);
+    for (let i=0; i < els.length; i++) {
+      const el = els[i];
+      if (allowTransitions) {
+        el.classList.remove('notransition');
+      } else {
+        el.classList.add('notransition');
+      }
+    }
+  }
+  const toggleColorMode = (alternate) => {
+    // Switch the stylesheets
+    const alternateStylesheets = window.document.querySelectorAll('link.quarto-color-scheme.quarto-color-alternate');
+    manageTransitions('#quarto-margin-sidebar .nav-link', false);
+    if (alternate) {
+      enableStylesheet(alternateStylesheets);
+      for (const sheetNode of alternateStylesheets) {
+        if (sheetNode.id === "quarto-bootstrap") {
+          toggleBodyColorMode(sheetNode);
+        }
+      }
+    } else {
+      disableStylesheet(alternateStylesheets);
+      toggleBodyColorPrimary();
+    }
+    manageTransitions('#quarto-margin-sidebar .nav-link', true);
+    // Switch the toggles
+    const toggles = window.document.querySelectorAll('.quarto-color-scheme-toggle');
+    for (let i=0; i < toggles.length; i++) {
+      const toggle = toggles[i];
+      if (toggle) {
+        if (alternate) {
+          toggle.classList.add("alternate");     
+        } else {
+          toggle.classList.remove("alternate");
+        }
+      }
+    }
+    // Hack to workaround the fact that safari doesn't
+    // properly recolor the scrollbar when toggling (#1455)
+    if (navigator.userAgent.indexOf('Safari') > 0 && navigator.userAgent.indexOf('Chrome') == -1) {
+      manageTransitions("body", false);
+      window.scrollTo(0, 1);
+      setTimeout(() => {
+        window.scrollTo(0, 0);
+        manageTransitions("body", true);
+      }, 40);  
+    }
+  }
+  const isFileUrl = () => { 
+    return window.location.protocol === 'file:';
+  }
+  const hasAlternateSentinel = () => {  
+    let styleSentinel = getColorSchemeSentinel();
+    if (styleSentinel !== null) {
+      return styleSentinel === "alternate";
+    } else {
+      return false;
+    }
+  }
+  const setStyleSentinel = (alternate) => {
+    const value = alternate ? "alternate" : "default";
+    if (!isFileUrl()) {
+      window.localStorage.setItem("quarto-color-scheme", value);
+    } else {
+      localAlternateSentinel = value;
+    }
+  }
+  const getColorSchemeSentinel = () => {
+    if (!isFileUrl()) {
+      const storageValue = window.localStorage.getItem("quarto-color-scheme");
+      return storageValue != null ? storageValue : localAlternateSentinel;
+    } else {
+      return localAlternateSentinel;
+    }
+  }
+  let localAlternateSentinel = 'default';
+  // Dark / light mode switch
+  window.quartoToggleColorScheme = () => {
+    // Read the current dark / light value 
+    let toAlternate = !hasAlternateSentinel();
+    toggleColorMode(toAlternate);
+    setStyleSentinel(toAlternate);
+  };
+  // Ensure there is a toggle, if there isn't float one in the top right
+  if (window.document.querySelector('.quarto-color-scheme-toggle') === null) {
+    const a = window.document.createElement('a');
+    a.classList.add('top-right');
+    a.classList.add('quarto-color-scheme-toggle');
+    a.href = "";
+    a.onclick = function() { try { window.quartoToggleColorScheme(); } catch {} return false; };
+    const i = window.document.createElement("i");
+    i.classList.add('bi');
+    a.appendChild(i);
+    window.document.body.appendChild(a);
+  }
+  // Switch to dark mode if need be
+  if (hasAlternateSentinel()) {
+    toggleColorMode(true);
+  } else {
+    toggleColorMode(false);
+  }
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+      &nbsp;
+    </div>   
+    <div class="nav-footer-center">© 2026 Adam Ezzat. Built with <a href="https://quarto.org/">Quarto</a>.</div>
+    <div class="nav-footer-right">
+      &nbsp;
+    </div>
+  </div>
+</footer>
+
+
+
+<script src="../../../site_libs/quarto-html/zenscroll-min.js"></script>
+</body></html>
