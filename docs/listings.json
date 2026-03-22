@@ -2,6 +2,7 @@
   {
     "listing": "/blog/index.html",
     "items": [
+      "/blog/posts/neural-networks-in-cjc/index.html",
       "/blog/posts/introducing-cjc/index.html"
     ]
   }

@@ -59,7 +59,7 @@ Used in practice for physics-informed neural networks (PINNs) and physics-inform
 ::: {.project-card}
 ### Statistics and Distributions
 
-35+ statistical functions (mean, std, variance, correlation, covariance, percentile) and 13 probability distributions (normal, uniform, beta, gamma, binomial, chi-squared, t, Weibull). 15 hypothesis tests (t-test, chi-squared, ANOVA, Wilcoxon, Mann-Whitney). All seeded and deterministic.
+35+ statistical functions (mean, std, variance, correlation, covariance, percentile) and 10 probability distributions (normal, beta, gamma, exponential, F, Weibull, Poisson, binomial, chi-squared, Student's t). 12 hypothesis tests (t-test, chi-squared, ANOVA, Wilcoxon, Mann-Whitney, Kruskal-Wallis). All seeded and deterministic.
 :::
 
 ---
@@ -81,7 +81,7 @@ Supports typed columns (int, float, string, boolean, categorical, datetime), CSV
 ::: {.project-card}
 ### Chess RL Benchmark
 
-A full chess environment and REINFORCE reinforcement learning agent written entirely in CJC. 49 tests covering board invariants, legal move generation, policy gradient updates, and training determinism. Validates that CJC can express a complete ML workflow end-to-end.
+A full chess environment and REINFORCE reinforcement learning agent written entirely in CJC. 69 tests covering board invariants, legal move generation, policy gradient updates, and training determinism. Validates that CJC can express a complete ML workflow end-to-end.
 :::
 
 ::: {.project-card}

@@ -10,7 +10,302 @@
 <atom:link href="https://adamezzat1.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>Systems engineer building CJC — a deterministic scientific computing language</description>
 <generator>quarto-1.3.340</generator>
-<lastBuildDate>Sat, 21 Mar 2026 07:00:00 GMT</lastBuildDate>
+<lastBuildDate>Sun, 22 Mar 2026 07:00:00 GMT</lastBuildDate>
+<item>
+  <title>Neural Networks in CJC: From MLPs to Attention, Without a Framework</title>
+  <dc:creator>Adam Ezzat</dc:creator>
+  <link>https://adamezzat1.github.io/blog/posts/neural-networks-in-cjc/index.html</link>
+  <description><![CDATA[ 
+
+
+
+<div class="reading-time">
+🕑 ~15 min read
+</div>
+<p>In the <a href="../../../blog/posts/introducing-cjc/index.html">previous post</a>, I introduced CJC and the design decisions behind its determinism guarantees. This post goes deeper into one specific question: <strong>can you build real neural network architectures in a language with no ML framework?</strong></p>
+<p>The answer is yes — and the determinism makes verification straightforward. Every architecture below has been implemented in pure CJC, run through both execution engines, and verified with assertions. Same seed, same output, every time.</p>
+<hr>
+<section id="feedforward-mlp-multi-layer-perceptron" class="level2">
+<h2 class="anchored" data-anchor-id="feedforward-mlp-multi-layer-perceptron">Feedforward MLP (Multi-Layer Perceptron)</h2>
+<p>The most fundamental architecture — and the building block for everything else. CJC expresses neural networks as struct-based layers with explicit weight tensors:</p>
+<pre><code>struct Layer {
+    weights: Tensor,
+    bias: Tensor
+}
+
+fn forward(layer: Layer, input: Tensor) -&gt; Tensor {
+    matmul(input, layer.weights) |&gt; add_bias(layer.bias)
+}
+
+fn relu_scalar(x: f64) -&gt; f64 {
+    if x &gt; 0.0 { return x; }
+    return 0.0;
+}
+
+let x = Tensor.from_vec([1.0, 2.0, 3.0], [1, 3]);
+
+let layer1 = Layer {
+    weights: Tensor.from_vec(
+        [0.1, 0.2, -0.1, 0.3,
+         0.4, -0.2, 0.1, 0.5,
+        -0.3, 0.1, 0.2, -0.1], [3, 4]),
+    bias: Tensor.from_vec([0.1, -0.1, 0.05, 0.0], [1, 4])
+};
+
+let layer2 = Layer {
+    weights: Tensor.from_vec(
+        [0.2, -0.3, 0.1, 0.4,
+        -0.2, 0.1, 0.3, -0.1], [4, 2]),
+    bias: Tensor.from_vec([0.0, 0.1], [1, 2])
+};
+
+let h = forward(layer1, x);
+let h_relu = relu_1x4(h);
+let out = forward(layer2, h_relu);
+print("Network output:", out);</code></pre>
+<p>Every weight is a plain <code>Tensor</code> you can inspect, serialize with <code>snap_hash()</code>, and verify for bit-identity across runs. The pipe operator (<code>|&gt;</code>) makes the data flow explicit. There’s no hidden state behind a class — the math is transparent.</p>
+<p>The benchmarks push this further: a <strong>50-layer deep network</strong> (width 64, batch 4) and a <strong>10-layer wide network</strong> (width 256, batch 16) are tested with <code>snap_hash()</code> checkpoints every few layers. Both produce identical hashes across runs, verifying that even deep forward passes through random weight matrices stay deterministic.</p>
+<hr>
+</section>
+<section id="reinforce-policy-network-reinforcement-learning" class="level2">
+<h2 class="anchored" data-anchor-id="reinforce-policy-network-reinforcement-learning">REINFORCE Policy Network (Reinforcement Learning)</h2>
+<p>The chess RL benchmark implements a full policy gradient agent in pure CJC — not a toy example, but an agent that plays chess, selects moves via softmax sampling, and updates weights via REINFORCE.</p>
+<div class="cell" data-fig-width="7">
+<div class="cell-output-display">
+<div>
+<div>
+<pre class="mermaid mermaid-js">flowchart LR
+    B["Board 64sq\n+ Move from/to"] --&gt; F["Features\n[1, 66]"] --&gt; H["Hidden\nW₁ [66,16] + b₁\nReLU"] --&gt; S["Score\nW₂ [16,1]"] --&gt; A["Softmax\n→ Sample"]
+</pre>
+</div>
+<p>REINFORCE policy network for chess. Board state and move coordinates flow through a hidden layer to produce action probabilities.</p>
+</div>
+</div>
+</div>
+<div class="callout callout-style-simple callout-note no-icon callout-titled" title="Full REINFORCE forward pass and action selection code">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-1-contents" aria-controls="callout-1" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Full REINFORCE forward pass and action selection code
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-1" class="callout-1-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<pre><code>fn forward_move(W1: Tensor, b1: Tensor, W2: Tensor,
+                board_features: Tensor, from_sq: i64, to_sq: i64) -&gt; Any {
+    let feat_data = [];
+    let i = 0;
+    while i &lt; 64 {
+        feat_data = array_push(feat_data, board_features.get([0, i]));
+        i = i + 1;
+    }
+    feat_data = array_push(feat_data, float(from_sq) / 63.0);
+    feat_data = array_push(feat_data, float(to_sq) / 63.0);
+    let input = Tensor.from_vec(feat_data, [1, 66]);
+
+    let hidden = (matmul(input, W1) + b1).relu();
+    let score_t = matmul(hidden, W2);
+    [score_t.get([0, 0])]
+}
+
+fn select_action(W1: Tensor, b1: Tensor, W2: Tensor,
+                 board_features: Tensor, moves: Any) -&gt; Any {
+    let num_moves = len(moves) / 2;
+    let scores = [];
+    let i = 0;
+    while i &lt; num_moves {
+        let result = forward_move(W1, b1, W2, board_features,
+                                  moves[i * 2], moves[i * 2 + 1]);
+        scores = array_push(scores, result[0]);
+        i = i + 1;
+    }
+    let scores_t = Tensor.from_vec(scores, [num_moves]);
+    let probs = scores_t.softmax();
+    let action_idx = categorical_sample(probs);
+    let log_prob = log(probs.get([action_idx]));
+    [float(action_idx), log_prob, float(num_moves)]
+}</code></pre>
+</div>
+</div>
+</div>
+<p>This is a complete RL pipeline — feature construction, forward pass, softmax action selection, log-probability tracking, and gradient computation — written entirely in CJC. The agent manually computes <code>d(log_prob)/d(theta)</code> through softmax, ReLU, and matmul.</p>
+<p>The key property: <code>categorical_sample()</code> uses CJC’s seeded SplitMix64 RNG, and the softmax goes through Kahan summation. Running <code>cjc run chess_agent.cjc --seed 42</code> produces the exact same game, moves, and weight updates every time. 69 tests verify the chess RL pipeline end-to-end.</p>
+<hr>
+</section>
+<section id="physics-informed-neural-network-pinn" class="level2">
+<h2 class="anchored" data-anchor-id="physics-informed-neural-network-pinn">Physics-Informed Neural Network (PINN)</h2>
+<p>CJC’s AD engine supports PINNs — neural networks that learn to satisfy differential equations, not just fit data. This is where determinism isn’t just convenient — it’s scientifically necessary.</p>
+<div class="cell" data-fig-width="7">
+<div class="cell-output-display">
+<div>
+<div>
+<pre class="mermaid mermaid-js">flowchart TB
+    X["Position x"] --&gt; N["MLP [1 → 32 → 32 → 1]\ntanh activation"] --&gt; U["Prediction u_hat"]
+    U --&gt; DL["Data Loss\nMSE"]
+    U --&gt; PL["Physics Loss\nu_xx + u ≈ 0"]
+    U --&gt; BL["Boundary Loss\nu(0)=0, u(pi)=0"]
+    DL --&gt; T["Total Loss"]
+    PL --&gt; T
+    BL --&gt; T
+    T -.-&gt;|"Adam optimizer"| N
+</pre>
+</div>
+<p>PINN for the harmonic oscillator. The composite loss combines data fitting, PDE residual, and boundary conditions.</p>
+</div>
+</div>
+</div>
+<p>The harmonic oscillator example uses a <code>[1, 32, 32, 1]</code> MLP with tanh activation trained to solve <code>u_xx + u = 0</code>:</p>
+<ul>
+<li><strong>Data loss</strong>: MSE against observed points (optionally noisy)</li>
+<li><strong>Physics loss</strong>: the PDE residual <code>u_xx + u</code> computed via finite differences through the network, penalized toward zero</li>
+<li><strong>Boundary loss</strong>: <code>u(0)</code> and <code>u(π)</code> enforced to match known boundary conditions</li>
+<li><strong>Optimizer</strong>: Adam with learning rate scheduling</li>
+</ul>
+<p>The exact solution is <code>sin(x)</code>, and the trained network converges to it with verified L2 error below tolerance.</p>
+<p>When you’re claiming a network satisfies a PDE, you need to reproduce the training run exactly to verify the claim. CJC’s deterministic AD engine, seeded RNG, and Kahan-summed loss computations mean the verification is airtight. The test suite trains the same PINN twice with seed 42 and asserts that every parameter is bit-identical using <code>to_bits()</code> comparison on the raw IEEE 754 representation. No other ML framework provides this guarantee without significant configuration overhead.</p>
+<hr>
+</section>
+<section id="physics-informed-ml-piml" class="level2">
+<h2 class="anchored" data-anchor-id="physics-informed-ml-piml">Physics-Informed ML (PIML)</h2>
+<p>A simpler but equally rigorous approach: polynomial regression with a physics residual penalty, applied to the 1D heat equation <code>u_xx = f(x)</code>.</p>
+<p>The model learns polynomial coefficients that simultaneously fit noisy observations and satisfy the PDE. Boundary conditions are enforced through weighted penalty terms. The exact solution is <code>sin(πx)</code>, and the optimized polynomial converges to it.</p>
+<hr>
+</section>
+<section id="convolutional-neural-networks-cnn" class="level2">
+<h2 class="anchored" data-anchor-id="convolutional-neural-networks-cnn">Convolutional Neural Networks (CNN)</h2>
+<p>CJC’s tensor runtime includes native 1D and 2D convolution, maxpooling, and the full pipeline for building convolutional architectures.</p>
+<div class="cell" data-fig-width="7">
+<div class="cell-output-display">
+<div>
+<div>
+<pre class="mermaid mermaid-js">flowchart LR
+    I["Input\n[4,3,28,28]"] --&gt; C["Conv2D\n32 filters 3x3"] --&gt; R["ReLU"] --&gt; BN["BatchNorm"] --&gt; MP["MaxPool2D\n2x2"] --&gt; O["Output\n[4,32,13,13]"]
+</pre>
+</div>
+<p>CNN pipeline in CJC. Native conv2d, ReLU, batch normalization, and maxpooling — all deterministic.</p>
+</div>
+</div>
+</div>
+<pre><code>// 2D convolution: batch of images through learned filters
+let input = Tensor.randn([4, 3, 28, 28]);   // batch=4, channels=3, 28x28
+let filters = Tensor.randn([32, 3, 3, 3]);  // 32 output channels, 3x3 kernel
+let bias = Tensor.zeros([32]);
+let conv_out = input.conv2d(filters, bias, 1);   // -&gt; [4, 32, 26, 26]
+
+// Activation + normalization + pooling
+let activated = conv_out.relu();
+let pooled = activated.maxpool2d(2, 2);          // -&gt; [4, 32, 13, 13]</code></pre>
+<p>CJC also supports 1D convolution with circular padding (<code>conv1d_circular</code>) for signal processing, and the full set of CNN building blocks: <code>batch_norm</code>, <code>dropout_mask</code>, arbitrary strides, and multi-channel operations.</p>
+<hr>
+</section>
+<section id="attention-mechanism-transformer-building-block" class="level2">
+<h2 class="anchored" data-anchor-id="attention-mechanism-transformer-building-block">Attention Mechanism (Transformer Building Block)</h2>
+<p>Scaled dot-product attention — the core primitive of transformer architectures — is implemented as a native tensor operation.</p>
+<div class="cell" data-fig-width="7">
+<div class="cell-output-display">
+<div>
+<div>
+<pre class="mermaid mermaid-js">flowchart LR
+    Q["Q [batch, seq, d_k]"] --&gt; MM["Q · K^T"]
+    K["K [batch, seq, d_k]"] --&gt; MM
+    MM --&gt; SC["÷ sqrt(d_k)"] --&gt; SM["Softmax"] --&gt; MV["× V"]
+    V["V [batch, seq, d_k]"] --&gt; MV
+    MV --&gt; O["Output\n[batch, seq, d_k]"]
+</pre>
+</div>
+<p>Scaled dot-product attention — softmax(QK^T / sqrt(d_k)) * V — as a single native CJC operation.</p>
+</div>
+</div>
+</div>
+<pre><code>// Scaled dot-product attention: softmax(Q @ K^T / sqrt(d_k)) @ V
+let Q = Tensor.randn([2, 8, 64]);   // [batch, seq_len, d_k]
+let K = Tensor.randn([2, 8, 64]);
+let V = Tensor.randn([2, 8, 64]);
+let output = attention(Q, K, V);      // -&gt; [2, 8, 64]</code></pre>
+<p>This computes <code>softmax(QK^T / sqrt(d_k)) * V</code> with batch matrix multiplication and deterministic softmax. It’s the core primitive you’d need to build transformer-style architectures.</p>
+<hr>
+</section>
+<section id="deep-network-stress-tests" class="level2">
+<h2 class="anchored" data-anchor-id="deep-network-stress-tests">Deep Network Stress Tests</h2>
+<p>Beyond the architecture-specific examples above, CJC includes benchmark programs that push forward passes to realistic scale:</p>
+<table class="table">
+<colgroup>
+<col style="width: 26%">
+<col style="width: 16%">
+<col style="width: 16%">
+<col style="width: 16%">
+<col style="width: 23%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Benchmark</th>
+<th>Depth</th>
+<th>Width</th>
+<th>Batch</th>
+<th>Verified</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>bench_nn_deep</code></td>
+<td>50 layers</td>
+<td>64</td>
+<td>4</td>
+<td>Bit-identical via <code>snap_hash</code></td>
+</tr>
+<tr class="even">
+<td><code>bench_nn_wide</code></td>
+<td>10 layers</td>
+<td>256</td>
+<td>16</td>
+<td>Bit-identical via <code>snap_hash</code></td>
+</tr>
+</tbody>
+</table>
+<p>Both benchmarks insert <code>snap_hash()</code> checkpoints every few layers, producing cryptographic hashes of intermediate activations. Running twice with <code>--seed 42</code> produces identical hashes at every checkpoint — proving that determinism holds through deep chains of matmul, bias, ReLU, and normalization.</p>
+<hr>
+</section>
+<section id="what-this-proves" class="level2">
+<h2 class="anchored" data-anchor-id="what-this-proves">What This Proves</h2>
+<p>These aren’t theoretical capabilities. Each architecture has been implemented, run through both execution engines, and verified with assertions:</p>
+<ul>
+<li>The <strong>REINFORCE agent</strong> plays chess (69 tests verify the full pipeline)</li>
+<li>The <strong>PINN</strong> converges to the analytical solution of a differential equation</li>
+<li>The <strong>CNN</strong> processes real 4D tensor shapes with convolution, pooling, and batch normalization</li>
+<li>The <strong>attention mechanism</strong> handles batched multi-sequence inputs</li>
+<li>The <strong>deep network benchmarks</strong> verify hash-level determinism through 50 sequential layers</li>
+</ul>
+<p>All of them produce identical results across runs. In CJC, that’s not an opt-in mode — it’s how computation works.</p>
+<hr>
+<p>If you haven’t read the introduction to CJC and the design decisions behind the language, start with <a href="../../../blog/posts/introducing-cjc/index.html">Introducing CJC</a>.</p>
+<p>Next up: I’ll write about what it took to build a dual-engine compiler pipeline in Rust — and the design decisions that made parity testing between an AST interpreter and a register machine actually tractable.</p>
+<div class="callout callout-style-simple callout-tip no-icon callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Follow the project
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>CJC is open source and under active development. Follow <a href="https://linkedin.com/in/adamezzat"><span class="citation" data-cites="adamezzat">@adamezzat</span></a> for updates as new features land.</p>
+</div>
+</div>
+
+
+</section>
+
+ ]]></description>
+  <category>CJC</category>
+  <category>neural-networks</category>
+  <category>scientific-computing</category>
+  <guid>https://adamezzat1.github.io/blog/posts/neural-networks-in-cjc/index.html</guid>
+  <pubDate>Sun, 22 Mar 2026 07:00:00 GMT</pubDate>
+</item>
 <item>
   <title>Introducing CJC: Why I’m Building a Deterministic Scientific Computing Language</title>
   <dc:creator>Adam Ezzat</dc:creator>
@@ -19,45 +314,15 @@
 
 
 
-<div class="reading-time">
-🕑 ~25 min read
-</div>
-<div class="stats-row">
-<div class="stat">
-<span class="number">20</span><span class="stat-label">Rust crates</span>
-</div>
-<div class="stat">
-<span class="number">0</span><span class="stat-label">dependencies</span>
-</div>
-<div class="stat">
-<span class="number">6.4 MB</span><span class="stat-label">single binary</span>
-</div>
-<div class="stat">
-<span class="number">5,300+</span><span class="stat-label">tests passing</span>
-</div>
-</div>
-<div class="callout callout-style-simple callout-tip no-icon callout-titled">
-<div class="callout-header d-flex align-content-center">
-<div class="callout-icon-container">
-<i class="callout-icon no-icon"></i>
-</div>
-<div class="callout-title-container flex-fill">
-Key Takeaways
-</div>
-</div>
-<div class="callout-body-container callout-body">
-<ul>
-<li>CJC guarantees <strong>bit-identical</strong> numerical results across runs — same seed, same output, always</li>
-<li>The entire language ships as a <strong>6.4 MB zero-dependency binary</strong> — no pip, no npm, nothing</li>
-<li>Real ML architectures (REINFORCE, PINNs, CNNs, attention) work end-to-end in pure CJC</li>
-<li>5,300+ tests enforce determinism, dual-engine parity, and correctness</li>
-</ul>
-</div>
-</div>
+<p>I didn’t set out to build a programming language. I set out to solve a problem.</p>
+<p>I spent years working as a lab engineer running experiments on audio devices — collecting data, cleaning it, troubleshooting when results didn’t look right. Was the anomaly real, or was it an environment issue? A script issue? A sensor calibration drift? I learned firsthand how messy data — or messy <em>handling</em> of data — introduces problems that cascade through every stage of analysis. A mistake in the initial data cleaning phase doesn’t just cost time. It costs weeks of downstream work, delays shipping, and erodes confidence in the results.</p>
+<p>That experience stuck with me as I moved into data science. In most scientific computing environments, running the same program twice can produce slightly different results. Floating-point reduction order changes between runs. Hash maps iterate in random order. Thread scheduling affects accumulation. RNG state leaks across boundaries. These aren’t bugs — they’re properties of systems that weren’t designed with determinism as a constraint.</p>
+<p>I wanted a system where the same program with the same seed produces <strong>bit-identical output</strong> every time, on every platform. Not approximately the same — exactly the same.</p>
+<p>That constraint turned out to touch everything: memory layout, collection types, floating-point arithmetic, random number generation, parallelism. The deeper I went, the clearer it became that bolting determinism onto an existing language would mean fighting the language at every turn. So I built one where determinism is structural.</p>
+<hr>
 <section id="what-is-cjc" class="level2">
 <h2 class="anchored" data-anchor-id="what-is-cjc">What Is CJC?</h2>
 <p>CJC — <strong>Computation Jacobian Core</strong> — is a programming language I’m building from scratch for deterministic scientific computing. It’s written in Rust, organized as a 20-crate workspace, with nearly all functionality implemented from scratch using only the Rust standard library.</p>
-<p>The language covers the full execution stack: a lexer, recursive descent parser, type checker, two intermediate representations (HIR and MIR), an optimizer, two execution engines, and a runtime with over 300 built-in functions for math, statistics, linear algebra, machine learning, signal processing, and data manipulation.</p>
 <div class="callout callout-style-simple callout-note no-icon">
 <div class="callout-body d-flex">
 <div class="callout-icon-container">
@@ -68,13 +333,22 @@ Key Takeaways
 </div>
 </div>
 </div>
-</section>
-<section id="why-build-a-new-language" class="level2">
-<h2 class="anchored" data-anchor-id="why-build-a-new-language">Why Build a New Language?</h2>
-<p>I didn’t set out to build a programming language. I set out to solve a problem: I wanted reproducible numerical results.</p>
-<p>In most scientific computing environments, running the same program twice can produce slightly different results. Floating-point reduction order changes between runs. Hash maps iterate in random order. Thread scheduling affects accumulation. RNG state leaks across boundaries. These aren’t bugs — they’re properties of systems that weren’t designed with determinism as a constraint.</p>
-<p>I wanted a system where the same program with the same seed produces <strong>bit-identical output</strong> every time, on every platform. Not approximately the same — exactly the same.</p>
-<p>That constraint turned out to touch everything: memory layout, collection types, floating-point arithmetic, random number generation, parallelism. The deeper I went, the clearer it became that bolting determinism onto an existing language would mean fighting the language at every turn. So I built one where determinism is structural.</p>
+<div class="stats-row">
+<div class="stat">
+<span class="number">20</span><span class="stat-label">Rust crates</span>
+</div>
+<div class="stat">
+<span class="number">6.4 MB</span><span class="stat-label">single binary</span>
+</div>
+<div class="stat">
+<span class="number">~300</span><span class="stat-label">built-in functions</span>
+</div>
+<div class="stat">
+<span class="number">5,300+</span><span class="stat-label">tests passing</span>
+</div>
+</div>
+<p>The language covers the full compilation and execution pipeline: a lexer, recursive descent parser, type checker, two intermediate representations (HIR and MIR), an optimizer, two execution engines, and a runtime with ~300 built-in functions for math, statistics, linear algebra, machine learning, signal processing, and data manipulation.</p>
+<hr>
 </section>
 <section id="core-ideas" class="level2">
 <h2 class="anchored" data-anchor-id="core-ideas">Core Ideas</h2>
@@ -83,7 +357,7 @@ Key Takeaways
 <p>CJC enforces determinism at every layer:</p>
 <ul>
 <li><strong>Ordered collections everywhere.</strong> <code>BTreeMap</code> and <code>BTreeSet</code> instead of hash-based containers. Iteration order is always defined.</li>
-<li><strong>Stable floating-point reductions.</strong> All summations use Kahan or binned accumulators. No naive left-folds that depend on evaluation order.</li>
+<li><strong>Stable floating-point reductions.</strong> All summations use Kahan or binned accumulators — order-invariant superaccumulators that produce identical results regardless of evaluation order.</li>
 <li><strong>No FMA in SIMD kernels.</strong> Fused multiply-add produces different rounding than separate multiply and add. CJC avoids FMA to keep results identical across CPU architectures.</li>
 <li><strong>Seeded, explicit RNG.</strong> The random number generator is SplitMix64 with explicit seed threading. No global state, no entropy sources.</li>
 <li><strong>Deterministic parallelism.</strong> Parallel operations are structured so that results don’t depend on thread count or scheduling.</li>
@@ -228,9 +502,8 @@ font-style: inherit;">}</span></span></code></pre></div>
 </section>
 <section id="nearly-zero-external-dependencies" class="level3">
 <h3 class="anchored" data-anchor-id="nearly-zero-external-dependencies">Nearly Zero External Dependencies</h3>
-<p>The entire system — 20 Rust crates, nearly zero external dependencies — compiles to a <strong>6.4 MB single binary</strong>. That one file contains everything: lexer, parser, type checker, two execution engines, optimizer, ~300 builtins, tensor library, linear algebra kernels, regex engine, AD engine, data manipulation DSL, serialization, visualization, and 15+ CLI subcommands. Nearly all built from scratch using only the Rust standard library.</p>
-<p>For comparison: Python is ~50 MB (before packages), Node.js is ~70 MB, R is ~30 MB, Julia is ~300 MB. CJC ships the entire scientific computing stack in a binary smaller than a typical JPEG photo collection.</p>
-<p>This is a deliberate choice. External dependencies introduce version churn, platform variance, and complexity that’s hard to audit. For a system that promises bit-identical results, every component needs to be under direct control. And for deployment — whether to a server, a CI runner, or eventually an embedded device — a single small binary with no runtime dependencies is hard to beat.</p>
+<p>The entire system compiles to a <strong>6.4 MB single binary</strong>. That one file contains everything: lexer, parser, type checker, two execution engines, optimizer, ~300 builtins, tensor library, linear algebra kernels, regex engine, AD engine, data manipulation DSL, serialization, visualization, and 15+ CLI subcommands.<sup>1</sup></p>
+<p>This is a deliberate choice. External dependencies introduce version churn, platform variance, and complexity that’s hard to audit. For a system that promises bit-identical results, every component needs to be under direct control.</p>
 </section>
 <section id="dual-execution-engines" class="level3">
 <h3 class="anchored" data-anchor-id="dual-execution-engines">Dual Execution Engines</h3>
@@ -239,44 +512,17 @@ font-style: inherit;">}</span></span></code></pre></div>
 <li><strong>AST interpreter</strong> (<code>cjc-eval</code>): walks the syntax tree directly. Simple, easy to debug, good for prototyping.</li>
 <li><strong>MIR executor</strong> (<code>cjc-mir-exec</code>): lowers through HIR → MIR, applies optimization passes (constant folding, dead code elimination), and runs on a register machine.</li>
 </ol>
-<p>Both engines must produce identical results for every program. Parity tests enforce this. If the engines disagree, that’s a bug — and the test suite catches it.</p>
+<p>Both engines must produce identical results for every program. Parity tests enforce this — if the engines disagree, that’s a bug, and the test suite catches it.</p>
 </section>
 <section id="nogc-verification" class="level3">
 <h3 class="anchored" data-anchor-id="nogc-verification">NoGC Verification</h3>
-<p>CJC includes a static verifier that can prove code paths are free of garbage collection. The NoGC verifier performs transitive call-graph analysis to ensure that annotated functions — and everything they call — operate within reference-counted, copy-on-write memory without triggering GC.</p>
-<p>This matters for latency-sensitive workloads where GC pauses are unacceptable.</p>
+<p>CJC includes a static verifier that can prove code paths are free of GC allocations. The NoGC verifier performs transitive call-graph analysis to ensure that annotated functions — and everything they call — operate within reference-counted, copy-on-write memory without triggering GC. This matters for latency-sensitive workloads where GC pauses are unacceptable.</p>
+<hr>
 </section>
 </section>
 <section id="what-cjc-can-do-today" class="level2">
 <h2 class="anchored" data-anchor-id="what-cjc-can-do-today">What CJC Can Do Today</h2>
-<p>Rather than listing capabilities in the abstract, here’s what the language actually looks like. Every example below comes from real files in the repository — demo programs, test fixtures, or integration tests.</p>
-<section id="functions-recursion-and-control-flow" class="level3">
-<h3 class="anchored" data-anchor-id="functions-recursion-and-control-flow">Functions, Recursion, and Control Flow</h3>
-<p>CJC has the core building blocks you’d expect: typed functions, recursion, <code>if</code>/<code>else</code>, <code>while</code> loops, <code>for</code> loops with range iteration, and <code>break</code>/<code>continue</code>:</p>
-<div class="code-label">
-Recursion, loops, and break
-</div>
-<pre><code>fn factorial(n: i64) -&gt; i64 {
-    if n &lt;= 1 {
-        return 1;
-    }
-    n * factorial(n - 1)
-}
-print(factorial(10));
-
-fn find_first_divisible(limit: i64, divisor: i64) -&gt; i64 {
-    let mut result: i64 = 0;
-    for k in 1..limit {
-        if k % divisor == 0 {
-            result = k;
-            break;
-        }
-    }
-    result
-}
-print(find_first_divisible(100, 7));</code></pre>
-<p>Function parameters require type annotations — this is intentional. In a language built for numerical correctness, implicit type coercion is a source of surprises.</p>
-</section>
+<p>Every example below comes from real files in the repository — demo programs, test fixtures, or integration tests.</p>
 <section id="closures-and-higher-order-functions" class="level3">
 <h3 class="anchored" data-anchor-id="closures-and-higher-order-functions">Closures and Higher-Order Functions</h3>
 <p>CJC supports lambda expressions with capture analysis. The compiler performs lambda lifting during HIR lowering, converting closures into top-level functions with explicit environment parameters:</p>
@@ -293,7 +539,7 @@ fn main() -&gt; i64 {
     print(f"result: {result}");
     result
 }</code></pre>
-<p>This isn’t just syntactic sugar — the capture analysis feeds into the NoGC verifier. If a closure captures a reference that would require GC, the verifier flags it.</p>
+<p>The capture analysis feeds into the NoGC verifier — if a closure captures a reference that would require GC, the verifier flags it.</p>
 </section>
 <section id="structs-enums-and-pattern-matching" class="level3">
 <h3 class="anchored" data-anchor-id="structs-enums-and-pattern-matching">Structs, Enums, and Pattern Matching</h3>
@@ -309,51 +555,7 @@ fn distance(p: Any) -&gt; f64 {
 
 let p = Point { x: 3.0, y: 4.0 };
 print(distance(p));</code></pre>
-<p>Match expressions support literal patterns, wildcards, and structural destructuring for tuples and structs:</p>
-<pre><code>fn classify(x: i64) -&gt; str {
-    match x {
-        0 =&gt; "zero",
-        1 =&gt; "one",
-        _ =&gt; "other",
-    }
-}
-print(classify(0));    // "zero"
-print(classify(99));   // "other"</code></pre>
-<p>There’s also an <code>Option</code> type with <code>Some</code>/<code>None</code> and <code>unwrap</code>/<code>unwrap_or</code>:</p>
-<pre><code>fn maybe_double(x: i64) -&gt; Option&lt;i64&gt; {
-    if x &gt; 0 {
-        Some(x * 2)
-    } else {
-        None
-    }
-}
-let a: Option&lt;i64&gt; = maybe_double(5);
-let b: Option&lt;i64&gt; = maybe_double(0);
-print(a.unwrap());         // 10
-print(b.unwrap_or(99));    // 99</code></pre>
-</section>
-<section id="complex-numbers" class="level3">
-<h3 class="anchored" data-anchor-id="complex-numbers">Complex Numbers</h3>
-<p>Built-in complex number support with arithmetic, conjugation, and norm computation:</p>
-<pre><code>let z = Complex(3.0, 4.0);
-let w = Complex(1.0, -2.0);
-let sum = z + w;
-let prod = z * w;
-print(z.abs());       // 5.0
-print(z.conj());      // Complex(3.0, -4.0)
-print(z.norm_sq());   // 25.0</code></pre>
-</section>
-<section id="byte-strings-and-regex" class="level3">
-<h3 class="anchored" data-anchor-id="byte-strings-and-regex">Byte Strings and Regex</h3>
-<p>CJC includes a zero-dependency NFA-based regex engine and byte-level string operations:</p>
-<pre><code>print("hello world" ~= /world/);       // true
-print("abc123" ~= /\d+/);              // true
-print("Hello" ~= /hello/i);            // true (case-insensitive)
-print("dog" ~= /cat|dog/);             // true
-
-let csv = b"hello,world";
-let parts = csv.split_byte(b',');
-print(parts.len());                     // 2</code></pre>
+<p>Match expressions support literal patterns, wildcards, and structural destructuring for tuples and structs. There’s also an <code>Option</code> type with <code>Some</code>/<code>None</code> and <code>unwrap</code>/<code>unwrap_or</code>.</p>
 </section>
 <section id="tensors-and-linear-algebra" class="level3">
 <h3 class="anchored" data-anchor-id="tensors-and-linear-algebra">Tensors and Linear Algebra</h3>
@@ -373,22 +575,9 @@ let B = Tensor.from_vec(
 );
 
 let C = matmul(A, B);
-print(C);               // 2x2 matrix
 print(C.shape());        // [2, 2]
-
-assert_eq(C.get([0, 0]), 58.0);
-assert_eq(C.get([0, 1]), 64.0);
-assert_eq(C.get([1, 0]), 139.0);
-assert_eq(C.get([1, 1]), 154.0);</code></pre>
-<p>The runtime provides the full suite of decompositions and operations you’d need for serious linear algebra work:</p>
-<pre><code>let sq = Tensor.from_vec([4.0, 7.0, 2.0, 6.0], [2, 2]);
-print(det(sq));          // determinant
-print(trace(sq));        // trace
-
-let v1 = Tensor.from_vec([3.0, 4.0], [2]);
-print(norm(v1));         // 5.0
-print(dot(v1, v1));      // 25.0</code></pre>
-<p>Additional operations include SVD, QR, Cholesky, eigenvalue decomposition, matrix exponential, Schur decomposition, condition number, and multiple matrix norms (<code>norm_1</code>, <code>norm_inf</code>, <code>norm_frobenius</code>). All floating-point reductions go through Kahan or binned summation — there is no naive accumulation anywhere in the runtime.</p>
+assert_eq(C.get([0, 0]), 58.0);</code></pre>
+<p>The runtime provides the full suite: SVD, QR, Cholesky, eigenvalue decomposition, matrix exponential, Schur decomposition, condition number, and multiple matrix norms. All floating-point reductions go through Kahan or binned summation.</p>
 </section>
 <section id="neural-network-forward-pass" class="level3">
 <h3 class="anchored" data-anchor-id="neural-network-forward-pass">Neural Network Forward Pass</h3>
@@ -400,38 +589,11 @@ print(dot(v1, v1));      // 25.0</code></pre>
 
 fn forward(layer: Layer, input: Tensor) -&gt; Tensor {
     matmul(input, layer.weights) |&gt; add_bias(layer.bias)
-}
-
-fn relu_scalar(x: f64) -&gt; f64 {
-    if x &gt; 0.0 { return x; }
-    return 0.0;
-}
-
-let x = Tensor.from_vec([1.0, 2.0, 3.0], [1, 3]);
-
-let layer1 = Layer {
-    weights: Tensor.from_vec(
-        [0.1, 0.2, -0.1, 0.3,
-         0.4, -0.2, 0.1, 0.5,
-        -0.3, 0.1, 0.2, -0.1], [3, 4]),
-    bias: Tensor.from_vec([0.1, -0.1, 0.05, 0.0], [1, 4])
-};
-
-let layer2 = Layer {
-    weights: Tensor.from_vec(
-        [0.2, -0.3, 0.1, 0.4,
-        -0.2, 0.1, 0.3, -0.1], [4, 2]),
-    bias: Tensor.from_vec([0.0, 0.1], [1, 2])
-};
-
-let h = forward(layer1, x);
-let h_relu = relu_1x4(h);
-let out = forward(layer2, h_relu);
-print("Network output:", out);</code></pre>
-<p>The runtime also provides built-in ML operations: <code>batch_norm</code>, <code>dropout_mask</code>, <code>sigmoid</code>, <code>relu</code>, <code>leaky_relu</code>, <code>attention</code>, <code>softmax</code>, learning rate schedulers (<code>lr_step_decay</code>, <code>lr_cosine</code>, <code>lr_linear_warmup</code>), loss functions (<code>mse_loss</code>, <code>cross_entropy_loss</code>, <code>huber_loss</code>), and regularization (<code>l1_penalty</code>, <code>l2_penalty</code>, <code>clip_grad</code>).</p>
+}</code></pre>
+<p>The runtime provides built-in ML operations: <code>batch_norm</code>, <code>dropout_mask</code>, <code>sigmoid</code>, <code>relu</code>, <code>leaky_relu</code>, <code>attention</code>, <code>softmax</code>, learning rate schedulers, loss functions, and regularization. I’ll go deeper into the neural network architectures I’ve built and verified in CJC in the <a href="../../../blog/posts/neural-networks-in-cjc/index.html">next post</a>.</p>
 </section>
-<section id="gradient-descent" class="level3">
-<h3 class="anchored" data-anchor-id="gradient-descent">Gradient Descent</h3>
+<section id="gradient-descent-and-automatic-differentiation" class="level3">
+<h3 class="anchored" data-anchor-id="gradient-descent-and-automatic-differentiation">Gradient Descent and Automatic Differentiation</h3>
 <p>A simple but complete optimization loop — gradient descent on <code>f(x) = (x - 3)^2</code>:</p>
 <div class="code-label">
 Manual gradient descent converging to x = 3.0
@@ -455,23 +617,18 @@ while i &lt; 100 {
 }
 
 print("Final x:", x);          // ~3.0
-print("Final f(x):", f(x));    // ~0.0
-
-assert(abs(x - 3.0) &lt; 0.001);
-assert(f(x) &lt; 0.000001);
-print("Gradient descent converged!");</code></pre>
-<p>For more complex cases, CJC has a full automatic differentiation engine — forward-mode via dual numbers and reverse-mode via tape-based gradient computation — that handles <code>sin</code>, <code>cos</code>, <code>exp</code>, <code>log</code>, <code>pow</code>, <code>sigmoid</code>, <code>relu</code>, and all standard arithmetic automatically.</p>
+assert(abs(x - 3.0) &lt; 0.001);</code></pre>
+<p>For more complex cases, CJC has a full automatic differentiation engine — forward-mode via dual numbers and reverse-mode via tape-based gradient computation.</p>
 </section>
 <section id="statistics-and-distributions" class="level3">
 <h3 class="anchored" data-anchor-id="statistics-and-distributions">Statistics and Distributions</h3>
-<p>The runtime includes 35+ statistical functions, 13 probability distributions, and 15 hypothesis tests:</p>
+<p>The runtime includes 35+ statistical functions, 10 probability distributions, and 12 hypothesis tests:</p>
 <pre><code>let data = [23.1, 25.4, 22.8, 24.5, 26.1, 23.9, 24.2, 25.0, 22.5, 24.8];
 
 let data_t = Tensor.from_vec(data, [10]);
-print(data_t.mean());           // descriptive stats
+print(data_t.mean());
 print(median(data));
 print(sd(data));
-print(variance(data));
 
 // Normal distribution
 print(normal_cdf(1.96));        // P(Z &lt; 1.96)
@@ -479,311 +636,28 @@ print(normal_ppf(0.975));       // quantile function
 
 // Hypothesis testing
 let test_result = t_test(data, 24.0);
-print(test_result);
-
-// Correlation
-let x = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0];
-let y = [2.1, 4.0, 5.8, 8.1, 9.9, 12.2, 13.8, 16.1, 18.0, 20.1];
-print(cor(x, y));                // Pearson r</code></pre>
-<p>Beyond the basics, there are robust statistics (<code>trimmed_mean</code>, <code>winsorize</code>, <code>mad</code>), rank correlations (<code>spearman_cor</code>, <code>kendall_cor</code>, <code>partial_cor</code> with confidence intervals), weighted statistics (<code>weighted_mean</code>, <code>weighted_var</code>), and non-parametric tests (<code>wilcoxon_signed_rank</code>, <code>kruskal_wallis</code>, <code>mann_whitney</code>).</p>
-<p>Distributions include normal, beta, gamma, exponential, Weibull, Poisson, binomial, chi-squared, and Student’s t — each with PDF/PMF, CDF, and where applicable, quantile functions.</p>
+print(test_result);</code></pre>
+<p>Beyond the basics: robust statistics (<code>trimmed_mean</code>, <code>winsorize</code>, <code>mad</code>), rank correlations (<code>spearman_cor</code>, <code>kendall_cor</code>, <code>partial_cor</code>), weighted statistics, and non-parametric tests (<code>wilcoxon_signed_rank</code>, <code>kruskal_wallis</code>, <code>mann_whitney</code>).</p>
+<p>Distributions include normal, beta, gamma, exponential, F, Weibull, Poisson, binomial, chi-squared, and Student’s t — each with PDF/PMF, CDF, and where applicable, quantile functions.</p>
 </section>
 <section id="data-manipulation" class="level3">
 <h3 class="anchored" data-anchor-id="data-manipulation">Data Manipulation</h3>
 <p>CJC includes a tidyverse-inspired data DSL with 73+ operations:</p>
-<pre><code>let csv_data = "name,age,city\nAlice,30,NYC\nBob,25,LA\nCharlie,35,NYC\nDiana,28,LA\n";
+<pre><code>let csv_data = "name,age,city\nAlice,30,NYC\nBob,25,LA\nCharlie,35,NYC\n";
 let df = Csv.parse(csv_data);
 let view = df.view();
 
-// Filter rows where age &gt; 28
+// Filter and select
 let pred = dexpr_binop("&gt;", col("age"), 28);
 let filtered = view.filter(pred);
-
-// Select specific columns
-let selected = filtered.select(["name", "city"]);
-print(selected.column_names());</code></pre>
-<p>Group-by aggregation works like you’d expect from dplyr:</p>
-<pre><code>let csv = "dept,salary\nEng,100\nEng,120\nSales,80\nSales,90\nEng,110\n";
-let df = Csv.parse(csv);
-let view = df.view();
-
-let grouped = view.group_by(["dept"]);
-let result = grouped.summarise(
-    "n", tidy_count(),
-    "avg_sal", tidy_mean("salary")
-);</code></pre>
-<p>The data layer supports typed columns (int, float, string, boolean, categorical, datetime), joins (inner, left, right, anti, semi), pivoting (<code>pivot_longer</code>, <code>pivot_wider</code>), window functions (<code>lag</code>, <code>lead</code>, <code>cumsum</code>, <code>ntile</code>, <code>rank</code>, <code>dense_rank</code>), and lazy evaluation with COW semantics.</p>
-</section>
-<section id="signal-processing" class="level3">
-<h3 class="anchored" data-anchor-id="signal-processing">Signal Processing</h3>
-<p>FFT, inverse FFT, and windowing functions for spectral analysis:</p>
-<pre><code>let w = hann(8);        // Hann window
-let w = hamming(8);     // Hamming window
-let w = blackman(16);   // Blackman window</code></pre>
-<p>The runtime also supports <code>rfft</code>, 2D FFT/IFFT, and periodogram estimation.</p>
-</section>
-<section id="regression-and-model-selection" class="level3">
-<h3 class="anchored" data-anchor-id="regression-and-model-selection">Regression and Model Selection</h3>
-<p>Built-in regression functions for quick modeling:</p>
-<pre><code>let x = [1.0, 2.0, 3.0, 4.0, 5.0];
-let y = [3.0, 5.0, 7.0, 9.0, 11.0];
-let w = [1.0, 1.0, 1.0, 1.0, 1.0];
-let r = wls(x, y, w, 5, 1);    // weighted least squares
-let coeffs = r.coefficients;
-print(coeffs);</code></pre>
-<p>Additional modeling tools include <code>lm</code> (OLS), <code>logistic_regression</code>, <code>polyfit</code>/<code>polyval</code>, <code>kmeans</code>, <code>dbscan</code>, <code>pca</code>, <code>auc_roc</code>, and <code>confusion_matrix</code>.</p>
-</section>
-</section>
-<section id="neural-networks-proven-in-cjc" class="level2">
-<h2 class="anchored" data-anchor-id="neural-networks-proven-in-cjc">Neural Networks Proven in CJC</h2>
-<p>One of CJC’s design goals is to express real machine learning architectures — not through bindings to PyTorch or TensorFlow, but in base CJC using the language’s own tensor operations, automatic differentiation, and training utilities. Here’s what has been built and verified.</p>
-<section id="feedforward-mlp-multi-layer-perceptron" class="level3">
-<h3 class="anchored" data-anchor-id="feedforward-mlp-multi-layer-perceptron">Feedforward MLP (Multi-Layer Perceptron)</h3>
-<p>The most fundamental neural network — and the one used across multiple CJC demonstrations.</p>
-<div class="cell" data-fig-width="6">
-<div class="cell-output-display">
-<div>
-<div>
-<pre class="mermaid mermaid-js">flowchart LR
-    I["Input\nx [1, 3]"] --&gt; W1["Layer 1\nW₁ [3,4] + b₁\nReLU"] --&gt; W2["Layer 2\nW₂ [4,2] + b₂"] --&gt; O["Output\n[1, 2]"]
-</pre>
-</div>
-<p>Two-layer MLP with ReLU activation, expressed as struct-based layers with a pipe operator.</p>
-</div>
-</div>
-</div>
-<p>Using the same <code>Layer</code> struct and <code>forward()</code> function shown earlier, the key insight is that every weight is a plain <code>Tensor</code> you can inspect, serialize with <code>snap_hash()</code>, and verify for bit-identity across runs. The pipe operator (<code>|&gt;</code>) makes the data flow explicit and readable. In PyTorch, the equivalent <code>nn.Linear</code> hides the matmul/bias addition behind a class; here, the math is transparent.</p>
-<p>The benchmarks push this further: a <strong>50-layer deep network</strong> (width 64, batch 4) and a <strong>10-layer wide network</strong> (width 256, batch 16) are tested with <code>snap_hash()</code> checkpoints every few layers. Both produce bit-identical hashes across runs — verifying that even deep forward passes through random weight matrices stay deterministic.</p>
-</section>
-<section id="reinforce-policy-network-reinforcement-learning" class="level3">
-<h3 class="anchored" data-anchor-id="reinforce-policy-network-reinforcement-learning">REINFORCE Policy Network (Reinforcement Learning)</h3>
-<p>The chess RL benchmark implements a full policy gradient agent in pure CJC — not a toy example, but an agent that actually plays chess, selects moves via softmax sampling, and updates weights via REINFORCE.</p>
-<div class="cell" data-fig-width="7">
-<div class="cell-output-display">
-<div>
-<div>
-<pre class="mermaid mermaid-js">flowchart LR
-    B["Board 64sq\n+ Move from/to"] --&gt; F["Features\n[1, 66]"] --&gt; H["Hidden\nW₁ [66,16] + b₁\nReLU"] --&gt; S["Score\nW₂ [16,1]"] --&gt; A["Softmax\n→ Sample"]
-</pre>
-</div>
-<p>REINFORCE policy network for chess. Board state and move coordinates flow through a hidden layer to produce action probabilities.</p>
-</div>
-</div>
-</div>
-<div class="callout callout-style-simple callout-note no-icon callout-titled" title="Full REINFORCE forward pass and action selection code">
-<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-2-contents" aria-controls="callout-2" aria-expanded="false" aria-label="Toggle callout">
-<div class="callout-icon-container">
-<i class="callout-icon no-icon"></i>
-</div>
-<div class="callout-title-container flex-fill">
-Full REINFORCE forward pass and action selection code
-</div>
-<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
-</div>
-<div id="callout-2" class="callout-2-contents callout-collapse collapse">
-<div class="callout-body-container callout-body">
-<pre><code>fn forward_move(W1: Tensor, b1: Tensor, W2: Tensor,
-                board_features: Tensor, from_sq: i64, to_sq: i64) -&gt; Any {
-    // Build 66-dim feature vector: 64 board squares + normalized from/to
-    let feat_data = [];
-    let i = 0;
-    while i &lt; 64 {
-        feat_data = array_push(feat_data, board_features.get([0, i]));
-        i = i + 1;
-    }
-    feat_data = array_push(feat_data, float(from_sq) / 63.0);
-    feat_data = array_push(feat_data, float(to_sq) / 63.0);
-    let input = Tensor.from_vec(feat_data, [1, 66]);
-
-    // Hidden layer: relu(input @ W1 + b1)
-    let hidden = (matmul(input, W1) + b1).relu();
-
-    // Score: hidden @ W2
-    let score_t = matmul(hidden, W2);
-    [score_t.get([0, 0])]
-}
-
-fn select_action(W1: Tensor, b1: Tensor, W2: Tensor,
-                 board_features: Tensor, moves: Any) -&gt; Any {
-    let num_moves = len(moves) / 2;
-    let scores = [];
-    let i = 0;
-    while i &lt; num_moves {
-        let result = forward_move(W1, b1, W2, board_features,
-                                  moves[i * 2], moves[i * 2 + 1]);
-        scores = array_push(scores, result[0]);
-        i = i + 1;
-    }
-    let scores_t = Tensor.from_vec(scores, [num_moves]);
-    let probs = scores_t.softmax();
-    let action_idx = categorical_sample(probs);
-    let log_prob = log(probs.get([action_idx]));
-    [float(action_idx), log_prob, float(num_moves)]
-}</code></pre>
-</div>
-</div>
-</div>
-<p><strong>Why this matters in CJC:</strong> This is a complete RL pipeline — feature construction, forward pass, softmax action selection, log-probability tracking, and gradient computation — written entirely in CJC with no framework. The agent manually computes <code>d(log_prob)/d(theta)</code> through softmax, ReLU, and matmul, including ReLU mask construction and chain rule through two layers.</p>
-<p>The key difference from doing this in Python: <strong>reproducibility is guaranteed</strong>. <code>categorical_sample()</code> uses CJC’s seeded SplitMix64 RNG. The softmax goes through Kahan summation. Running <code>cjc run chess_agent.cjc --seed 42</code> produces the exact same game, the exact same moves, the exact same weight updates, every time. 49 tests verify this. In PyTorch, achieving this level of reproducibility requires <code>torch.manual_seed()</code>, <code>torch.use_deterministic_algorithms(True)</code>, disabling CUDA non-determinism, and even then floating-point reduction order may vary.</p>
-</section>
-<section id="physics-informed-neural-network-pinn" class="level3">
-<h3 class="anchored" data-anchor-id="physics-informed-neural-network-pinn">Physics-Informed Neural Network (PINN)</h3>
-<p>CJC’s AD engine supports PINNs — neural networks that learn to satisfy differential equations, not just fit data.</p>
-<div class="cell" data-fig-width="6">
-<div class="cell-output-display">
-<div>
-<div>
-<pre class="mermaid mermaid-js">flowchart TB
-    X["Position x"] --&gt; N["MLP [1→32→32→1]\ntanh activation"] --&gt; U["Prediction u_hat"]
-    U --&gt; DL["Data Loss\nMSE"]
-    U --&gt; PL["Physics Loss\nu_xx + u ≈ 0"]
-    U --&gt; BL["Boundary Loss\nu(0)=0, u(pi)=0"]
-    DL --&gt; T["Total Loss"]
-    PL --&gt; T
-    BL --&gt; T
-    T -.-&gt;|"Adam optimizer"| N
-</pre>
-</div>
-<p>PINN for the harmonic oscillator. The composite loss combines data fitting, PDE residual, and boundary conditions.</p>
-</div>
-</div>
-</div>
-<p>The harmonic oscillator example uses a <code>[1, 32, 32, 1]</code> MLP with tanh activation trained to solve <code>u_xx + u = 0</code>:</p>
-<ul>
-<li><strong>Data loss</strong>: MSE against observed points (optionally noisy)</li>
-<li><strong>Physics loss</strong>: the PDE residual <code>u_xx + u</code> computed via finite differences through the network, penalized toward zero</li>
-<li><strong>Boundary loss</strong>: <code>u(0)</code> and <code>u(π)</code> enforced to match known boundary conditions</li>
-<li><strong>Total loss</strong>: <code>data + physics_weight * physics + boundary_weight * boundary</code></li>
-<li><strong>Optimizer</strong>: Adam with learning rate scheduling</li>
-</ul>
-<p>The exact solution is <code>sin(x)</code>, and the trained network converges to it with verified L2 error below tolerance.</p>
-<p><strong>Why this matters in CJC:</strong> PINNs are a case where determinism isn’t just nice — it’s scientifically necessary. When you’re claiming a network satisfies a PDE, you need to reproduce the training run exactly to verify the claim. CJC’s deterministic AD engine, seeded RNG, and Kahan-summed loss computations mean the verification is airtight. The test suite trains the same PINN twice with seed 42 and asserts that every parameter is bit-identical using <code>to_bits()</code> comparison on the raw IEEE 754 representation.</p>
-</section>
-<section id="physics-informed-ml-piml" class="level3">
-<h3 class="anchored" data-anchor-id="physics-informed-ml-piml">Physics-Informed ML (PIML)</h3>
-<p>A simpler but equally rigorous approach: polynomial regression with a physics residual penalty, applied to the 1D heat equation <code>u_xx = f(x)</code>.</p>
-<div class="cell" data-fig-width="5">
-<div class="cell-output-display">
-<div>
-<div>
-<pre class="mermaid mermaid-js">flowchart LR
-    C["Polynomial Model\nc₀, c₁, ..., cₙ"] --&gt; D["Data Loss\nMSE vs observed"]
-    C --&gt; P["Physics Loss\nu_xx − f(x) ≈ 0"]
-    C --&gt; B["Boundary Loss\nu(0)=0, u(1)=0"]
-</pre>
-</div>
-<p>PIML for the 1D heat equation. Polynomial coefficients are optimized to fit data while satisfying the PDE.</p>
-</div>
-</div>
-</div>
-<p>The model learns polynomial coefficients that simultaneously fit noisy observations and satisfy the PDE. Boundary conditions are enforced through weighted penalty terms. The exact solution is <code>sin(πx)</code>, and the optimized polynomial converges to it.</p>
-</section>
-<section id="convolutional-neural-networks-cnn" class="level3">
-<h3 class="anchored" data-anchor-id="convolutional-neural-networks-cnn">Convolutional Neural Networks (CNN)</h3>
-<p>CJC’s tensor runtime includes native 1D and 2D convolution, maxpooling, and the full pipeline for building convolutional architectures.</p>
-<div class="cell" data-fig-width="7">
-<div class="cell-output-display">
-<div>
-<div>
-<pre class="mermaid mermaid-js">flowchart LR
-    I["Input\n[4,3,28,28]"] --&gt; C["Conv2D\n32 filters 3x3"] --&gt; R["ReLU"] --&gt; BN["BatchNorm"] --&gt; MP["MaxPool2D\n2x2"] --&gt; O["Output\n[4,32,13,13]"]
-</pre>
-</div>
-<p>CNN pipeline in CJC. Native conv2d, ReLU, batch normalization, and maxpooling — all deterministic.</p>
-</div>
-</div>
-</div>
-<pre><code>// 2D convolution: batch of images through learned filters
-let input = Tensor.randn([4, 3, 28, 28]);   // batch=4, channels=3, 28x28
-let filters = Tensor.randn([32, 3, 3, 3]);  // 32 output channels, 3x3 kernel
-let bias = Tensor.zeros([32]);
-let conv_out = input.conv2d(filters, bias, 1);   // -&gt; [4, 32, 26, 26]
-
-// Activation + normalization + pooling
-let activated = conv_out.relu();
-let pooled = activated.maxpool2d(2, 2);          // -&gt; [4, 32, 13, 13]</code></pre>
-<p>CJC also supports 1D convolution with circular padding (<code>conv1d_circular</code>) for signal processing, and the full set of CNN building blocks: <code>batch_norm</code>, <code>dropout_mask</code>, arbitrary strides, and multi-channel operations.</p>
-<p><strong>Why this matters in CJC:</strong> Convolutions are one of the most numerically sensitive operations in deep learning — small floating-point differences in the kernel computation compound across spatial dimensions. CJC’s convolution implementation uses the same deterministic accumulation as everything else (Kahan summation over the kernel window), which means a CNN forward pass produces identical feature maps on every run. In frameworks like PyTorch, <code>torch.nn.Conv2d</code> on CUDA can produce different results between runs unless you explicitly opt into deterministic mode — and even then, performance suffers.</p>
-</section>
-<section id="attention-mechanism-transformer-building-block" class="level3">
-<h3 class="anchored" data-anchor-id="attention-mechanism-transformer-building-block">Attention Mechanism (Transformer Building Block)</h3>
-<p>Scaled dot-product attention — the core primitive of transformer architectures — is implemented as a native tensor operation.</p>
-<div class="cell" data-fig-width="7">
-<div class="cell-output-display">
-<div>
-<div>
-<pre class="mermaid mermaid-js">flowchart LR
-    Q["Q [batch, seq, d_k]"] --&gt; MM["Q · K^T"]
-    K["K [batch, seq, d_k]"] --&gt; MM
-    MM --&gt; SC["÷ sqrt(d_k)"] --&gt; SM["Softmax"] --&gt; MV["× V"]
-    V["V [batch, seq, d_k]"] --&gt; MV
-    MV --&gt; O["Output\n[batch, seq, d_k]"]
-</pre>
-</div>
-<p>Scaled dot-product attention — softmax(QK^T / sqrt(d_k)) * V — as a single native CJC operation.</p>
-</div>
-</div>
-</div>
-<pre><code>// Scaled dot-product attention: softmax(Q @ K^T / sqrt(d_k)) @ V
-let Q = Tensor.randn([2, 8, 64]);   // [batch, seq_len, d_k]
-let K = Tensor.randn([2, 8, 64]);
-let V = Tensor.randn([2, 8, 64]);
-let output = attention(Q, K, V);      // -&gt; [2, 8, 64]</code></pre>
-<p>This computes <code>softmax(QK^T / sqrt(d_k)) * V</code> with batch matrix multiplication and deterministic softmax. It’s the core primitive you’d need to build transformer-style architectures.</p>
-<p><strong>Why this matters in CJC:</strong> Attention involves two matrix multiplications and a softmax — three operations where floating-point non-determinism typically creeps in. The softmax denominator is a sum over exponentials that’s sensitive to evaluation order. CJC’s implementation uses Kahan-summed softmax and deterministic batch matmul, producing identical attention weights on every run. For research applications where you need to compare attention patterns between model variants, this level of reproducibility is essential.</p>
-</section>
-<section id="deep-network-stress-tests" class="level3">
-<h3 class="anchored" data-anchor-id="deep-network-stress-tests">Deep Network Stress Tests</h3>
-<p>Beyond the architecture-specific examples above, CJC includes benchmark programs that push neural network forward passes to realistic scale:</p>
-<table class="table">
-<colgroup>
-<col style="width: 17%">
-<col style="width: 11%">
-<col style="width: 11%">
-<col style="width: 11%">
-<col style="width: 33%">
-<col style="width: 15%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Benchmark</th>
-<th>Depth</th>
-<th>Width</th>
-<th>Batch</th>
-<th>Parameters per Layer</th>
-<th>Verified</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>bench_nn_deep</code></td>
-<td>50 layers</td>
-<td>64</td>
-<td>4</td>
-<td>4,160</td>
-<td>Bit-identical across runs via <code>snap_hash</code></td>
-</tr>
-<tr class="even">
-<td><code>bench_nn_wide</code></td>
-<td>10 layers</td>
-<td>256</td>
-<td>16</td>
-<td>65,792</td>
-<td>Bit-identical across runs via <code>snap_hash</code></td>
-</tr>
-</tbody>
-</table>
-<p>Both benchmarks insert <code>snap_hash()</code> checkpoints every few layers, producing cryptographic hashes of intermediate activations. Running twice with <code>--seed 42</code> produces identical hashes at every checkpoint — proving that determinism holds even through deep chains of matmul → bias → ReLU → normalization.</p>
-</section>
-<section id="what-this-proves" class="level3">
-<h3 class="anchored" data-anchor-id="what-this-proves">What This Proves</h3>
-<p>These aren’t theoretical capabilities. Each architecture has been implemented, run through both execution engines, and verified with assertions. The REINFORCE agent plays chess. The PINN converges to the analytical solution. The CNN processes real tensor shapes. The deep network benchmarks verify hash-level determinism through 50 sequential layers.</p>
-<p>And all of them produce <strong>bit-identical results</strong> across runs — something no mainstream ML framework guarantees without significant configuration overhead and performance trade-offs. In CJC, determinism isn’t an opt-in mode. It’s how computation works.</p>
+let selected = filtered.select(["name", "city"]);</code></pre>
+<p>The data layer supports typed columns, joins (inner, left, right, anti, semi), pivoting, window functions, and lazy evaluation with COW semantics.</p>
+<hr>
 </section>
 </section>
 <section id="beyond-neural-networks" class="level2">
 <h2 class="anchored" data-anchor-id="beyond-neural-networks">Beyond Neural Networks</h2>
-<p>CJC isn’t just a machine learning language. The numerical infrastructure supports a much broader range of scientific computing work — all with the same determinism guarantees.</p>
+<p>CJC isn’t just a machine learning language. The numerical infrastructure supports a broader range of scientific computing — and this is where the determinism guarantee pays the biggest dividends. When you’re debugging a failed ODE integration or a clustering result that doesn’t match your colleague’s run, knowing the computation is reproducible eliminates an entire class of “was it the code or was it the environment?” questions.</p>
 <table class="table">
 <colgroup>
 <col style="width: 32%">
@@ -822,7 +696,6 @@ let output = attention(Q, K, V);      // -&gt; [2, 8, 64]</code></pre>
 </tr>
 </tbody>
 </table>
-<p>As a concrete example, here’s an adaptive ODE solver stepping through a system:</p>
 <div class="code-label">
 Adaptive RK45 integration with step size control
 </div>
@@ -834,11 +707,11 @@ Adaptive RK45 integration with step size control
     1e-6                           // tolerance
 );
 print("Final y:", result);         // ~0.00674 (matches exp(-5))</code></pre>
-<p>Every solver uses Kahan-summed intermediate steps and seeded RNG for stochastic methods — deterministic by construction.</p>
+<hr>
 </section>
 <section id="whats-native-and-why-that-matters" class="level2">
 <h2 class="anchored" data-anchor-id="whats-native-and-why-that-matters">What’s Native — and Why That Matters</h2>
-<p>Everything mentioned above runs inside a single 6.4 MB binary with nearly zero external dependencies. That’s unusual, and it’s worth explaining why.</p>
+<p>Everything mentioned above runs inside a single binary with nearly zero external dependencies. Every component is under direct control, which means determinism guarantees extend through the entire stack — from CSV parsing through model training through serialization.</p>
 <table class="table">
 <colgroup>
 <col style="width: 25%">
@@ -861,7 +734,7 @@ print("Final y:", result);         // ~0.00674 (matches exp(-5))</code></pre>
 <tr class="even">
 <td><strong>RNG</strong> (SplitMix64)</td>
 <td>Seeded, explicit state, <code>fork()</code> for parallel streams</td>
-<td>Same seed = same output on every platform, always</td>
+<td>Same seed = same output on every platform</td>
 </tr>
 <tr class="odd">
 <td><strong>Visualization</strong> (<code>cjc-vizor</code>)</td>
@@ -873,71 +746,70 @@ print("Final y:", result);         // ~0.00674 (matches exp(-5))</code></pre>
 <td>73+ tidyverse-style ops, lazy eval, typed columns</td>
 <td>Grouping and aggregation inherit determinism automatically</td>
 </tr>
+<tr class="odd">
+<td><strong>Serialization</strong> (<code>cjc-snap</code>)</td>
+<td>Canonical binary format with SHA-256 content hashing</td>
+<td>Checkpoints are exact; <code>snap_hash()</code> enables verification across runs</td>
+</tr>
+<tr class="even">
+<td><strong>Accumulators</strong> (<code>cjc-repro</code>)</td>
+<td>Kahan compensated and binned superaccumulators</td>
+<td>Order-invariant reductions — the mechanism behind bit-identical floating-point results</td>
+</tr>
 </tbody>
 </table>
-<p>Two components deserve deeper explanation because they’re foundational to CJC’s determinism guarantee:</p>
-<section id="native-serialization-with-content-hashing" class="level3">
-<h3 class="anchored" data-anchor-id="native-serialization-with-content-hashing">Native Serialization with Content Hashing</h3>
-<p>CJC’s serialization format (<code>cjc-snap</code>) produces canonical binary representations with <strong>SHA-256 content hashing</strong> — hand-rolled, zero dependencies. The same value always produces the same bytes, regardless of insertion order or reference identity. If you checkpoint a model and restore it, the restore is exact. This is what makes <code>snap_hash()</code> verification possible throughout the test suite.</p>
-</section>
-<section id="native-accumulation-kahan-and-binned-summation" class="level3">
-<h3 class="anchored" data-anchor-id="native-accumulation-kahan-and-binned-summation">Native Accumulation (Kahan and Binned Summation)</h3>
-<p>Every floating-point reduction in CJC goes through either Kahan compensated summation or binned accumulators — tensor reductions, statistical functions, loss computations, gradient accumulation, all of it. Naive <code>sum += x</code> loses precision as arrays grow and produces different results depending on evaluation order. Kahan summation maintains accuracy to near full IEEE 754 precision. Binned accumulators go further, providing reproducible results <em>independent of summation order</em>. This is the mechanism that makes bit-identical determinism possible at the floating-point level.</p>
-</section>
-<section id="the-compound-benefit" class="level3">
-<h3 class="anchored" data-anchor-id="the-compound-benefit">The Compound Benefit</h3>
-<p>Any one of these components in isolation would be a nice feature. Together, they create something more: a system where you can load data (CSV), manipulate it (DataFrame), fit a model (regression/clustering/neural network), differentiate through it (AD engine), visualize the results (Vizor), serialize the checkpoint (Snap), and know that every step produced deterministic, bit-identical output — all within a single 6.4 MB binary that you can copy to any machine and run.</p>
-<p>No <code>pip install</code>. No <code>npm install</code>. No version conflicts. No “works on my machine.” Just the binary, the source file, and the seed.</p>
-</section>
+<p>No <code>pip install</code>. No <code>npm install</code>. No version conflicts. Just the binary, the source file, and the seed.</p>
+<hr>
 </section>
 <section id="the-cli-toolchain" class="level2">
 <h2 class="anchored" data-anchor-id="the-cli-toolchain">The CLI Toolchain</h2>
 <p>CJC ships with 15+ CLI subcommands:</p>
-<div class="sourceCode" id="cb22" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb22-1"><span class="ex" style="color: null;
+<div class="sourceCode" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb10-1"><span class="ex" style="color: null;
 background-color: null;
 font-style: inherit;">cjc</span> run program.cjc              <span class="co" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;"># execute a program</span></span>
-<span id="cb22-2"><span class="ex" style="color: null;
+<span id="cb10-2"><span class="ex" style="color: null;
 background-color: null;
 font-style: inherit;">cjc</span> run program.cjc <span class="at" style="color: #657422;
 background-color: null;
 font-style: inherit;">--seed</span> 42    <span class="co" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;"># explicit RNG seed</span></span>
-<span id="cb22-3"><span class="ex" style="color: null;
+<span id="cb10-3"><span class="ex" style="color: null;
 background-color: null;
 font-style: inherit;">cjc</span> run program.cjc <span class="at" style="color: #657422;
 background-color: null;
 font-style: inherit;">--mir-opt</span>    <span class="co" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;"># MIR-optimized execution</span></span>
-<span id="cb22-4"><span class="ex" style="color: null;
+<span id="cb10-4"><span class="ex" style="color: null;
 background-color: null;
 font-style: inherit;">cjc</span> check program.cjc            <span class="co" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;"># type-check without running</span></span>
-<span id="cb22-5"><span class="ex" style="color: null;
+<span id="cb10-5"><span class="ex" style="color: null;
 background-color: null;
 font-style: inherit;">cjc</span> repl                         <span class="co" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;"># interactive REPL</span></span>
-<span id="cb22-6"><span class="ex" style="color: null;
+<span id="cb10-6"><span class="ex" style="color: null;
 background-color: null;
 font-style: inherit;">cjc</span> trace program.cjc            <span class="co" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;"># execution tracing</span></span>
-<span id="cb22-7"><span class="ex" style="color: null;
+<span id="cb10-7"><span class="ex" style="color: null;
 background-color: null;
 font-style: inherit;">cjc</span> bench program.cjc            <span class="co" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;"># benchmarking</span></span>
-<span id="cb22-8"><span class="ex" style="color: null;
+<span id="cb10-8"><span class="ex" style="color: null;
 background-color: null;
 font-style: inherit;">cjc</span> doctor                       <span class="co" style="color: #5E5E5E;
 background-color: null;
 font-style: inherit;"># health/validation checks</span></span></code></pre></div>
 <p>Additional commands include <code>inspect</code>, <code>schema</code>, <code>flow</code> (control flow graphs), <code>drift</code> (determinism drift detection), <code>mem</code> (memory profiling), <code>pack</code> (binary serialization), and <code>forge</code> (code generation).</p>
+<hr>
 </section>
 <section id="why-cjc-is-still-in-beta" class="level2">
 <h2 class="anchored" data-anchor-id="why-cjc-is-still-in-beta">Why CJC Is Still in Beta</h2>
@@ -950,7 +822,7 @@ font-style: inherit;"># health/validation checks</span></span></code></pre></div
 <li><strong>Optimizer</strong> has room for more passes beyond constant folding and DCE</li>
 <li><strong>Documentation</strong> is sparse outside of test coverage</li>
 </ul>
-<p>I’m not rushing to call this production-ready. The point is to build something correct first, then make it convenient. CJC is in a state where it can express real programs and produce trustworthy results, but the developer experience still has rough edges.</p>
+<p>I’m not rushing to call this production-ready. The point is to build something correct first, then make it convenient.</p>
 </section>
 <section id="what-comes-next" class="level2">
 <h2 class="anchored" data-anchor-id="what-comes-next">What Comes Next</h2>
@@ -960,16 +832,14 @@ font-style: inherit;"># health/validation checks</span></span></code></pre></div
 <li><strong>Default parameters and variadic functions</strong>: making function signatures more flexible</li>
 <li><strong>MIR-integrated autodiff</strong>: ensuring gradient computation works through the optimized execution path</li>
 <li><strong>Module system improvements</strong>: reliable multi-file program support</li>
-<li><strong>Solver infrastructure</strong>: ODE and PDE solver primitives for numerical libraries to build on</li>
 <li><strong>Sparse linear algebra</strong>: eigenvalue solvers (Lanczos, Arnoldi) with deterministic iteration</li>
 </ul>
-<p>Longer term, I’m interested in what it means to run a fully deterministic, zero-dependency numerical language on resource-constrained hardware. The architecture is designed with that possibility in mind, but it’s a future direction, not a current capability.</p>
 </section>
 <section id="why-share-this-now" class="level2">
 <h2 class="anchored" data-anchor-id="why-share-this-now">Why Share This Now?</h2>
-<p>CJC isn’t finished, but the ideas behind it are clear enough to discuss. Deterministic scientific computing is a real problem. Building the entire stack from scratch is an unusual approach. And the results so far — a 6.4 MB binary containing an entire scientific computing language, 5,300+ tests passing, end-to-end ML benchmarks, bit-identical execution — suggest the approach is viable.</p>
+<p>CJC isn’t finished, but the ideas behind it are clear enough to discuss. Deterministic scientific computing is a real problem — I’ve seen it firsthand, from the lab bench to the data pipeline. Building the entire stack from scratch is an unusual approach, but the results so far suggest it’s viable.</p>
 <p>If you’re interested in compiler design, numerical methods, reproducible computing, or just the experience of building a language from the ground up, I’ll be writing more here as the project develops.</p>
-<p>Next up: I’ll write about what it took to build a dual-engine compiler pipeline in Rust — and the design decisions that made parity testing between an AST interpreter and a register machine actually tractable.</p>
+<p>Next up: I’ll walk through <a href="../../../blog/posts/neural-networks-in-cjc/index.html">the neural network architectures I’ve built and verified in CJC</a> — REINFORCE agents, physics-informed networks, CNNs, and attention mechanisms, all running deterministically without any ML framework.</p>
 <div class="callout callout-style-simple callout-tip no-icon callout-titled">
 <div class="callout-header d-flex align-content-center">
 <div class="callout-icon-container">
@@ -987,7 +857,13 @@ Follow the project
 
 </section>
 
- ]]></description>
+
+<div id="quarto-appendix" class="default"><section id="footnotes" class="footnotes footnotes-end-of-document"><h2 class="anchored quarto-appendix-heading">Footnotes</h2>
+
+<ol>
+<li id="fn1"><p>The only external dependencies are in the optional language server (<code>cjc-analyzer</code>) and the <code>rayon</code> crate for parallel tensor operations. The core 18 crates have zero external dependencies.↩︎</p></li>
+</ol>
+</section></div> ]]></description>
   <category>CJC</category>
   <category>compilers</category>
   <category>scientific-computing</category>

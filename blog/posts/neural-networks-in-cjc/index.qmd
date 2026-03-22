@@ -1,0 +1,251 @@
+---
+title: "Neural Networks in CJC: From MLPs to Attention, Without a Framework"
+subtitle: "Six architectures built and verified in a deterministic language with no PyTorch, no TensorFlow — just tensors, AD, and a seed."
+author: "Adam Ezzat"
+date: "2026-03-22"
+categories: [CJC, neural-networks, scientific-computing]
+description: "A walkthrough of the neural network architectures implemented and verified in CJC — MLP, REINFORCE, PINN, PIML, CNN, and attention — all running deterministically."
+---
+
+<div class="reading-time">&#128337; ~15 min read</div>
+
+In the [previous post](../introducing-cjc/index.qmd), I introduced CJC and the design decisions behind its determinism guarantees. This post goes deeper into one specific question: **can you build real neural network architectures in a language with no ML framework?**
+
+The answer is yes — and the determinism makes verification straightforward. Every architecture below has been implemented in pure CJC, run through both execution engines, and verified with assertions. Same seed, same output, every time.
+
+---
+
+## Feedforward MLP (Multi-Layer Perceptron)
+
+The most fundamental architecture — and the building block for everything else. CJC expresses neural networks as struct-based layers with explicit weight tensors:
+
+```
+struct Layer {
+    weights: Tensor,
+    bias: Tensor
+}
+
+fn forward(layer: Layer, input: Tensor) -> Tensor {
+    matmul(input, layer.weights) |> add_bias(layer.bias)
+}
+
+fn relu_scalar(x: f64) -> f64 {
+    if x > 0.0 { return x; }
+    return 0.0;
+}
+
+let x = Tensor.from_vec([1.0, 2.0, 3.0], [1, 3]);
+
+let layer1 = Layer {
+    weights: Tensor.from_vec(
+        [0.1, 0.2, -0.1, 0.3,
+         0.4, -0.2, 0.1, 0.5,
+        -0.3, 0.1, 0.2, -0.1], [3, 4]),
+    bias: Tensor.from_vec([0.1, -0.1, 0.05, 0.0], [1, 4])
+};
+
+let layer2 = Layer {
+    weights: Tensor.from_vec(
+        [0.2, -0.3, 0.1, 0.4,
+        -0.2, 0.1, 0.3, -0.1], [4, 2]),
+    bias: Tensor.from_vec([0.0, 0.1], [1, 2])
+};
+
+let h = forward(layer1, x);
+let h_relu = relu_1x4(h);
+let out = forward(layer2, h_relu);
+print("Network output:", out);
+```
+
+Every weight is a plain `Tensor` you can inspect, serialize with `snap_hash()`, and verify for bit-identity across runs. The pipe operator (`|>`) makes the data flow explicit. There's no hidden state behind a class — the math is transparent.
+
+The benchmarks push this further: a **50-layer deep network** (width 64, batch 4) and a **10-layer wide network** (width 256, batch 16) are tested with `snap_hash()` checkpoints every few layers. Both produce identical hashes across runs, verifying that even deep forward passes through random weight matrices stay deterministic.
+
+---
+
+## REINFORCE Policy Network (Reinforcement Learning)
+
+The chess RL benchmark implements a full policy gradient agent in pure CJC — not a toy example, but an agent that plays chess, selects moves via softmax sampling, and updates weights via REINFORCE.
+
+```{mermaid}
+%%| fig-width: 7
+%%| fig-cap: "REINFORCE policy network for chess. Board state and move coordinates flow through a hidden layer to produce action probabilities."
+flowchart LR
+    B["Board 64sq\n+ Move from/to"] --> F["Features\n[1, 66]"] --> H["Hidden\nW₁ [66,16] + b₁\nReLU"] --> S["Score\nW₂ [16,1]"] --> A["Softmax\n→ Sample"]
+```
+
+::: {.callout-note collapse="true" appearance="minimal" title="Full REINFORCE forward pass and action selection code"}
+
+```
+fn forward_move(W1: Tensor, b1: Tensor, W2: Tensor,
+                board_features: Tensor, from_sq: i64, to_sq: i64) -> Any {
+    let feat_data = [];
+    let i = 0;
+    while i < 64 {
+        feat_data = array_push(feat_data, board_features.get([0, i]));
+        i = i + 1;
+    }
+    feat_data = array_push(feat_data, float(from_sq) / 63.0);
+    feat_data = array_push(feat_data, float(to_sq) / 63.0);
+    let input = Tensor.from_vec(feat_data, [1, 66]);
+
+    let hidden = (matmul(input, W1) + b1).relu();
+    let score_t = matmul(hidden, W2);
+    [score_t.get([0, 0])]
+}
+
+fn select_action(W1: Tensor, b1: Tensor, W2: Tensor,
+                 board_features: Tensor, moves: Any) -> Any {
+    let num_moves = len(moves) / 2;
+    let scores = [];
+    let i = 0;
+    while i < num_moves {
+        let result = forward_move(W1, b1, W2, board_features,
+                                  moves[i * 2], moves[i * 2 + 1]);
+        scores = array_push(scores, result[0]);
+        i = i + 1;
+    }
+    let scores_t = Tensor.from_vec(scores, [num_moves]);
+    let probs = scores_t.softmax();
+    let action_idx = categorical_sample(probs);
+    let log_prob = log(probs.get([action_idx]));
+    [float(action_idx), log_prob, float(num_moves)]
+}
+```
+
+:::
+
+This is a complete RL pipeline — feature construction, forward pass, softmax action selection, log-probability tracking, and gradient computation — written entirely in CJC. The agent manually computes `d(log_prob)/d(theta)` through softmax, ReLU, and matmul.
+
+The key property: `categorical_sample()` uses CJC's seeded SplitMix64 RNG, and the softmax goes through Kahan summation. Running `cjc run chess_agent.cjc --seed 42` produces the exact same game, moves, and weight updates every time. 69 tests verify the chess RL pipeline end-to-end.
+
+---
+
+## Physics-Informed Neural Network (PINN)
+
+CJC's AD engine supports PINNs — neural networks that learn to satisfy differential equations, not just fit data. This is where determinism isn't just convenient — it's scientifically necessary.
+
+```{mermaid}
+%%| fig-width: 7
+%%| fig-cap: "PINN for the harmonic oscillator. The composite loss combines data fitting, PDE residual, and boundary conditions."
+flowchart TB
+    X["Position x"] --> N["MLP [1 → 32 → 32 → 1]\ntanh activation"] --> U["Prediction u_hat"]
+    U --> DL["Data Loss\nMSE"]
+    U --> PL["Physics Loss\nu_xx + u ≈ 0"]
+    U --> BL["Boundary Loss\nu(0)=0, u(pi)=0"]
+    DL --> T["Total Loss"]
+    PL --> T
+    BL --> T
+    T -.->|"Adam optimizer"| N
+```
+
+The harmonic oscillator example uses a `[1, 32, 32, 1]` MLP with tanh activation trained to solve `u_xx + u = 0`:
+
+- **Data loss**: MSE against observed points (optionally noisy)
+- **Physics loss**: the PDE residual `u_xx + u` computed via finite differences through the network, penalized toward zero
+- **Boundary loss**: `u(0)` and `u(π)` enforced to match known boundary conditions
+- **Optimizer**: Adam with learning rate scheduling
+
+The exact solution is `sin(x)`, and the trained network converges to it with verified L2 error below tolerance.
+
+When you're claiming a network satisfies a PDE, you need to reproduce the training run exactly to verify the claim. CJC's deterministic AD engine, seeded RNG, and Kahan-summed loss computations mean the verification is airtight. The test suite trains the same PINN twice with seed 42 and asserts that every parameter is bit-identical using `to_bits()` comparison on the raw IEEE 754 representation. No other ML framework provides this guarantee without significant configuration overhead.
+
+---
+
+## Physics-Informed ML (PIML)
+
+A simpler but equally rigorous approach: polynomial regression with a physics residual penalty, applied to the 1D heat equation `u_xx = f(x)`.
+
+The model learns polynomial coefficients that simultaneously fit noisy observations and satisfy the PDE. Boundary conditions are enforced through weighted penalty terms. The exact solution is `sin(πx)`, and the optimized polynomial converges to it.
+
+---
+
+## Convolutional Neural Networks (CNN)
+
+CJC's tensor runtime includes native 1D and 2D convolution, maxpooling, and the full pipeline for building convolutional architectures.
+
+```{mermaid}
+%%| fig-width: 7
+%%| fig-cap: "CNN pipeline in CJC. Native conv2d, ReLU, batch normalization, and maxpooling — all deterministic."
+flowchart LR
+    I["Input\n[4,3,28,28]"] --> C["Conv2D\n32 filters 3x3"] --> R["ReLU"] --> BN["BatchNorm"] --> MP["MaxPool2D\n2x2"] --> O["Output\n[4,32,13,13]"]
+```
+
+```
+// 2D convolution: batch of images through learned filters
+let input = Tensor.randn([4, 3, 28, 28]);   // batch=4, channels=3, 28x28
+let filters = Tensor.randn([32, 3, 3, 3]);  // 32 output channels, 3x3 kernel
+let bias = Tensor.zeros([32]);
+let conv_out = input.conv2d(filters, bias, 1);   // -> [4, 32, 26, 26]
+
+// Activation + normalization + pooling
+let activated = conv_out.relu();
+let pooled = activated.maxpool2d(2, 2);          // -> [4, 32, 13, 13]
+```
+
+CJC also supports 1D convolution with circular padding (`conv1d_circular`) for signal processing, and the full set of CNN building blocks: `batch_norm`, `dropout_mask`, arbitrary strides, and multi-channel operations.
+
+---
+
+## Attention Mechanism (Transformer Building Block)
+
+Scaled dot-product attention — the core primitive of transformer architectures — is implemented as a native tensor operation.
+
+```{mermaid}
+%%| fig-width: 7
+%%| fig-cap: "Scaled dot-product attention — softmax(QK^T / sqrt(d_k)) * V — as a single native CJC operation."
+flowchart LR
+    Q["Q [batch, seq, d_k]"] --> MM["Q · K^T"]
+    K["K [batch, seq, d_k]"] --> MM
+    MM --> SC["÷ sqrt(d_k)"] --> SM["Softmax"] --> MV["× V"]
+    V["V [batch, seq, d_k]"] --> MV
+    MV --> O["Output\n[batch, seq, d_k]"]
+```
+
+```
+// Scaled dot-product attention: softmax(Q @ K^T / sqrt(d_k)) @ V
+let Q = Tensor.randn([2, 8, 64]);   // [batch, seq_len, d_k]
+let K = Tensor.randn([2, 8, 64]);
+let V = Tensor.randn([2, 8, 64]);
+let output = attention(Q, K, V);      // -> [2, 8, 64]
+```
+
+This computes `softmax(QK^T / sqrt(d_k)) * V` with batch matrix multiplication and deterministic softmax. It's the core primitive you'd need to build transformer-style architectures.
+
+---
+
+## Deep Network Stress Tests
+
+Beyond the architecture-specific examples above, CJC includes benchmark programs that push forward passes to realistic scale:
+
+| Benchmark | Depth | Width | Batch | Verified |
+|-----------|-------|-------|-------|----------|
+| `bench_nn_deep` | 50 layers | 64 | 4 | Bit-identical via `snap_hash` |
+| `bench_nn_wide` | 10 layers | 256 | 16 | Bit-identical via `snap_hash` |
+
+Both benchmarks insert `snap_hash()` checkpoints every few layers, producing cryptographic hashes of intermediate activations. Running twice with `--seed 42` produces identical hashes at every checkpoint — proving that determinism holds through deep chains of matmul, bias, ReLU, and normalization.
+
+---
+
+## What This Proves
+
+These aren't theoretical capabilities. Each architecture has been implemented, run through both execution engines, and verified with assertions:
+
+- The **REINFORCE agent** plays chess (69 tests verify the full pipeline)
+- The **PINN** converges to the analytical solution of a differential equation
+- The **CNN** processes real 4D tensor shapes with convolution, pooling, and batch normalization
+- The **attention mechanism** handles batched multi-sequence inputs
+- The **deep network benchmarks** verify hash-level determinism through 50 sequential layers
+
+All of them produce identical results across runs. In CJC, that's not an opt-in mode — it's how computation works.
+
+---
+
+If you haven't read the introduction to CJC and the design decisions behind the language, start with [Introducing CJC](../introducing-cjc/index.qmd).
+
+Next up: I'll write about what it took to build a dual-engine compiler pipeline in Rust — and the design decisions that made parity testing between an AST interpreter and a register machine actually tractable.
+
+::: {.callout-tip appearance="minimal"}
+## Follow the project
+CJC is open source and under active development. Follow [@adamezzat](https://linkedin.com/in/adamezzat) for updates as new features land.
+:::
