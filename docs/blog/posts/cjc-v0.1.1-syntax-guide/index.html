@@ -1,0 +1,2122 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.3.340">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Adam Ezzat">
+<meta name="dcterms.date" content="2026-04-02">
+<meta name="description" content="The complete syntax guide for CJC v0.1.1 — covering core language constructs, 287+ builtins, the dual-engine compiler pipeline, quantum simulation extensions, and deterministic numerical computing.">
+
+<title>Adam Ezzat - Syntax Guide for CJC Version 0.1.1</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../../">
+<script src="../../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<script src="../../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-dark.min.css" rel="prefetch" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+<style>html{ scroll-behavior: smooth; }</style>
+
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../../index.html">
+    <span class="navbar-title">Adam Ezzat</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../../index.html" rel="" target="">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../about.html" rel="" target="">
+ <span class="menu-text">About</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../projects.html" rel="" target="">
+ <span class="menu-text">Projects</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../blog/index.html" rel="" target="">
+ <span class="menu-text">Blog</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/AdamEzzat1" rel="" target=""><i class="bi bi-github" role="img" aria-label="GitHub">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://linkedin.com/in/adamezzat" rel="" target=""><i class="bi bi-linkedin" role="img" aria-label="LinkedIn">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+            <div class="quarto-navbar-tools">
+  <a href="" class="quarto-color-scheme-toggle quarto-navigation-tool  px-1" onclick="window.quartoToggleColorScheme(); return false;" title="Toggle dark mode"><i class="bi"></i></a>
+</div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#part-1-the-language" id="toc-part-1-the-language" class="nav-link active" data-scroll-target="#part-1-the-language">Part 1 — The Language</a>
+  <ul class="collapse">
+  <li><a href="#functions" id="toc-functions" class="nav-link" data-scroll-target="#functions">Functions</a></li>
+  <li><a href="#variables" id="toc-variables" class="nav-link" data-scroll-target="#variables">Variables</a></li>
+  <li><a href="#primitive-types" id="toc-primitive-types" class="nav-link" data-scroll-target="#primitive-types">Primitive Types</a></li>
+  <li><a href="#control-flow" id="toc-control-flow" class="nav-link" data-scroll-target="#control-flow">Control Flow</a></li>
+  <li><a href="#pattern-matching" id="toc-pattern-matching" class="nav-link" data-scroll-target="#pattern-matching">Pattern Matching</a></li>
+  <li><a href="#structs" id="toc-structs" class="nav-link" data-scroll-target="#structs">Structs</a></li>
+  <li><a href="#enums" id="toc-enums" class="nav-link" data-scroll-target="#enums">Enums</a></li>
+  <li><a href="#traits" id="toc-traits" class="nav-link" data-scroll-target="#traits">Traits</a></li>
+  <li><a href="#closures" id="toc-closures" class="nav-link" data-scroll-target="#closures">Closures</a></li>
+  <li><a href="#arrays" id="toc-arrays" class="nav-link" data-scroll-target="#arrays">Arrays</a></li>
+  <li><a href="#strings" id="toc-strings" class="nav-link" data-scroll-target="#strings">Strings</a></li>
+  <li><a href="#byte-slices" id="toc-byte-slices" class="nav-link" data-scroll-target="#byte-slices">Byte Slices</a></li>
+  <li><a href="#compound-assignments" id="toc-compound-assignments" class="nav-link" data-scroll-target="#compound-assignments">Compound Assignments</a></li>
+  <li><a href="#pipe-operator" id="toc-pipe-operator" class="nav-link" data-scroll-target="#pipe-operator">Pipe Operator</a></li>
+  <li><a href="#nogc-blocks" id="toc-nogc-blocks" class="nav-link" data-scroll-target="#nogc-blocks">nogc Blocks</a></li>
+  </ul></li>
+  <li><a href="#part-2-the-compiler-pipeline" id="toc-part-2-the-compiler-pipeline" class="nav-link" data-scroll-target="#part-2-the-compiler-pipeline">Part 2 — The Compiler Pipeline</a>
+  <ul class="collapse">
+  <li><a href="#stage-1-lexer" id="toc-stage-1-lexer" class="nav-link" data-scroll-target="#stage-1-lexer">Stage 1: Lexer</a></li>
+  <li><a href="#stage-2-parser" id="toc-stage-2-parser" class="nav-link" data-scroll-target="#stage-2-parser">Stage 2: Parser</a></li>
+  <li><a href="#stage-3-ast" id="toc-stage-3-ast" class="nav-link" data-scroll-target="#stage-3-ast">Stage 3: AST</a></li>
+  <li><a href="#stage-4-hir-high-level-ir" id="toc-stage-4-hir-high-level-ir" class="nav-link" data-scroll-target="#stage-4-hir-high-level-ir">Stage 4: HIR (High-level IR)</a></li>
+  <li><a href="#stage-5-mir-mid-level-ir" id="toc-stage-5-mir-mid-level-ir" class="nav-link" data-scroll-target="#stage-5-mir-mid-level-ir">Stage 5: MIR (Mid-level IR)</a></li>
+  <li><a href="#stage-6-execution-dual-engine" id="toc-stage-6-execution-dual-engine" class="nav-link" data-scroll-target="#stage-6-execution-dual-engine">Stage 6: Execution (Dual Engine)</a></li>
+  <li><a href="#diagnostics" id="toc-diagnostics" class="nav-link" data-scroll-target="#diagnostics">Diagnostics</a></li>
+  </ul></li>
+  <li><a href="#part-3-determinism-architecture" id="toc-part-3-determinism-architecture" class="nav-link" data-scroll-target="#part-3-determinism-architecture">Part 3 — Determinism Architecture</a>
+  <ul class="collapse">
+  <li><a href="#how-cjc-achieves-determinism" id="toc-how-cjc-achieves-determinism" class="nav-link" data-scroll-target="#how-cjc-achieves-determinism">How CJC Achieves Determinism</a></li>
+  <li><a href="#kahan-summation" id="toc-kahan-summation" class="nav-link" data-scroll-target="#kahan-summation">Kahan Summation</a></li>
+  <li><a href="#binnedaccumulator" id="toc-binnedaccumulator" class="nav-link" data-scroll-target="#binnedaccumulator">BinnedAccumulator</a></li>
+  <li><a href="#splitmix64" id="toc-splitmix64" class="nav-link" data-scroll-target="#splitmix64">SplitMix64</a></li>
+  </ul></li>
+  <li><a href="#part-4-builtin-functions" id="toc-part-4-builtin-functions" class="nav-link" data-scroll-target="#part-4-builtin-functions">Part 4 — Builtin Functions</a>
+  <ul class="collapse">
+  <li><a href="#mathematics" id="toc-mathematics" class="nav-link" data-scroll-target="#mathematics">Mathematics</a></li>
+  <li><a href="#statistics" id="toc-statistics" class="nav-link" data-scroll-target="#statistics">Statistics</a></li>
+  <li><a href="#arrays-1" id="toc-arrays-1" class="nav-link" data-scroll-target="#arrays-1">Arrays</a></li>
+  <li><a href="#strings-1" id="toc-strings-1" class="nav-link" data-scroll-target="#strings-1">Strings</a></li>
+  <li><a href="#tensor-operations" id="toc-tensor-operations" class="nav-link" data-scroll-target="#tensor-operations">Tensor Operations</a></li>
+  <li><a href="#io" id="toc-io" class="nav-link" data-scroll-target="#io">I/O</a></li>
+  <li><a href="#automatic-differentiation" id="toc-automatic-differentiation" class="nav-link" data-scroll-target="#automatic-differentiation">Automatic Differentiation</a></li>
+  </ul></li>
+  <li><a href="#part-5-dataframe-operations" id="toc-part-5-dataframe-operations" class="nav-link" data-scroll-target="#part-5-dataframe-operations">Part 5 — DataFrame Operations</a></li>
+  <li><a href="#part-6-visualization" id="toc-part-6-visualization" class="nav-link" data-scroll-target="#part-6-visualization">Part 6 — Visualization</a></li>
+  <li><a href="#part-7-quantum-computing-extensions" id="toc-part-7-quantum-computing-extensions" class="nav-link" data-scroll-target="#part-7-quantum-computing-extensions">Part 7 — Quantum Computing Extensions</a>
+  <ul class="collapse">
+  <li><a href="#circuit-simulation-statevector-up-to-26-qubits" id="toc-circuit-simulation-statevector-up-to-26-qubits" class="nav-link" data-scroll-target="#circuit-simulation-statevector-up-to-26-qubits">Circuit Simulation (Statevector, up to ~26 qubits)</a></li>
+  <li><a href="#mps-simulation-up-to-50-qubits" id="toc-mps-simulation-up-to-50-qubits" class="nav-link" data-scroll-target="#mps-simulation-up-to-50-qubits">MPS Simulation (up to 50+ qubits)</a></li>
+  <li><a href="#stabilizer-simulation-up-to-1000-qubits" id="toc-stabilizer-simulation-up-to-1000-qubits" class="nav-link" data-scroll-target="#stabilizer-simulation-up-to-1000-qubits">Stabilizer Simulation (up to 1000+ qubits)</a></li>
+  <li><a href="#density-matrix-mixed-states-and-noise" id="toc-density-matrix-mixed-states-and-noise" class="nav-link" data-scroll-target="#density-matrix-mixed-states-and-noise">Density Matrix (Mixed States and Noise)</a></li>
+  <li><a href="#jordan-wigner-fermion-hamiltonians-new-in-v0.1.1" id="toc-jordan-wigner-fermion-hamiltonians-new-in-v0.1.1" class="nav-link" data-scroll-target="#jordan-wigner-fermion-hamiltonians-new-in-v0.1.1">Jordan-Wigner Fermion Hamiltonians (New in v0.1.1)</a></li>
+  <li><a href="#suzuki-trotter-time-evolution-new-in-v0.1.1" id="toc-suzuki-trotter-time-evolution-new-in-v0.1.1" class="nav-link" data-scroll-target="#suzuki-trotter-time-evolution-new-in-v0.1.1">Suzuki-Trotter Time Evolution (New in v0.1.1)</a></li>
+  <li><a href="#zero-noise-extrapolation-new-in-v0.1.1" id="toc-zero-noise-extrapolation-new-in-v0.1.1" class="nav-link" data-scroll-target="#zero-noise-extrapolation-new-in-v0.1.1">Zero-Noise Extrapolation (New in v0.1.1)</a></li>
+  <li><a href="#vqe-variational-quantum-eigensolver" id="toc-vqe-variational-quantum-eigensolver" class="nav-link" data-scroll-target="#vqe-variational-quantum-eigensolver">VQE (Variational Quantum Eigensolver)</a></li>
+  <li><a href="#qaoa-quantum-approximate-optimization" id="toc-qaoa-quantum-approximate-optimization" class="nav-link" data-scroll-target="#qaoa-quantum-approximate-optimization">QAOA (Quantum Approximate Optimization)</a></li>
+  <li><a href="#dmrg-density-matrix-renormalization-group" id="toc-dmrg-density-matrix-renormalization-group" class="nav-link" data-scroll-target="#dmrg-density-matrix-renormalization-group">DMRG (Density Matrix Renormalization Group)</a></li>
+  <li><a href="#qec-quantum-error-correction" id="toc-qec-quantum-error-correction" class="nav-link" data-scroll-target="#qec-quantum-error-correction">QEC (Quantum Error Correction)</a></li>
+  <li><a href="#qml-quantum-machine-learning" id="toc-qml-quantum-machine-learning" class="nav-link" data-scroll-target="#qml-quantum-machine-learning">QML (Quantum Machine Learning)</a></li>
+  <li><a href="#dual-mode-backend" id="toc-dual-mode-backend" class="nav-link" data-scroll-target="#dual-mode-backend">Dual-Mode Backend</a></li>
+  </ul></li>
+  <li><a href="#part-8-complete-examples" id="toc-part-8-complete-examples" class="nav-link" data-scroll-target="#part-8-complete-examples">Part 8 — Complete Examples</a>
+  <ul class="collapse">
+  <li><a href="#example-1-numerical-integration" id="toc-example-1-numerical-integration" class="nav-link" data-scroll-target="#example-1-numerical-integration">Example 1: Numerical Integration</a></li>
+  <li><a href="#example-2-transformer-forward-pass" id="toc-example-2-transformer-forward-pass" class="nav-link" data-scroll-target="#example-2-transformer-forward-pass">Example 2: Transformer Forward Pass</a></li>
+  <li><a href="#example-3-csv-etl-pipeline" id="toc-example-3-csv-etl-pipeline" class="nav-link" data-scroll-target="#example-3-csv-etl-pipeline">Example 3: CSV ETL Pipeline</a></li>
+  <li><a href="#example-4-quantum-chemistry" id="toc-example-4-quantum-chemistry" class="nav-link" data-scroll-target="#example-4-quantum-chemistry">Example 4: Quantum Chemistry</a></li>
+  <li><a href="#example-5-statistical-analysis" id="toc-example-5-statistical-analysis" class="nav-link" data-scroll-target="#example-5-statistical-analysis">Example 5: Statistical Analysis</a></li>
+  </ul></li>
+  <li><a href="#part-9-cli-reference" id="toc-part-9-cli-reference" class="nav-link" data-scroll-target="#part-9-cli-reference">Part 9 — CLI Reference</a></li>
+  <li><a href="#part-10-design-decisions-and-trade-offs" id="toc-part-10-design-decisions-and-trade-offs" class="nav-link" data-scroll-target="#part-10-design-decisions-and-trade-offs">Part 10 — Design Decisions and Trade-offs</a>
+  <ul class="collapse">
+  <li><a href="#why-no-hashmap" id="toc-why-no-hashmap" class="nav-link" data-scroll-target="#why-no-hashmap">Why No HashMap?</a></li>
+  <li><a href="#why-no-fma" id="toc-why-no-fma" class="nav-link" data-scroll-target="#why-no-fma">Why No FMA?</a></li>
+  <li><a href="#why-two-execution-engines" id="toc-why-two-execution-engines" class="nav-link" data-scroll-target="#why-two-execution-engines">Why Two Execution Engines?</a></li>
+  <li><a href="#why-vec-based-pauli-terms" id="toc-why-vec-based-pauli-terms" class="nav-link" data-scroll-target="#why-vec-based-pauli-terms">Why Vec-Based Pauli Terms?</a></li>
+  <li><a href="#why-sign-stabilized-svd" id="toc-why-sign-stabilized-svd" class="nav-link" data-scroll-target="#why-sign-stabilized-svd">Why Sign-Stabilized SVD?</a></li>
+  </ul></li>
+  <li><a href="#whats-next" id="toc-whats-next" class="nav-link" data-scroll-target="#whats-next">What’s Next</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Syntax Guide for CJC Version 0.1.1</h1>
+<p class="subtitle lead">A comprehensive reference for CJC’s language features, compiler infrastructure, and quantum computing extensions.</p>
+  <div class="quarto-categories">
+    <div class="quarto-category">CJC</div>
+    <div class="quarto-category">syntax</div>
+    <div class="quarto-category">compilers</div>
+    <div class="quarto-category">scientific-computing</div>
+    <div class="quarto-category">quantum</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    The complete syntax guide for CJC v0.1.1 — covering core language constructs, 287+ builtins, the dual-engine compiler pipeline, quantum simulation extensions, and deterministic numerical computing.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Adam Ezzat </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">April 2, 2026</p>
+    </div>
+  </div>
+  
+    <div>
+    <div class="quarto-title-meta-heading">Modified</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date-modified">April 2, 2026</p>
+    </div>
+  </div>
+    
+  </div>
+  
+
+</header>
+
+<div class="reading-time">
+🕑 ~45 min read
+</div>
+<div class="stats-row">
+<div class="stat">
+<span class="number">21</span><span class="stat-label">Rust crates</span>
+</div>
+<div class="stat">
+<span class="number">123K</span><span class="stat-label">lines of code</span>
+</div>
+<div class="stat">
+<span class="number">287+</span><span class="stat-label">builtins</span>
+</div>
+<div class="stat">
+<span class="number">1,847</span><span class="stat-label">tests passing</span>
+</div>
+</div>
+<div class="callout callout-style-simple callout-tip no-icon callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+What’s New in v0.1.1
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>CJC v0.1.1 adds <strong>Quantum Hardening Phase 3</strong> (Jordan-Wigner, Suzuki-Trotter, Zero-Noise Extrapolation), <strong>AST Evolution v0.3</strong> (visitor trait, metrics, validation), <strong>MIR Evolution v0.3</strong> (schedule metadata, reduction analysis, SSA loop overlay), and <strong>MPS enhancements</strong> (canonical forms, SWAP networks). This guide covers every language feature and builtin available as of this release.</p>
+</div>
+</div>
+<hr>
+<section id="part-1-the-language" class="level2">
+<h2 class="anchored" data-anchor-id="part-1-the-language">Part 1 — The Language</h2>
+<p>CJC is a statically-aware, dynamically-typed language for deterministic scientific computing. If you’ve written Rust, Python, or R, the syntax will feel familiar. This section covers every construct the language supports.</p>
+<section id="functions" class="level3">
+<h3 class="anchored" data-anchor-id="functions">Functions</h3>
+<p>Every function parameter requires a type annotation. Return types are optional but recommended.</p>
+<pre><code>fn add(a: i64, b: i64) -&gt; i64 {
+    a + b
+}
+
+fn greet(name: String) {
+    print("Hello, " + name);
+}</code></pre>
+<p>Functions are first-class values. You can pass them as arguments:</p>
+<pre><code>fn apply(f: fn(i64) -&gt; i64, x: i64) -&gt; i64 {
+    f(x)
+}
+
+fn double(x: i64) -&gt; i64 { x * 2 }
+
+fn main() -&gt; i64 {
+    apply(double, 21)
+}</code></pre>
+<p>Recursive functions work as expected:</p>
+<pre><code>fn factorial(n: i64) -&gt; i64 {
+    if n &lt;= 1 { return 1; }
+    n * factorial(n - 1)
+}
+
+fn main() -&gt; i64 { factorial(10) }</code></pre>
+<p>Generic functions use angle-bracket syntax with optional trait bounds:</p>
+<pre><code>fn identity&lt;T&gt;(x: T) -&gt; T { x }
+
+fn my_max&lt;T&gt;(a: T, b: T) -&gt; T {
+    if a &gt; b { a } else { b }
+}
+
+fn wrap&lt;T&gt;(x: T) -&gt; T { x }
+fn apply_generic&lt;T&gt;(x: T) -&gt; T { wrap(x) }</code></pre>
+</section>
+<section id="variables" class="level3">
+<h3 class="anchored" data-anchor-id="variables">Variables</h3>
+<p>Immutable by default. Use <code>let mut</code> for mutation.</p>
+<pre><code>let x: i64 = 42
+let pi = 3.14159
+let name = "CJC"
+
+let mut count = 0
+count = count + 1</code></pre>
+<p>CJC supports type inference, but you can always be explicit:</p>
+<pre><code>let a: f64 = 1.0
+let b: bool = true
+let c: String = "hello"
+let d: i64 = 99</code></pre>
+</section>
+<section id="primitive-types" class="level3">
+<h3 class="anchored" data-anchor-id="primitive-types">Primitive Types</h3>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Type</th>
+<th>Description</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>i64</code></td>
+<td>64-bit signed integer</td>
+<td><code>42</code>, <code>-7</code></td>
+</tr>
+<tr class="even">
+<td><code>f64</code></td>
+<td>64-bit floating point</td>
+<td><code>3.14</code>, <code>1e-6</code></td>
+</tr>
+<tr class="odd">
+<td><code>bool</code></td>
+<td>Boolean</td>
+<td><code>true</code>, <code>false</code></td>
+</tr>
+<tr class="even">
+<td><code>String</code></td>
+<td>UTF-8 string</td>
+<td><code>"hello"</code></td>
+</tr>
+<tr class="odd">
+<td><code>ByteSlice</code></td>
+<td>Raw byte sequence</td>
+<td><code>b"hello"</code></td>
+</tr>
+<tr class="even">
+<td><code>Any</code></td>
+<td>Dynamic/polymorphic type</td>
+<td>Used for generic dispatch</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="control-flow" class="level3">
+<h3 class="anchored" data-anchor-id="control-flow">Control Flow</h3>
+<section id="ifelse" class="level4">
+<h4 class="anchored" data-anchor-id="ifelse">if/else</h4>
+<p><code>if</code> works as both a statement and an expression:</p>
+<pre><code>// Statement form
+if x &gt; 0 {
+    print("positive");
+} else {
+    print("non-positive");
+}
+
+// Expression form — both branches must return compatible types
+let abs_x = if x &gt;= 0 { x } else { -x };</code></pre>
+<p>Note: no parentheses around the condition. Braces are always required.</p>
+</section>
+<section id="while-loops" class="level4">
+<h4 class="anchored" data-anchor-id="while-loops">while loops</h4>
+<pre><code>let mut sum = 0;
+let mut i = 1;
+while i &lt;= 100 {
+    sum = sum + i;
+    i = i + 1;
+}</code></pre>
+</section>
+<section id="for-loops" class="level4">
+<h4 class="anchored" data-anchor-id="for-loops">for loops</h4>
+<p><code>for</code> iterates over ranges using <code>start..end</code> (exclusive upper bound):</p>
+<pre><code>let mut total = 0;
+for i in 1..11 {
+    total = total + i;
+}</code></pre>
+</section>
+<section id="break-and-continue" class="level4">
+<h4 class="anchored" data-anchor-id="break-and-continue">break and continue</h4>
+<p>Both work inside <code>while</code> and <code>for</code> loops:</p>
+<pre><code>for i in 0..10 {
+    if i == 4 { break; }
+    print(i);
+}
+
+let mut i = 0;
+while i &lt; 5 {
+    i = i + 1;
+    if i == 3 { continue; }
+    print(i);
+}</code></pre>
+</section>
+</section>
+<section id="pattern-matching" class="level3">
+<h3 class="anchored" data-anchor-id="pattern-matching">Pattern Matching</h3>
+<p>CJC has full structural pattern matching with <code>match</code> expressions:</p>
+<pre><code>// Match on integers
+let x = 99;
+let label = match x {
+    1 =&gt; "one",
+    2 =&gt; "two",
+    _ =&gt; "other",
+};
+
+// Match on enums
+enum Color { Red, Green, Blue }
+
+fn classify(c: Color) -&gt; i64 {
+    match c {
+        Red   =&gt; 1,
+        Green =&gt; 2,
+        _     =&gt; 3,
+    }
+}</code></pre>
+<p>Pattern matching supports destructuring:</p>
+<pre><code>// Option type
+let x = Some(42);
+let val = match x {
+    Some(v) =&gt; v,
+    None    =&gt; 0,
+};
+
+// Result type
+let r = Ok(3.14);
+match r {
+    Ok(v)  =&gt; print(v),
+    Err(e) =&gt; print("error"),
+}</code></pre>
+</section>
+<section id="structs" class="level3">
+<h3 class="anchored" data-anchor-id="structs">Structs</h3>
+<pre><code>struct Point { x: f64, y: f64 }
+
+let p = Point { x: 1.5, y: 2.5 };
+print(p.x + p.y);</code></pre>
+<p>Structs can have methods via <code>impl</code> blocks:</p>
+<pre><code>struct Circle { radius: f64 }
+
+impl Circle {
+    fn area(c: Circle) -&gt; f64 {
+        3.14159 * c.radius * c.radius
+    }
+}
+
+let c = Circle { radius: 5.0 };
+print(Circle::area(c));</code></pre>
+<p>Generic structs:</p>
+<pre><code>struct Pair&lt;T, U&gt; { first: T, second: U }</code></pre>
+</section>
+<section id="enums" class="level3">
+<h3 class="anchored" data-anchor-id="enums">Enums</h3>
+<pre><code>enum Shape {
+    Circle(f64),
+    Rectangle(f64, f64),
+    Triangle(f64, f64, f64),
+}
+
+enum Option&lt;T&gt; { None, Some(T) }</code></pre>
+</section>
+<section id="traits" class="level3">
+<h3 class="anchored" data-anchor-id="traits">Traits</h3>
+<pre><code>trait Numeric: Add + Mul {
+    fn zero() -&gt; Self;
+    fn one() -&gt; Self;
+}
+
+impl&lt;T&gt; Vec&lt;T&gt; : Iterable {
+    fn len(self: Vec&lt;T&gt;) -&gt; i64 { 0 }
+}</code></pre>
+</section>
+<section id="closures" class="level3">
+<h3 class="anchored" data-anchor-id="closures">Closures</h3>
+<p>Closures use <code>|args| body</code> syntax with mandatory type annotations on parameters:</p>
+<pre><code>let f = |x: f64| x * x;
+let add = |x: f64, y: f64| x + y;
+
+print(f(3.0));
+print(add(1.0, 2.0));</code></pre>
+<p>Closures capture variables from their enclosing scope. CJC performs capture analysis during HIR lowering to determine what each closure needs.</p>
+</section>
+<section id="arrays" class="level3">
+<h3 class="anchored" data-anchor-id="arrays">Arrays</h3>
+<p>Arrays are ordered, dynamically-typed collections:</p>
+<pre><code>let nums = [1, 2, 3, 4, 5];
+let mixed = [1, "hello", 3.14, true];
+
+// Array operations — note: array_push returns a NEW array
+let extended = array_push(nums, 6);
+let length = array_len(extended);
+let first = array_get(nums, 0);
+let sliced = array_slice(nums, 1, 3);</code></pre>
+<div class="callout callout-style-simple callout-warning no-icon">
+<div class="callout-body d-flex">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-body-container">
+<p><code>array_push(arr, val)</code> does <strong>not</strong> mutate <code>arr</code>. It returns a new array. Always reassign: <code>arr = array_push(arr, val);</code></p>
+</div>
+</div>
+</div>
+</section>
+<section id="strings" class="level3">
+<h3 class="anchored" data-anchor-id="strings">Strings</h3>
+<pre><code>let s = "hello world";
+let upper = str_upper(s);
+let lower = str_lower(s);
+let trimmed = str_trim("  padded  ");
+let parts = str_split("a,b,c", ",");
+let joined = str_join(["a", "b", "c"], "-");
+let sub = str_contains(s, "world");</code></pre>
+<p>Formatted strings use <code>f"..."</code> syntax:</p>
+<pre><code>let name = "CJC";
+let version = "0.1.1";
+print(f"Welcome to {name} v{version}");</code></pre>
+</section>
+<section id="byte-slices" class="level3">
+<h3 class="anchored" data-anchor-id="byte-slices">Byte Slices</h3>
+<p>For low-level data processing:</p>
+<pre><code>let data: ByteSlice = b"name,age,score\nAlice,30,95.5";
+let rows = data.split_byte(b'\n');
+let header = rows[0];
+let fields = header.split_byte(b',');</code></pre>
+</section>
+<section id="compound-assignments" class="level3">
+<h3 class="anchored" data-anchor-id="compound-assignments">Compound Assignments</h3>
+<p>CJC recognizes <code>+=</code>, <code>-=</code>, <code>*=</code>, <code>/=</code> operators:</p>
+<pre><code>let mut x = 10;
+x += 5;
+x -= 3;
+x *= 2;
+x /= 4;</code></pre>
+</section>
+<section id="pipe-operator" class="level3">
+<h3 class="anchored" data-anchor-id="pipe-operator">Pipe Operator</h3>
+<p>The <code>|&gt;</code> operator chains function calls left-to-right:</p>
+<pre><code>data |&gt; filter(predicate) |&gt; map(transform)</code></pre>
+</section>
+<section id="nogc-blocks" class="level3">
+<h3 class="anchored" data-anchor-id="nogc-blocks">nogc Blocks</h3>
+<p>Mark functions as allocation-free for performance-critical paths. The NoGC verifier statically checks that no GC-triggering operations occur inside:</p>
+<pre><code>nogc fn fast_multiply(x: f64, y: f64) -&gt; f64 {
+    x * y
+}</code></pre>
+<p>The MIR pipeline includes a NoGC verification pass that performs call-graph analysis with a <code>may_gc</code> fixpoint computation. If any reachable function allocates, the verifier rejects the program.</p>
+<hr>
+</section>
+</section>
+<section id="part-2-the-compiler-pipeline" class="level2">
+<h2 class="anchored" data-anchor-id="part-2-the-compiler-pipeline">Part 2 — The Compiler Pipeline</h2>
+<p>CJC compiles through a multi-stage pipeline. Understanding it helps you reason about error messages, optimization, and the dual-engine execution model.</p>
+<pre><code>Source → Lexer → Parser → AST → [TypeChecker] → HIR → MIR → [Optimize] → Exec</code></pre>
+<section id="stage-1-lexer" class="level3">
+<h3 class="anchored" data-anchor-id="stage-1-lexer">Stage 1: Lexer</h3>
+<p>The lexer (<code>cjc-lexer</code>) converts source text into a flat token stream. It recognizes all CJC keywords, operators (including <code>|&gt;</code>, <code>+=</code>, <code>@</code>), literals (integers, floats, strings, byte strings), and identifiers.</p>
+<div class="sourceCode" id="cb27"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> (tokens<span class="op">,</span> diags) <span class="op">=</span> <span class="pp">Lexer::</span>new(src)<span class="op">.</span>tokenize()<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="stage-2-parser" class="level3">
+<h3 class="anchored" data-anchor-id="stage-2-parser">Stage 2: Parser</h3>
+<p>A Pratt parser (<code>cjc-parser</code>) builds the AST from tokens. It handles operator precedence, expression vs.&nbsp;statement disambiguation, and produces structured error diagnostics.</p>
+<div class="sourceCode" id="cb28"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> (program<span class="op">,</span> diags) <span class="op">=</span> <span class="pp">cjc_parser::</span>parse_source(src)<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The parser recognizes 35 expression kinds, 9 statement kinds, 11 declaration kinds, and 9 pattern kinds.</p>
+</section>
+<section id="stage-3-ast" class="level3">
+<h3 class="anchored" data-anchor-id="stage-3-ast">Stage 3: AST</h3>
+<p>The AST (<code>cjc-ast</code>) is a tree of typed nodes. As of v0.1.1, the AST layer includes:</p>
+<ul>
+<li><strong>Visitor trait</strong> (<code>visit</code> module) — read-only traversal covering all node variants with <code>walk_*</code> functions</li>
+<li><strong>Metrics</strong> (<code>metrics</code> module) — single-pass structural statistics: node counts, depth, operator frequencies, feature flags</li>
+<li><strong>Validation</strong> (<code>validate</code> module) — structural checks: break/continue outside loops, duplicate params, empty match, unreachable code after return, nesting depth limits</li>
+<li><strong>Inspect</strong> (<code>inspect</code> module) — deterministic text dumps: <code>dump_ast_summary</code>, <code>dump_ast_metrics</code>, <code>dump_validation_report</code>, <code>dump_expr_tree</code></li>
+<li><strong>Node utilities</strong> (<code>node_utils</code> module) — helper methods like <code>Expr::child_count</code>, <code>is_literal</code>, <code>Block::is_empty</code>, <code>Program::has_main_function</code></li>
+</ul>
+</section>
+<section id="stage-4-hir-high-level-ir" class="level3">
+<h3 class="anchored" data-anchor-id="stage-4-hir-high-level-ir">Stage 4: HIR (High-level IR)</h3>
+<p>HIR lowering (<code>cjc-hir</code>) desugars the AST. <code>for</code> loops become <code>while</code> loops over ranges. Closures get capture analysis. The HIR is closer to the execution model while still being readable.</p>
+</section>
+<section id="stage-5-mir-mid-level-ir" class="level3">
+<h3 class="anchored" data-anchor-id="stage-5-mir-mid-level-ir">Stage 5: MIR (Mid-level IR)</h3>
+<p>MIR (<code>cjc-mir</code>) is a register-based intermediate representation. HIR lowers to MIR instructions that operate on virtual registers.</p>
+<p>The MIR layer in v0.1.1 includes:</p>
+<ul>
+<li><strong>Optimizer</strong> — constant folding, strength reduction, dead code elimination (DCE), common subexpression elimination (CSE), loop-invariant code motion (LICM)</li>
+<li><strong>SSA construction</strong> — Cytron’s minimal SSA algorithm with 6 optimization passes</li>
+<li><strong>Loop analysis</strong> — enriched <code>LoopInfo</code> with <code>is_countable</code>, <code>trip_count_hint</code>, <code>num_exits</code>, schedule metadata</li>
+<li><strong>Reduction analysis</strong> — enriched <code>ReductionInfo</code> with <code>accumulator_semantics</code> (Plain, Kahan, Binned, RuntimeDefined)</li>
+<li><strong>Schedule metadata</strong> — descriptive execution hints (<code>SequentialStrict</code>, <code>DescriptiveTiled</code>, <code>DescriptiveVectorized</code>, etc.) that are non-semantic</li>
+<li><strong>SSA loop overlay</strong> — maps SSA definitions to loops, identifies loop-carried variables, cross-references reductions with SSA accumulators</li>
+<li><strong>Legality verifier</strong> — schedule consistency checks, reduction metadata cross-validation</li>
+<li><strong>NoGC verifier</strong> — call-graph may_gc fixpoint analysis</li>
+</ul>
+</section>
+<section id="stage-6-execution-dual-engine" class="level3">
+<h3 class="anchored" data-anchor-id="stage-6-execution-dual-engine">Stage 6: Execution (Dual Engine)</h3>
+<p>CJC has two execution engines that must produce identical results:</p>
+<table class="table">
+<colgroup>
+<col style="width: 19%">
+<col style="width: 19%">
+<col style="width: 29%">
+<col style="width: 31%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Engine</th>
+<th>Module</th>
+<th>Entry Point</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>v1</strong></td>
+<td><code>cjc-eval</code></td>
+<td><code>Interpreter::new(seed).exec(&amp;program)</code></td>
+<td>AST tree-walk interpreter</td>
+</tr>
+<tr class="even">
+<td><strong>v2</strong></td>
+<td><code>cjc-mir-exec</code></td>
+<td><code>run_program_with_executor(&amp;program, seed)</code></td>
+<td>MIR register-machine executor</td>
+</tr>
+</tbody>
+</table>
+<p>The MIR executor also supports an optimized mode:</p>
+<pre><code>cjc run program.cjc --mir-opt</code></pre>
+<p>Parity tests in the test suite verify that both engines produce bit-identical output for every supported program.</p>
+</section>
+<section id="diagnostics" class="level3">
+<h3 class="anchored" data-anchor-id="diagnostics">Diagnostics</h3>
+<p>CJC uses structured error codes (<code>E0xxx</code>-<code>E8xxx</code>) via the <code>cjc-diag</code> crate. Diagnostics carry source spans, severity levels, and optional fix suggestions.</p>
+<hr>
+</section>
+</section>
+<section id="part-3-determinism-architecture" class="level2">
+<h2 class="anchored" data-anchor-id="part-3-determinism-architecture">Part 3 — Determinism Architecture</h2>
+<p>Determinism is CJC’s defining architectural constraint. Every design decision flows from one requirement: <strong>same seed in, same bits out, every time, on every platform.</strong></p>
+<section id="how-cjc-achieves-determinism" class="level3">
+<h3 class="anchored" data-anchor-id="how-cjc-achieves-determinism">How CJC Achieves Determinism</h3>
+<table class="table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Component</th>
+<th>Mechanism</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>RNG</strong></td>
+<td>SplitMix64 with explicit seed threading — no global state</td>
+</tr>
+<tr class="even">
+<td><strong>Collections</strong></td>
+<td><code>BTreeMap</code>/<code>BTreeSet</code> everywhere — never <code>HashMap</code>/<code>HashSet</code></td>
+</tr>
+<tr class="odd">
+<td><strong>Floating-point sums</strong></td>
+<td>Kahan summation or BinnedAccumulator — never naive reduction</td>
+</tr>
+<tr class="even">
+<td><strong>SIMD</strong></td>
+<td>No FMA (fused multiply-add) — <code>mul_fixed</code> throughout</td>
+</tr>
+<tr class="odd">
+<td><strong>Complex arithmetic</strong></td>
+<td><code>mul_fixed</code> for all complex multiplications</td>
+</tr>
+<tr class="even">
+<td><strong>Iteration</strong></td>
+<td><code>Vec</code>-based storage with deterministic ordering</td>
+</tr>
+<tr class="odd">
+<td><strong>Parallelism</strong></td>
+<td>Results identical regardless of thread count</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="kahan-summation" class="level3">
+<h3 class="anchored" data-anchor-id="kahan-summation">Kahan Summation</h3>
+<p>Naive floating-point addition loses precision as terms accumulate. CJC uses compensated summation everywhere:</p>
+<pre><code>// Under the hood, CJC's runtime uses Kahan summation:
+// sum = 0.0, compensation = 0.0
+// for each term:
+//   y = term - compensation
+//   t = sum + y
+//   compensation = (t - sum) - y
+//   sum = t</code></pre>
+<p>This matters for scientific workloads where you’re summing millions of terms. The result is the same whether you sum them on a laptop or a cluster.</p>
+</section>
+<section id="binnedaccumulator" class="level3">
+<h3 class="anchored" data-anchor-id="binnedaccumulator">BinnedAccumulator</h3>
+<p>For even higher-precision requirements, CJC provides binned accumulators that partition the floating-point range into bins, accumulate within each bin, then combine — guaranteeing reproducible results even under reordering.</p>
+</section>
+<section id="splitmix64" class="level3">
+<h3 class="anchored" data-anchor-id="splitmix64">SplitMix64</h3>
+<p>All randomness in CJC flows through a seeded SplitMix64 generator. There is no global RNG state. Every function that needs randomness takes an explicit seed parameter:</p>
+<pre><code>let samples = q_sample(circuit, 1000, 42);
+let measurement = q_measure(circuit, 42);</code></pre>
+<hr>
+</section>
+</section>
+<section id="part-4-builtin-functions" class="level2">
+<h2 class="anchored" data-anchor-id="part-4-builtin-functions">Part 4 — Builtin Functions</h2>
+<p>CJC ships with 287+ builtin functions registered in <code>cjc-runtime</code>. These are available without imports in every CJC program.</p>
+<section id="mathematics" class="level3">
+<h3 class="anchored" data-anchor-id="mathematics">Mathematics</h3>
+<table class="table">
+<colgroup>
+<col style="width: 43%">
+<col style="width: 56%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>abs(x)</code></td>
+<td>Absolute value</td>
+</tr>
+<tr class="even">
+<td><code>sqrt(x)</code></td>
+<td>Square root</td>
+</tr>
+<tr class="odd">
+<td><code>pow(base, exp)</code></td>
+<td>Exponentiation</td>
+</tr>
+<tr class="even">
+<td><code>log(x)</code></td>
+<td>Natural logarithm</td>
+</tr>
+<tr class="odd">
+<td><code>log2(x)</code>, <code>log10(x)</code></td>
+<td>Base-2 and base-10 logarithm</td>
+</tr>
+<tr class="even">
+<td><code>exp(x)</code></td>
+<td>Euler’s number raised to x</td>
+</tr>
+<tr class="odd">
+<td><code>sin(x)</code>, <code>cos(x)</code>, <code>tan(x)</code></td>
+<td>Trigonometric functions</td>
+</tr>
+<tr class="even">
+<td><code>asin(x)</code>, <code>acos(x)</code>, <code>atan(x)</code></td>
+<td>Inverse trigonometric</td>
+</tr>
+<tr class="odd">
+<td><code>sinh(x)</code>, <code>cosh(x)</code>, <code>tanh(x)</code></td>
+<td>Hyperbolic functions</td>
+</tr>
+<tr class="even">
+<td><code>floor(x)</code>, <code>ceil(x)</code>, <code>round(x)</code></td>
+<td>Rounding</td>
+</tr>
+<tr class="odd">
+<td><code>min(a, b)</code>, <code>max(a, b)</code></td>
+<td>Minimum and maximum</td>
+</tr>
+<tr class="even">
+<td><code>clamp(x, lo, hi)</code></td>
+<td>Clamp to range</td>
+</tr>
+<tr class="odd">
+<td><code>gcd(a, b)</code>, <code>lcm(a, b)</code></td>
+<td>Greatest common divisor, least common multiple</td>
+</tr>
+<tr class="even">
+<td><code>factorial(n)</code></td>
+<td>Factorial</td>
+</tr>
+<tr class="odd">
+<td><code>fibonacci(n)</code></td>
+<td>Fibonacci number</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="statistics" class="level3">
+<h3 class="anchored" data-anchor-id="statistics">Statistics</h3>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>mean(arr)</code></td>
+<td>Arithmetic mean</td>
+</tr>
+<tr class="even">
+<td><code>median(arr)</code></td>
+<td>Median</td>
+</tr>
+<tr class="odd">
+<td><code>variance(arr)</code></td>
+<td>Sample variance</td>
+</tr>
+<tr class="even">
+<td><code>std_dev(arr)</code></td>
+<td>Standard deviation</td>
+</tr>
+<tr class="odd">
+<td><code>percentile(arr, p)</code></td>
+<td>p-th percentile</td>
+</tr>
+<tr class="even">
+<td><code>quantile(arr, q)</code></td>
+<td>Quantile</td>
+</tr>
+<tr class="odd">
+<td><code>correlation(x, y)</code></td>
+<td>Pearson correlation</td>
+</tr>
+<tr class="even">
+<td><code>covariance(x, y)</code></td>
+<td>Covariance</td>
+</tr>
+<tr class="odd">
+<td><code>skewness(arr)</code></td>
+<td>Skewness</td>
+</tr>
+<tr class="even">
+<td><code>kurtosis(arr)</code></td>
+<td>Kurtosis</td>
+</tr>
+<tr class="odd">
+<td><code>zscore(arr)</code></td>
+<td>Z-score normalization</td>
+</tr>
+<tr class="even">
+<td><code>mann_whitney(x, y)</code></td>
+<td>Mann-Whitney U test</td>
+</tr>
+<tr class="odd">
+<td><code>percent_rank(arr)</code></td>
+<td>Percent rank</td>
+</tr>
+<tr class="even">
+<td><code>ntile(arr, n)</code></td>
+<td>N-tile grouping</td>
+</tr>
+<tr class="odd">
+<td><code>case_when(conds, vals, default)</code></td>
+<td>Conditional value selection</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="arrays-1" class="level3">
+<h3 class="anchored" data-anchor-id="arrays-1">Arrays</h3>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>array_len(arr)</code></td>
+<td>Length</td>
+</tr>
+<tr class="even">
+<td><code>array_push(arr, val)</code></td>
+<td>Append (returns new array)</td>
+</tr>
+<tr class="odd">
+<td><code>array_pop(arr)</code></td>
+<td>Remove last element (returns new array)</td>
+</tr>
+<tr class="even">
+<td><code>array_get(arr, idx)</code></td>
+<td>Get element at index</td>
+</tr>
+<tr class="odd">
+<td><code>array_set(arr, idx, val)</code></td>
+<td>Set element (returns new array)</td>
+</tr>
+<tr class="even">
+<td><code>array_slice(arr, start, end)</code></td>
+<td>Subsequence</td>
+</tr>
+<tr class="odd">
+<td><code>array_contains(arr, val)</code></td>
+<td>Membership test</td>
+</tr>
+<tr class="even">
+<td><code>array_reverse(arr)</code></td>
+<td>Reverse</td>
+</tr>
+<tr class="odd">
+<td><code>array_sort(arr)</code></td>
+<td>Sort (deterministic)</td>
+</tr>
+<tr class="even">
+<td><code>array_map(arr, f)</code></td>
+<td>Map function over elements</td>
+</tr>
+<tr class="odd">
+<td><code>array_filter(arr, f)</code></td>
+<td>Filter by predicate</td>
+</tr>
+<tr class="even">
+<td><code>array_reduce(arr, f, init)</code></td>
+<td>Left fold</td>
+</tr>
+<tr class="odd">
+<td><code>array_flatten(arr)</code></td>
+<td>Flatten nested arrays</td>
+</tr>
+<tr class="even">
+<td><code>array_zip(a, b)</code></td>
+<td>Zip two arrays</td>
+</tr>
+<tr class="odd">
+<td><code>array_unique(arr)</code></td>
+<td>Remove duplicates (deterministic)</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="strings-1" class="level3">
+<h3 class="anchored" data-anchor-id="strings-1">Strings</h3>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>str_len(s)</code></td>
+<td>Length</td>
+</tr>
+<tr class="even">
+<td><code>str_upper(s)</code>, <code>str_lower(s)</code></td>
+<td>Case conversion</td>
+</tr>
+<tr class="odd">
+<td><code>str_trim(s)</code></td>
+<td>Strip whitespace</td>
+</tr>
+<tr class="even">
+<td><code>str_split(s, delim)</code></td>
+<td>Split by delimiter</td>
+</tr>
+<tr class="odd">
+<td><code>str_join(arr, delim)</code></td>
+<td>Join array with delimiter</td>
+</tr>
+<tr class="even">
+<td><code>str_contains(s, sub)</code></td>
+<td>Substring test</td>
+</tr>
+<tr class="odd">
+<td><code>str_replace(s, old, new)</code></td>
+<td>Replace occurrences</td>
+</tr>
+<tr class="even">
+<td><code>str_starts_with(s, prefix)</code></td>
+<td>Prefix test</td>
+</tr>
+<tr class="odd">
+<td><code>str_ends_with(s, suffix)</code></td>
+<td>Suffix test</td>
+</tr>
+<tr class="even">
+<td><code>str_char_at(s, idx)</code></td>
+<td>Character at index</td>
+</tr>
+<tr class="odd">
+<td><code>str_substring(s, start, end)</code></td>
+<td>Substring extraction</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="tensor-operations" class="level3">
+<h3 class="anchored" data-anchor-id="tensor-operations">Tensor Operations</h3>
+<table class="table">
+<colgroup>
+<col style="width: 43%">
+<col style="width: 56%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>Tensor.from_vec(data, shape)</code></td>
+<td>Create tensor from flat data + shape</td>
+</tr>
+<tr class="even">
+<td><code>t.shape()</code></td>
+<td>Get shape</td>
+</tr>
+<tr class="odd">
+<td><code>t.sum()</code></td>
+<td>Sum all elements</td>
+</tr>
+<tr class="even">
+<td><code>t.mean()</code></td>
+<td>Mean of all elements</td>
+</tr>
+<tr class="odd">
+<td><code>t.transpose()</code></td>
+<td>Transpose</td>
+</tr>
+<tr class="even">
+<td><code>t.matmul(other)</code></td>
+<td>Matrix multiplication</td>
+</tr>
+<tr class="odd">
+<td><code>t.layer_norm(gamma, beta)</code></td>
+<td>Layer normalization</td>
+</tr>
+<tr class="even">
+<td><code>t.linear(weights, bias)</code></td>
+<td>Linear transform</td>
+</tr>
+<tr class="odd">
+<td><code>t.split_heads(n)</code></td>
+<td>Split into attention heads</td>
+</tr>
+<tr class="even">
+<td><code>t.merge_heads()</code></td>
+<td>Merge attention heads</td>
+</tr>
+<tr class="odd">
+<td><code>t.softmax()</code></td>
+<td>Softmax activation</td>
+</tr>
+<tr class="even">
+<td><code>t.relu()</code></td>
+<td>ReLU activation</td>
+</tr>
+</tbody>
+</table>
+<p>Tensor operations use SIMD acceleration internally but never use FMA, preserving bit-identical results.</p>
+</section>
+<section id="io" class="level3">
+<h3 class="anchored" data-anchor-id="io">I/O</h3>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>print(val)</code></td>
+<td>Print to stdout</td>
+</tr>
+<tr class="even">
+<td><code>read_file(path)</code></td>
+<td>Read file contents</td>
+</tr>
+<tr class="odd">
+<td><code>write_file(path, content)</code></td>
+<td>Write file</td>
+</tr>
+<tr class="even">
+<td><code>to_string(val)</code></td>
+<td>Convert to string representation</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="automatic-differentiation" class="level3">
+<h3 class="anchored" data-anchor-id="automatic-differentiation">Automatic Differentiation</h3>
+<p>CJC has built-in AD support via <code>cjc-ad</code>:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>dual(value, derivative)</code></td>
+<td>Create forward-mode dual number</td>
+</tr>
+<tr class="even">
+<td><code>grad(f, x)</code></td>
+<td>Compute gradient</td>
+</tr>
+<tr class="odd">
+<td><code>jacobian(f, x)</code></td>
+<td>Compute Jacobian matrix</td>
+</tr>
+</tbody>
+</table>
+<p>Forward-mode uses dual numbers; reverse-mode uses a deterministic tape with gradient graphs.</p>
+<hr>
+</section>
+</section>
+<section id="part-5-dataframe-operations" class="level2">
+<h2 class="anchored" data-anchor-id="part-5-dataframe-operations">Part 5 — DataFrame Operations</h2>
+<p>CJC includes a tidyverse-inspired DataFrame library (<code>cjc-data</code>) for tabular data manipulation:</p>
+<pre><code>let df = dataframe([
+    column("name", ["Alice", "Bob", "Charlie"]),
+    column("age", [30, 25, 35]),
+    column("score", [95.5, 87.3, 91.2]),
+]);
+
+// Filter, transform, aggregate
+df |&gt; filter(col("age") &gt; 25)
+   |&gt; mutate("grade", col("score") / 10.0)
+   |&gt; group_by(col("grade"))
+   |&gt; summarize("avg_age", mean(col("age")))</code></pre>
+<p>Key operations:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Operation</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>filter(predicate)</code></td>
+<td>Row selection</td>
+</tr>
+<tr class="even">
+<td><code>select(columns...)</code></td>
+<td>Column selection</td>
+</tr>
+<tr class="odd">
+<td><code>mutate(name, expr)</code></td>
+<td>Add/transform column</td>
+</tr>
+<tr class="even">
+<td><code>group_by(column)</code></td>
+<td>Group rows</td>
+</tr>
+<tr class="odd">
+<td><code>summarize(name, agg)</code></td>
+<td>Aggregate within groups</td>
+</tr>
+<tr class="even">
+<td><code>join(other, on)</code></td>
+<td>Join two DataFrames</td>
+</tr>
+<tr class="odd">
+<td><code>arrange(column)</code></td>
+<td>Sort by column</td>
+</tr>
+</tbody>
+</table>
+<hr>
+</section>
+<section id="part-6-visualization" class="level2">
+<h2 class="anchored" data-anchor-id="part-6-visualization">Part 6 — Visualization</h2>
+<p>The <code>cjc-vizor</code> crate provides grammar-of-graphics visualization:</p>
+<pre><code>let p = vizor_plot(categories, values);
+let p = p.geom_bar();
+let p = p.title("Quarterly Results");
+let p = p.size(800, 500);
+p.render();</code></pre>
+<p>Vizor supports bar charts, line plots, scatter plots, histograms, and heatmaps with configurable aesthetics (color, size, shape, faceting).</p>
+<hr>
+</section>
+<section id="part-7-quantum-computing-extensions" class="level2">
+<h2 class="anchored" data-anchor-id="part-7-quantum-computing-extensions">Part 7 — Quantum Computing Extensions</h2>
+<p>CJC v0.1.1 includes a comprehensive quantum simulation framework (<code>cjc-quantum</code>) with 45+ quantum builtins. The framework spans five simulation backends, each suited to different qubit scales and circuit types.</p>
+<section id="circuit-simulation-statevector-up-to-26-qubits" class="level3">
+<h3 class="anchored" data-anchor-id="circuit-simulation-statevector-up-to-26-qubits">Circuit Simulation (Statevector, up to ~26 qubits)</h3>
+<p>Full statevector simulation for small circuits:</p>
+<pre><code>// Create a Bell state
+let c = qubits(2);
+let c = q_h(c, 0);
+let c = q_cx(c, 0, 1);
+
+// Measure
+let probs = q_probs(c);
+print(probs);
+
+// Sample 1000 shots
+let results = q_sample(c, 1000, 42);</code></pre>
+<p>Available gates:</p>
+<table class="table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 34%">
+<col style="width: 44%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Gate</th>
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>H</td>
+<td><code>q_h(c, qubit)</code></td>
+<td>Hadamard</td>
+</tr>
+<tr class="even">
+<td>X, Y, Z</td>
+<td><code>q_x</code>, <code>q_y</code>, <code>q_z</code></td>
+<td>Pauli gates</td>
+</tr>
+<tr class="odd">
+<td>S, T</td>
+<td><code>q_s</code>, <code>q_t</code></td>
+<td>Phase gates</td>
+</tr>
+<tr class="even">
+<td>Rx, Ry, Rz</td>
+<td><code>q_rx(c, q, angle)</code></td>
+<td>Rotation gates</td>
+</tr>
+<tr class="odd">
+<td>CNOT</td>
+<td><code>q_cx(c, ctrl, tgt)</code></td>
+<td>Controlled-NOT</td>
+</tr>
+<tr class="even">
+<td>CZ</td>
+<td><code>q_cz(c, ctrl, tgt)</code></td>
+<td>Controlled-Z</td>
+</tr>
+<tr class="odd">
+<td>SWAP</td>
+<td><code>q_swap(c, q1, q2)</code></td>
+<td>SWAP</td>
+</tr>
+<tr class="even">
+<td>Toffoli</td>
+<td><code>q_toffoli(c, c1, c2, tgt)</code></td>
+<td>Three-qubit controlled-controlled-NOT</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="mps-simulation-up-to-50-qubits" class="level3">
+<h3 class="anchored" data-anchor-id="mps-simulation-up-to-50-qubits">MPS Simulation (up to 50+ qubits)</h3>
+<p>Matrix Product State simulation trades exactness for scalability via bond dimension truncation:</p>
+<pre><code>// 50-qubit GHZ state
+let mps = mps_new(50, 16);
+let mps = mps_h(mps, 0);
+for i in 0..49 {
+    mps = mps_cnot(mps, i, i + 1);
+}
+
+// Measure Z expectation on qubit 25
+let z = mps_z_expectation(mps, 25);
+
+// Compute Heisenberg energy
+let energy = mps_energy(mps, "heisenberg");</code></pre>
+<p><strong>New in v0.1.1</strong> — MPS canonical forms and SWAP networks:</p>
+<table class="table">
+<colgroup>
+<col style="width: 43%">
+<col style="width: 56%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Function</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>mps_left_canonicalize(mps)</code></td>
+<td>Left-canonical form via SVD sweep</td>
+</tr>
+<tr class="even">
+<td><code>mps_right_canonicalize(mps)</code></td>
+<td>Right-canonical form via SVD sweep</td>
+</tr>
+<tr class="odd">
+<td><code>mps_mixed_canonicalize(mps, center)</code></td>
+<td>Mixed-canonical form with orthogonality center</td>
+</tr>
+<tr class="even">
+<td><code>mps_swap(mps, q1, q2)</code></td>
+<td>Arbitrary-distance 2-qubit gates via SWAP network</td>
+</tr>
+</tbody>
+</table>
+<p>Canonical forms use sign-stabilized SVD to preserve bit-identical determinism.</p>
+</section>
+<section id="stabilizer-simulation-up-to-1000-qubits" class="level3">
+<h3 class="anchored" data-anchor-id="stabilizer-simulation-up-to-1000-qubits">Stabilizer Simulation (up to 1000+ qubits)</h3>
+<p>The CHP (Clifford) simulator efficiently handles Clifford circuits:</p>
+<pre><code>let s = stabilizer_new(100);
+let s = stabilizer_h(s, 0);
+for i in 0..99 {
+    s = stabilizer_cnot(s, i, i + 1);
+}
+let outcome = stabilizer_measure(s, 50, 42);</code></pre>
+<p>Stabilizer simulation runs in O(n^2) time and O(n^2) memory for n qubits — enabling circuits that are impossible with statevector simulation.</p>
+</section>
+<section id="density-matrix-mixed-states-and-noise" class="level3">
+<h3 class="anchored" data-anchor-id="density-matrix-mixed-states-and-noise">Density Matrix (Mixed States and Noise)</h3>
+<p>For simulating open quantum systems with decoherence:</p>
+<pre><code>let dm = density_new(2);
+let dm = density_gate(dm, "H", 0);
+let dm = density_cnot(dm, 0, 1);
+
+// Apply noise
+let dm = density_depolarize(dm, 0, 0.01);
+let dm = density_dephase(dm, 1, 0.02);
+
+// Diagnostics
+print(density_purity(dm));
+print(density_entropy(dm));</code></pre>
+</section>
+<section id="jordan-wigner-fermion-hamiltonians-new-in-v0.1.1" class="level3">
+<h3 class="anchored" data-anchor-id="jordan-wigner-fermion-hamiltonians-new-in-v0.1.1">Jordan-Wigner Fermion Hamiltonians (New in v0.1.1)</h3>
+<p>Map fermionic creation/annihilation operators to qubit Pauli strings. Pre-built molecular Hamiltonians for quantum chemistry:</p>
+<pre><code>// H2 molecule Hamiltonian
+let h = q_fermion_h2();
+print(q_fermion_n_terms(h));
+
+// LiH molecule Hamiltonian
+let h = q_fermion_lih();
+
+// Compute expectation value against a circuit
+let c = qubits(4);
+let c = q_h(c, 0);
+let c = q_cx(c, 0, 1);
+let energy = q_fermion_expectation(h, c);</code></pre>
+<p>The Jordan-Wigner transformation maps: <span class="math inline">\(a^\dagger_j = \frac{X_j - iY_j}{2} \otimes Z_{j-1} \otimes \cdots \otimes Z_0\)</span></p>
+<p>All Pauli terms are stored in <code>Vec</code> (not HashMap) for deterministic iteration. Expectation values use Kahan summation.</p>
+</section>
+<section id="suzuki-trotter-time-evolution-new-in-v0.1.1" class="level3">
+<h3 class="anchored" data-anchor-id="suzuki-trotter-time-evolution-new-in-v0.1.1">Suzuki-Trotter Time Evolution (New in v0.1.1)</h3>
+<p>Simulate quantum dynamics via product formula decomposition:</p>
+<pre><code>// Time-evolve a state under H2 Hamiltonian
+let h = q_fermion_h2();
+let c = qubits(4);
+let c = q_h(c, 0);
+
+// 2nd-order Trotter with 100 steps, evolving for time=1.0
+let final_state = q_trotter_evolve(h, c, 1.0, 100, 2);
+
+// Error bound for the approximation
+let error = q_trotter_error(h, 1.0, 100, 2);</code></pre>
+<ul>
+<li><strong>Order 1</strong>: Lie-Trotter — <span class="math inline">\(e^{-i(A+B)t} \approx (e^{-iAt/n} e^{-iBt/n})^n\)</span></li>
+<li><strong>Order 2</strong>: Strang splitting — symmetric product formula with <span class="math inline">\(O(\Delta t^3)\)</span> local error</li>
+</ul>
+<p>Diagonal Pauli strings (containing only I and Z) are optimized to O(N) phase rotations, skipping the O(N^2) general path.</p>
+</section>
+<section id="zero-noise-extrapolation-new-in-v0.1.1" class="level3">
+<h3 class="anchored" data-anchor-id="zero-noise-extrapolation-new-in-v0.1.1">Zero-Noise Extrapolation (New in v0.1.1)</h3>
+<p>Mitigate quantum hardware noise by extrapolating to the zero-noise limit:</p>
+<pre><code>// Richardson extrapolation from noisy measurements
+let scales = [1.0, 2.0, 3.0];
+let noisy_values = [-0.95, -0.82, -0.61];
+
+let result = q_zne_mitigate(scales, noisy_values);
+// result[0] = mitigated value (extrapolated to zero noise)
+// result[1] = Richardson coefficients
+
+// Simple linear extrapolation (2 points)
+let clean = q_zne_linear(1.0, -0.95, 2.0, -0.82);
+
+// Noise scaling
+let scaled_p = q_scale_noise(0.01, 3.0, "depolarizing");</code></pre>
+<p>Richardson extrapolation solves a Vandermonde system with partial pivoting. For polynomial noise models of degree <span class="math inline">\(d\)</span>, using <span class="math inline">\(d+1\)</span> scale factors gives exact recovery.</p>
+</section>
+<section id="vqe-variational-quantum-eigensolver" class="level3">
+<h3 class="anchored" data-anchor-id="vqe-variational-quantum-eigensolver">VQE (Variational Quantum Eigensolver)</h3>
+<pre><code>let energy = vqe_heisenberg(8, 16, 0.01, 100, 42);</code></pre>
+</section>
+<section id="qaoa-quantum-approximate-optimization" class="level3">
+<h3 class="anchored" data-anchor-id="qaoa-quantum-approximate-optimization">QAOA (Quantum Approximate Optimization)</h3>
+<pre><code>let graph = qaoa_graph_cycle(6);
+let result = qaoa_maxcut(graph, 16, 2, 0.05, 50, 42);</code></pre>
+</section>
+<section id="dmrg-density-matrix-renormalization-group" class="level3">
+<h3 class="anchored" data-anchor-id="dmrg-density-matrix-renormalization-group">DMRG (Density Matrix Renormalization Group)</h3>
+<pre><code>let energy = dmrg_heisenberg(20, 32, 10, 1e-8);</code></pre>
+</section>
+<section id="qec-quantum-error-correction" class="level3">
+<h3 class="anchored" data-anchor-id="qec-quantum-error-correction">QEC (Quantum Error Correction)</h3>
+<pre><code>let rate = qec_logical_error_rate(3, 0.01, 1000, 42);</code></pre>
+</section>
+<section id="qml-quantum-machine-learning" class="level3">
+<h3 class="anchored" data-anchor-id="qml-quantum-machine-learning">QML (Quantum Machine Learning)</h3>
+<p>Data re-uploading quantum neural network:</p>
+<pre><code>let result = qml_train(4, 3, 2, 16, 0.01, 50, 42, samples, labels);
+let accuracy = result[0];
+let loss_history = result[1];</code></pre>
+</section>
+<section id="dual-mode-backend" class="level3">
+<h3 class="anchored" data-anchor-id="dual-mode-backend">Dual-Mode Backend</h3>
+<p>Every quantum feature has two backends:</p>
+<ol type="1">
+<li><strong>Rust backend</strong> — optimized, compiled, fast</li>
+<li><strong>Pure CJC backend</strong> — inspectable, AD-compatible, modifiable</li>
+</ol>
+<p>Pass <code>"pure"</code> to constructor functions to use the pure backend. Operations automatically detect which backend a state uses.</p>
+<hr>
+</section>
+</section>
+<section id="part-8-complete-examples" class="level2">
+<h2 class="anchored" data-anchor-id="part-8-complete-examples">Part 8 — Complete Examples</h2>
+<section id="example-1-numerical-integration" class="level3">
+<h3 class="anchored" data-anchor-id="example-1-numerical-integration">Example 1: Numerical Integration</h3>
+<pre><code>fn trapz(f: fn(f64) -&gt; f64, a: f64, b: f64, n: i64) -&gt; f64 {
+    let h = (b - a) / n;
+    let mut sum = (f(a) + f(b)) / 2.0;
+    for i in 1..n {
+        sum = sum + f(a + i * h);
+    }
+    sum * h
+}
+
+fn main() -&gt; f64 {
+    let area = trapz(|x: f64| x * x, 0.0, 1.0, 1000);
+    print(f"Integral of x^2 from 0 to 1 = {area}");
+    area
+}</code></pre>
+</section>
+<section id="example-2-transformer-forward-pass" class="level3">
+<h3 class="anchored" data-anchor-id="example-2-transformer-forward-pass">Example 2: Transformer Forward Pass</h3>
+<pre><code>let batch    = 1;
+let seq_len  = 4;
+let model_dim = 8;
+let num_heads = 2;
+let head_dim  = model_dim / num_heads;
+
+let input_data = [
+    0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8,
+    0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9,
+    0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0,
+    0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1
+];
+let x = Tensor.from_vec(input_data, [1, 4, 8]);
+
+let x_norm = x.layer_norm(gamma, beta);
+let Q = x_norm.linear(Wq, bias_zero);
+let K = x_norm.linear(Wk, bias_zero);
+let V = x_norm.linear(Wv, bias_zero);
+
+let Q_heads = Q.split_heads(num_heads);
+let K_heads = K.split_heads(num_heads);
+let V_heads = V.split_heads(num_heads);
+
+let attn_out = attention(Q_heads, K_heads, V_heads);
+let attn_merged = attn_out.merge_heads();
+let attn_proj = attn_merged.linear(Wo, bias_zero);
+
+let x2 = x + attn_proj;
+print("Transformer block output shape:", x2.shape());</code></pre>
+</section>
+<section id="example-3-csv-etl-pipeline" class="level3">
+<h3 class="anchored" data-anchor-id="example-3-csv-etl-pipeline">Example 3: CSV ETL Pipeline</h3>
+<pre><code>let csv_data: ByteSlice = b"name,age,score\nAlice,30,95.5\nBob,25,87.3\nCharlie,35,91.2";
+
+let rows = csv_data.split_byte(b'\n');
+let header = rows[0];
+let header_fields = header.split_byte(b',');
+print(header_fields);
+
+let mut total_score = 0.0;
+let mut count = 0;
+for i in 1..rows.len() {
+    let fields = rows[i].split_byte(b',');
+    let name = fields[0];
+    let score = fields[2];
+    total_score = total_score + score;
+    count = count + 1;
+}
+print(f"Average score: {total_score / count}");</code></pre>
+</section>
+<section id="example-4-quantum-chemistry" class="level3">
+<h3 class="anchored" data-anchor-id="example-4-quantum-chemistry">Example 4: Quantum Chemistry</h3>
+<pre><code>// Build H2 Hamiltonian and compute ground state energy estimate
+let h = q_fermion_h2();
+print(f"H2 Hamiltonian has {q_fermion_n_terms(h)} Pauli terms");
+
+// Prepare a trial state
+let c = qubits(4);
+let c = q_ry(c, 0, 0.5);
+let c = q_ry(c, 1, -0.3);
+let c = q_cx(c, 0, 2);
+let c = q_cx(c, 1, 3);
+
+// Compute energy
+let energy = q_fermion_expectation(h, c);
+print(f"Trial energy: {energy}");
+
+// Time evolution
+let evolved = q_trotter_evolve(h, c, 0.5, 50, 2);
+print("Evolution complete");
+
+// Mitigate noise from hypothetical hardware
+let scales = [1.0, 1.5, 2.0];
+let noisy = [-1.05, -0.92, -0.71];
+let mitigated = q_zne_mitigate(scales, noisy);
+print(f"Mitigated energy: {mitigated[0]}");</code></pre>
+</section>
+<section id="example-5-statistical-analysis" class="level3">
+<h3 class="anchored" data-anchor-id="example-5-statistical-analysis">Example 5: Statistical Analysis</h3>
+<pre><code>let data = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+
+print(f"Mean: {mean(data)}");
+print(f"Std Dev: {std_dev(data)}");
+print(f"Median: {median(data)}");
+print(f"Skewness: {skewness(data)}");
+print(f"Kurtosis: {kurtosis(data)}");
+
+let groups = ntile(data, 4);
+print(f"Quartile groups: {groups}");
+
+let ranks = percent_rank(data);
+print(f"Percent ranks: {ranks}");
+
+// Non-parametric test
+let x = [1.0, 2.0, 3.0, 4.0, 5.0];
+let y = [2.0, 3.0, 4.0, 5.0, 6.0];
+let test = mann_whitney(x, y);
+print(f"p-value: {test.p_value}");</code></pre>
+<hr>
+</section>
+</section>
+<section id="part-9-cli-reference" class="level2">
+<h2 class="anchored" data-anchor-id="part-9-cli-reference">Part 9 — CLI Reference</h2>
+<p>CJC ships as a single binary with multiple subcommands:</p>
+<table class="table">
+<colgroup>
+<col style="width: 40%">
+<col style="width: 59%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Command</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>cjc run file.cjc</code></td>
+<td>Execute a program (AST interpreter)</td>
+</tr>
+<tr class="even">
+<td><code>cjc run file.cjc --mir</code></td>
+<td>Execute via MIR engine</td>
+</tr>
+<tr class="odd">
+<td><code>cjc run file.cjc --mir-opt</code></td>
+<td>Execute via MIR engine with optimizations</td>
+</tr>
+<tr class="even">
+<td><code>cjc check file.cjc</code></td>
+<td>Type-check without executing</td>
+</tr>
+<tr class="odd">
+<td><code>cjc lex file.cjc</code></td>
+<td>Show token stream</td>
+</tr>
+<tr class="even">
+<td><code>cjc parse file.cjc</code></td>
+<td>Show parse tree</td>
+</tr>
+<tr class="odd">
+<td><code>cjc ast file.cjc</code></td>
+<td>Dump AST</td>
+</tr>
+<tr class="even">
+<td><code>cjc hir file.cjc</code></td>
+<td>Dump HIR</td>
+</tr>
+<tr class="odd">
+<td><code>cjc mir file.cjc</code></td>
+<td>Dump MIR</td>
+</tr>
+<tr class="even">
+<td><code>cjc inspect file.cjc</code></td>
+<td>Show AST metrics + validation</td>
+</tr>
+<tr class="odd">
+<td><code>cjc repl</code></td>
+<td>Interactive REPL</td>
+</tr>
+<tr class="even">
+<td><code>cjc bench file.cjc</code></td>
+<td>Benchmark execution</td>
+</tr>
+</tbody>
+</table>
+<hr>
+</section>
+<section id="part-10-design-decisions-and-trade-offs" class="level2">
+<h2 class="anchored" data-anchor-id="part-10-design-decisions-and-trade-offs">Part 10 — Design Decisions and Trade-offs</h2>
+<section id="why-no-hashmap" class="level3">
+<h3 class="anchored" data-anchor-id="why-no-hashmap">Why No HashMap?</h3>
+<p><code>HashMap</code> uses random iteration order in Rust (and most languages). This means any code that iterates over a hash map produces non-deterministic results. CJC uses <code>BTreeMap</code> and <code>BTreeSet</code> exclusively, trading some average-case performance for guaranteed deterministic iteration.</p>
+</section>
+<section id="why-no-fma" class="level3">
+<h3 class="anchored" data-anchor-id="why-no-fma">Why No FMA?</h3>
+<p>Fused multiply-add (FMA) computes <code>a * b + c</code> in a single instruction with one rounding step instead of two. This is faster and more accurate — but it produces different results depending on whether the hardware has FMA support. CJC uses <code>mul_fixed</code> (separate multiply and add) to guarantee identical results across all platforms.</p>
+</section>
+<section id="why-two-execution-engines" class="level3">
+<h3 class="anchored" data-anchor-id="why-two-execution-engines">Why Two Execution Engines?</h3>
+<p>The AST interpreter (<code>cjc-eval</code>) is simpler and easier to debug. The MIR executor (<code>cjc-mir-exec</code>) is faster and supports optimization. Having both means:</p>
+<ul>
+<li>New features can be prototyped in the interpreter first</li>
+<li>Parity tests catch subtle lowering bugs</li>
+<li>Users can choose the right trade-off for their workload</li>
+</ul>
+</section>
+<section id="why-vec-based-pauli-terms" class="level3">
+<h3 class="anchored" data-anchor-id="why-vec-based-pauli-terms">Why Vec-Based Pauli Terms?</h3>
+<p>Quantum Hamiltonians are sums of Pauli terms. A natural representation is a hash map from Pauli string to coefficient. CJC uses <code>Vec&lt;PauliTerm&gt;</code> instead, because:</p>
+<ul>
+<li>Iteration order is deterministic</li>
+<li>No hashing overhead for small Hamiltonians</li>
+<li>Summation order is fixed, so Kahan compensation works reliably</li>
+</ul>
+</section>
+<section id="why-sign-stabilized-svd" class="level3">
+<h3 class="anchored" data-anchor-id="why-sign-stabilized-svd">Why Sign-Stabilized SVD?</h3>
+<p>SVD is ambiguous in the signs of singular vectors. Two runs of the same SVD can produce vectors that differ by a sign flip. CJC’s MPS canonical form uses a sign convention (largest-magnitude element is positive) to eliminate this ambiguity. This is critical for deterministic tensor network simulations.</p>
+<hr>
+</section>
+</section>
+<section id="whats-next" class="level2">
+<h2 class="anchored" data-anchor-id="whats-next">What’s Next</h2>
+<p>CJC v0.1.1 lays the groundwork for quantum-classical hybrid algorithms, noise-aware quantum simulation, and tensor network methods. Upcoming work includes:</p>
+<ul>
+<li><strong>Multi-file module system</strong> — programs that span multiple files with deterministic resolution</li>
+<li><strong>Default parameters and variadic functions</strong> — <code>fn solve(x: f64, tol: f64 = 1e-6)</code></li>
+<li><strong>Decorator syntax</strong> — <code>@log @timed fn train(x: Tensor)</code></li>
+<li><strong>Sparse eigensolvers</strong> — Lanczos and Arnoldi with deterministic iteration</li>
+<li><strong>MIR autodiff integration</strong> — gradients flowing through the MIR optimization pipeline</li>
+</ul>
+<p>The language is growing, but the invariants remain fixed: no hidden allocations, no non-deterministic operations, no silent precision loss. Same seed, same bits, always.</p>
+<hr>
+<div class="callout callout-style-simple callout-note no-icon">
+<div class="callout-body d-flex">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-body-container">
+<p><strong>CJC is open source and under active development.</strong> The codebase is roughly 123,000 lines of Rust across 21 crates, with zero external runtime dependencies. If deterministic numerical computing interests you, check out the <a href="../../../blog/posts/introducing-cjc/index.html">introductory post</a> or the <a href="../../../blog/posts/cjc-v0.1-released/index.html">v0.1.0 release notes</a>.</p>
+</div>
+</div>
+</div>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const disableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'prefetch';
+    }
+  }
+  const enableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'stylesheet';
+    }
+  }
+  const manageTransitions = (selector, allowTransitions) => {
+    const els = window.document.querySelectorAll(selector);
+    for (let i=0; i < els.length; i++) {
+      const el = els[i];
+      if (allowTransitions) {
+        el.classList.remove('notransition');
+      } else {
+        el.classList.add('notransition');
+      }
+    }
+  }
+  const toggleColorMode = (alternate) => {
+    // Switch the stylesheets
+    const alternateStylesheets = window.document.querySelectorAll('link.quarto-color-scheme.quarto-color-alternate');
+    manageTransitions('#quarto-margin-sidebar .nav-link', false);
+    if (alternate) {
+      enableStylesheet(alternateStylesheets);
+      for (const sheetNode of alternateStylesheets) {
+        if (sheetNode.id === "quarto-bootstrap") {
+          toggleBodyColorMode(sheetNode);
+        }
+      }
+    } else {
+      disableStylesheet(alternateStylesheets);
+      toggleBodyColorPrimary();
+    }
+    manageTransitions('#quarto-margin-sidebar .nav-link', true);
+    // Switch the toggles
+    const toggles = window.document.querySelectorAll('.quarto-color-scheme-toggle');
+    for (let i=0; i < toggles.length; i++) {
+      const toggle = toggles[i];
+      if (toggle) {
+        if (alternate) {
+          toggle.classList.add("alternate");     
+        } else {
+          toggle.classList.remove("alternate");
+        }
+      }
+    }
+    // Hack to workaround the fact that safari doesn't
+    // properly recolor the scrollbar when toggling (#1455)
+    if (navigator.userAgent.indexOf('Safari') > 0 && navigator.userAgent.indexOf('Chrome') == -1) {
+      manageTransitions("body", false);
+      window.scrollTo(0, 1);
+      setTimeout(() => {
+        window.scrollTo(0, 0);
+        manageTransitions("body", true);
+      }, 40);  
+    }
+  }
+  const isFileUrl = () => { 
+    return window.location.protocol === 'file:';
+  }
+  const hasAlternateSentinel = () => {  
+    let styleSentinel = getColorSchemeSentinel();
+    if (styleSentinel !== null) {
+      return styleSentinel === "alternate";
+    } else {
+      return false;
+    }
+  }
+  const setStyleSentinel = (alternate) => {
+    const value = alternate ? "alternate" : "default";
+    if (!isFileUrl()) {
+      window.localStorage.setItem("quarto-color-scheme", value);
+    } else {
+      localAlternateSentinel = value;
+    }
+  }
+  const getColorSchemeSentinel = () => {
+    if (!isFileUrl()) {
+      const storageValue = window.localStorage.getItem("quarto-color-scheme");
+      return storageValue != null ? storageValue : localAlternateSentinel;
+    } else {
+      return localAlternateSentinel;
+    }
+  }
+  let localAlternateSentinel = 'default';
+  // Dark / light mode switch
+  window.quartoToggleColorScheme = () => {
+    // Read the current dark / light value 
+    let toAlternate = !hasAlternateSentinel();
+    toggleColorMode(toAlternate);
+    setStyleSentinel(toAlternate);
+  };
+  // Ensure there is a toggle, if there isn't float one in the top right
+  if (window.document.querySelector('.quarto-color-scheme-toggle') === null) {
+    const a = window.document.createElement('a');
+    a.classList.add('top-right');
+    a.classList.add('quarto-color-scheme-toggle');
+    a.href = "";
+    a.onclick = function() { try { window.quartoToggleColorScheme(); } catch {} return false; };
+    const i = window.document.createElement("i");
+    i.classList.add('bi');
+    a.appendChild(i);
+    window.document.body.appendChild(a);
+  }
+  // Switch to dark mode if need be
+  if (hasAlternateSentinel()) {
+    toggleColorMode(true);
+  } else {
+    toggleColorMode(false);
+  }
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+      &nbsp;
+    </div>   
+    <div class="nav-footer-center">© 2026 Adam Ezzat. Built with <a href="https://quarto.org/">Quarto</a>.</div>
+    <div class="nav-footer-right">
+      &nbsp;
+    </div>
+  </div>
+</footer>
+
+
+
+<script src="../../../site_libs/quarto-html/zenscroll-min.js"></script>
+</body></html>
