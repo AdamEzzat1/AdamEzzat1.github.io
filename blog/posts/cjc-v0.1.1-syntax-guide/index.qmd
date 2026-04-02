@@ -12,7 +12,6 @@ description: "The complete syntax guide for CJC v0.1.1 — covering core languag
 
 <div class="stats-row">
 <div class="stat"><span class="number">21</span><span class="stat-label">Rust crates</span></div>
-<div class="stat"><span class="number">123K</span><span class="stat-label">lines of code</span></div>
 <div class="stat"><span class="number">287+</span><span class="stat-label">builtins</span></div>
 <div class="stat"><span class="number">1,847</span><span class="stat-label">tests passing</span></div>
 </div>
@@ -1075,5 +1074,5 @@ The language is growing, but the invariants remain fixed: no hidden allocations,
 ---
 
 ::: {.callout-note appearance="minimal"}
-**CJC is open source and under active development.** The codebase is roughly 123,000 lines of Rust across 21 crates, with zero external runtime dependencies. If deterministic numerical computing interests you, check out the [introductory post](../introducing-cjc/index.qmd) or the [v0.1.0 release notes](../cjc-v0.1-released/index.qmd).
+**CJC is open source and under active development.** The codebase spans 21 Rust crates with zero external runtime dependencies. If deterministic numerical computing interests you, check out the [introductory post](../introducing-cjc/index.qmd) or the [v0.1.0 release notes](../cjc-v0.1-released/index.qmd).
 :::

@@ -27,9 +27,6 @@
 <span class="number">21</span><span class="stat-label">Rust crates</span>
 </div>
 <div class="stat">
-<span class="number">123K</span><span class="stat-label">lines of code</span>
-</div>
-<div class="stat">
 <span class="number">287+</span><span class="stat-label">builtins</span>
 </div>
 <div class="stat">
@@ -1488,7 +1485,7 @@ print(f"p-value: {test.p_value}");</code></pre>
 <i class="callout-icon no-icon"></i>
 </div>
 <div class="callout-body-container">
-<p><strong>CJC is open source and under active development.</strong> The codebase is roughly 123,000 lines of Rust across 21 crates, with zero external runtime dependencies. If deterministic numerical computing interests you, check out the <a href="../../../blog/posts/introducing-cjc/index.html">introductory post</a> or the <a href="../../../blog/posts/cjc-v0.1-released/index.html">v0.1.0 release notes</a>.</p>
+<p><strong>CJC is open source and under active development.</strong> The codebase spans 21 Rust crates with zero external runtime dependencies. If deterministic numerical computing interests you, check out the <a href="../../../blog/posts/introducing-cjc/index.html">introductory post</a> or the <a href="../../../blog/posts/cjc-v0.1-released/index.html">v0.1.0 release notes</a>.</p>
 </div>
 </div>
 </div>

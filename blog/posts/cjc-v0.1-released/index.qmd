@@ -717,7 +717,7 @@ These are all solvable. None of them compromise the core promise: deterministic,
 | Built-in functions | 282+ |
 | Test count | 5,600+ |
 | External runtime dependencies | 0 |
-| Binary size | ~6.4 MB |
+| Binary size | 6.8 MB |
 | Supported platforms | Windows, macOS, Linux |
 | `HashMap` instances in codebase | 0 |
 
