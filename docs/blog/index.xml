@@ -1461,94 +1461,273 @@ print(f"p-value: {test.p_value}");</code></pre>
 </section>
 <section id="phase-1-cli-suite-data-pipeline-tools" class="level3">
 <h3 class="anchored" data-anchor-id="phase-1-cli-suite-data-pipeline-tools">Phase 1 CLI Suite — Data &amp; Pipeline Tools</h3>
-<table class="table">
-<colgroup>
-<col style="width: 40%">
-<col style="width: 59%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Command</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>cjc view [path]</code></td>
-<td>Deterministic directory listing with hashes</td>
-</tr>
-<tr class="even">
-<td><code>cjc proof file.cjc</code></td>
-<td>Determinism and reproducibility profiler</td>
-</tr>
-<tr class="odd">
-<td><code>cjc flow [file.csv]</code></td>
-<td>Streaming computation engine (stdin or CSV)</td>
-</tr>
-<tr class="even">
-<td><code>cjc patch file.csv</code></td>
-<td>Type-aware data transformation (impute, replace, rename, drop)</td>
-</tr>
-<tr class="odd">
-<td><code>cjc seek [path] [pattern]</code></td>
-<td>Deterministic file discovery</td>
-</tr>
-<tr class="even">
-<td><code>cjc drift file_a file_b</code></td>
-<td>Mathematical and data diff engine</td>
-</tr>
-<tr class="odd">
-<td><code>cjc forge run file.cjc</code></td>
-<td>Content-addressable pipeline runner with caching</td>
-</tr>
-</tbody>
-</table>
+<section id="cjc-view-path-deterministic-directory-listing-with-hashes" class="level4">
+<h4 class="anchored" data-anchor-id="cjc-view-path-deterministic-directory-listing-with-hashes"><code>cjc view [path]</code> — Deterministic directory listing with hashes</h4>
+<pre><code>$ cjc view examples/
+
+  examples/ (17 entries)
+
+┌─────────────────────────────────┬──────┬───────────┬─────────┬──────┐
+│ Name                            │ Kind │ Size      │ Effects │ Hash │
+├─────────────────────────────────┼──────┼───────────┼─────────┼──────┤
+│ examples/etl_csv_parse.cjc      │ cjc  │ 774 B     │ -       │ -    │
+│ examples/nlp_tokenize.cjc       │ cjc  │ 766 B     │ -       │ -    │
+│ examples/transformer_forward.cjc│ cjc  │ 5.7 KiB   │ -       │ -    │
+│ examples/vizor_bar.cjc          │ cjc  │ 439 B     │ -       │ -    │
+│ ...                             │      │           │         │      │
+└─────────────────────────────────┴──────┴───────────┴─────────┴──────┘</code></pre>
+</section>
+<section id="cjc-proof-file.cjc-determinism-and-reproducibility-profiler" class="level4">
+<h4 class="anchored" data-anchor-id="cjc-proof-file.cjc-determinism-and-reproducibility-profiler"><code>cjc proof file.cjc</code> — Determinism and reproducibility profiler</h4>
+<p>Runs the program multiple times and verifies that stdout, exit status, and GC behavior are identical across runs.</p>
+<pre><code>$ cjc proof fibonacci.cjc
+
+[proof] Running 3 iterations with seed 42...
+55
+55
+55
+
+┌──────────────────────────┬────────┐
+│ Check                    │ Status │
+├──────────────────────────┼────────┤
+│ stdout identical         │ PASS   │
+│ exit status identical    │ PASS   │
+│ GC collections identical │ PASS   │
+└──────────────────────────┴────────┘
+
+Verdict: PASS (3 runs, seed=42)</code></pre>
+</section>
+<section id="cjc-flow-file.csv-streaming-computation-engine" class="level4">
+<h4 class="anchored" data-anchor-id="cjc-flow-file.csv-streaming-computation-engine"><code>cjc flow [file.csv]</code> — Streaming computation engine</h4>
+<p>Applies aggregation operations to CSV columns. Reads from stdin if no file is given.</p>
+<pre><code>$ cjc flow data.csv --op sum
+
+┌────────┬───────────┐
+│ Column │ sum       │
+├────────┼───────────┤
+│ a      │ 12.000000 │
+│ b      │ 15.000000 │
+│ c      │ 18.000000 │
+└────────┴───────────┘
+(3 rows processed)</code></pre>
+</section>
+<section id="cjc-patch-file.csv-type-aware-data-transformation" class="level4">
+<h4 class="anchored" data-anchor-id="cjc-patch-file.csv-type-aware-data-transformation"><code>cjc patch file.csv</code> — Type-aware data transformation</h4>
+<p>Apply transforms like rename, drop, impute, and replace to CSV data.</p>
+<pre><code>$ cjc patch data.csv --rename a x
+
+x,b,c
+1,2,3
+4,5,6
+7,8,9
+patched 3 rows</code></pre>
+</section>
+<section id="cjc-seek-path-pattern-deterministic-file-discovery" class="level4">
+<h4 class="anchored" data-anchor-id="cjc-seek-path-pattern-deterministic-file-discovery"><code>cjc seek [path] [pattern]</code> — Deterministic file discovery</h4>
+<p>Find files by type, content, or size with deterministic ordering.</p>
+<pre><code>$ cjc seek examples/ --type cjc
+
+examples/etl_csv_parse.cjc
+examples/nlp_tokenize.cjc
+examples/nlp_vocab_count.cjc
+examples/piml_demo.cjc
+examples/pinn_demo.cjc
+examples/transformer_forward.cjc
+examples/vizor_bar.cjc
+...
+11 files found</code></pre>
+</section>
+<section id="cjc-drift-file_a-file_b-mathematical-and-data-diff-engine" class="level4">
+<h4 class="anchored" data-anchor-id="cjc-drift-file_a-file_b-mathematical-and-data-diff-engine"><code>cjc drift file_a file_b</code> — Mathematical and data diff engine</h4>
+<p>Compares two files cell-by-cell with optional numeric tolerance.</p>
+<pre><code>$ cjc drift a.csv b.csv --csv
+
+┌──────────────────┬──────────┐
+│ Metric           │ Value    │
+├──────────────────┼──────────┤
+│ Rows (A)         │ 3        │
+│ Rows (B)         │ 3        │
+│ Cell differences │ 1        │
+│ NaN divergences  │ 0        │
+│ Max deviation    │ 1.000000 │
+│ Frobenius norm   │ 1.000000 │
+└──────────────────┴──────────┘
+
+First differences:
+  [3,3]: "6" → "7"</code></pre>
+</section>
+<section id="cjc-forge-run-file.cjc-content-addressable-pipeline-runner" class="level4">
+<h4 class="anchored" data-anchor-id="cjc-forge-run-file.cjc-content-addressable-pipeline-runner"><code>cjc forge run file.cjc</code> — Content-addressable pipeline runner</h4>
+<p>Runs a program, hashes the output, and caches the result. Re-running with the same source skips execution.</p>
+<pre><code>$ cjc forge run fibonacci.cjc
+
+55
+┌──────────┬──────────────────────────────────────────────────────────────────┐
+│ Property │ Value                                                            │
+├──────────┼──────────────────────────────────────────────────────────────────┤
+│ Source   │ fibonacci.cjc                                                    │
+│ Seed     │ 42                                                               │
+│ SHA-256  │ 02d20bbd7e394ad5999a4cebabac9619732c343a4cac99470c03e23ba2bdc2bc │
+│ Artifact │ .cjc-forge/02d20bbd...bdc2bc.artifact                            │
+└──────────┴──────────────────────────────────────────────────────────────────┘
+forged</code></pre>
+</section>
 </section>
 <section id="phase-2-cli-suite-analysis-diagnostics" class="level3">
 <h3 class="anchored" data-anchor-id="phase-2-cli-suite-analysis-diagnostics">Phase 2 CLI Suite — Analysis &amp; Diagnostics</h3>
-<table class="table">
-<colgroup>
-<col style="width: 40%">
-<col style="width: 59%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Command</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>cjc inspect file</code></td>
-<td>Deep file inspection (.cjc, .csv, .snap, or generic)</td>
-</tr>
-<tr class="even">
-<td><code>cjc schema file.csv</code></td>
-<td>CSV/TSV schema inference (types, nulls, uniques)</td>
-</tr>
-<tr class="odd">
-<td><code>cjc trace file.cjc</code></td>
-<td>Deterministic execution tracing</td>
-</tr>
-<tr class="even">
-<td><code>cjc mem file.cjc</code></td>
-<td>Runtime memory visibility</td>
-</tr>
-<tr class="odd">
-<td><code>cjc bench file.cjc</code></td>
-<td>Performance benchmarking with warmup</td>
-</tr>
-<tr class="even">
-<td><code>cjc pack file.cjc</code></td>
-<td>Reproducible packaging</td>
-</tr>
-<tr class="odd">
-<td><code>cjc doctor [path]</code></td>
-<td>Project diagnostics and health checks</td>
-</tr>
-</tbody>
-</table>
+<section id="cjc-inspect-file-deep-file-inspection" class="level4">
+<h4 class="anchored" data-anchor-id="cjc-inspect-file-deep-file-inspection"><code>cjc inspect file</code> — Deep file inspection</h4>
+<p>Analyzes <code>.cjc</code>, <code>.csv</code>, <code>.snap</code>, or generic files. For CJC source, reports parse results, function signatures, and structural statistics.</p>
+<pre><code>$ cjc inspect fibonacci.cjc
+
+┌──────────────┬────────────────┐
+│ Property     │ Value          │
+├──────────────┼────────────────┤
+│ File         │ fibonacci.cjc  │
+│ Type         │ cjc source     │
+│ Size         │ 192 B          │
+│ Lines        │ 10             │
+│ Parse errors │ 0              │
+│ Functions    │ 2              │
+│ Structs      │ 0              │
+│ Let bindings │ 0              │
+└──────────────┴────────────────┘
+
+Functions:
+  fn fibonacci(n: i64)
+  fn main()</code></pre>
+</section>
+<section id="cjc-schema-file.csv-csvtsv-schema-inference" class="level4">
+<h4 class="anchored" data-anchor-id="cjc-schema-file.csv-csvtsv-schema-inference"><code>cjc schema file.csv</code> — CSV/TSV schema inference</h4>
+<p>Infers column types, null counts, unique values, and numeric ranges from CSV data.</p>
+<pre><code>$ cjc schema data.csv
+
+Schema for `data.csv` (3 rows sampled):
+
+┌────────┬──────┬───────┬───────┬────────┬────────┬────────┐
+│ Column │ Type │ Nulls │ Total │ Unique │ Min    │ Max    │
+├────────┼──────┼───────┼───────┼────────┼────────┼────────┤
+│ a      │ int  │ 0     │ 3     │ 3      │ 1.0000 │ 7.0000 │
+│ b      │ int  │ 0     │ 3     │ 3      │ 2.0000 │ 8.0000 │
+│ c      │ int  │ 0     │ 3     │ 3      │ 3.0000 │ 9.0000 │
+└────────┴──────┴───────┴───────┴────────┴────────┴────────┘</code></pre>
+</section>
+<section id="cjc-trace-file.cjc-deterministic-execution-tracing" class="level4">
+<h4 class="anchored" data-anchor-id="cjc-trace-file.cjc-deterministic-execution-tracing"><code>cjc trace file.cjc</code> — Deterministic execution tracing</h4>
+<p>Traces parse time, execution time, AST structure, and runtime behavior.</p>
+<pre><code>$ cjc trace fibonacci.cjc
+
+[trace] Tracing `fibonacci.cjc`...
+
+┌────────────┬──────────┐
+│ Phase      │ Detail   │
+├────────────┼──────────┤
+│ Parse time │ 0.120 ms │
+│ Exec time  │ 1.022 ms │
+│ Seed       │ 42       │
+│ Status     │ OK       │
+└────────────┴──────────┘
+
+┌──────────────┬───────┐
+│ AST Element  │ Count │
+├──────────────┼───────┤
+│ Functions    │ 2     │
+│ Structs      │ 0     │
+│ Let bindings │ 0     │
+│ Statements   │ 0     │
+│ Decorators   │ 0     │
+└──────────────┴───────┘
+
+┌────────────────┬───────┐
+│ Runtime        │ Value │
+├────────────────┼───────┤
+│ Output lines   │ 1     │
+│ GC collections │ 0     │
+└────────────────┴───────┘</code></pre>
+</section>
+<section id="cjc-mem-file.cjc-runtime-memory-visibility" class="level4">
+<h4 class="anchored" data-anchor-id="cjc-mem-file.cjc-runtime-memory-visibility"><code>cjc mem file.cjc</code> — Runtime memory visibility</h4>
+<p>Profiles GC collections, heap object counts, and execution time.</p>
+<pre><code>$ cjc mem fibonacci.cjc
+
+[mem] Memory profile for `fibonacci.cjc` (1 run, seed=42)
+
+┌───────────────────────┬──────────┐
+│ Metric                │ Value    │
+├───────────────────────┼──────────┤
+│ GC collections (avg)  │ 0.00     │
+│ GC stable across runs │ true     │
+│ GC heap objects (max) │ 0        │
+│ Output lines          │ 1        │
+│ Output bytes          │ 2        │
+│ Avg exec time         │ 755.0 us │
+└───────────────────────┴──────────┘</code></pre>
+</section>
+<section id="cjc-bench-file.cjc-performance-benchmarking" class="level4">
+<h4 class="anchored" data-anchor-id="cjc-bench-file.cjc-performance-benchmarking"><code>cjc bench file.cjc</code> — Performance benchmarking</h4>
+<p>Runs warmup iterations, then measured iterations with statistical analysis.</p>
+<pre><code>$ cjc bench fibonacci.cjc
+
+[bench] Benchmarking `fibonacci.cjc` (1 warmup + 10 measured runs, seed=42)
+
+┌──────────────┬─────────────────┐
+│ Metric       │ Value           │
+├──────────────┼─────────────────┤
+│ Parse time   │ 129.0 us        │
+│ Mean         │ 647.8 us        │
+│ Median       │ 628.5 us        │
+│ Min          │ 438.0 us        │
+│ Max          │ 808.0 us        │
+│ Std dev      │ 111.6 us        │
+│ CV           │ 17.2%           │
+│ P95          │ 808.0 us        │
+│ Throughput   │ 1543.7 runs/sec │
+└──────────────┴─────────────────┘</code></pre>
+</section>
+<section id="cjc-pack-file.cjc-reproducible-packaging" class="level4">
+<h4 class="anchored" data-anchor-id="cjc-pack-file.cjc-reproducible-packaging"><code>cjc pack file.cjc</code> — Reproducible packaging</h4>
+<p>Bundles source files into a content-addressed package with manifest hashes.</p>
+<pre><code>$ cjc pack fibonacci.cjc --dry-run
+
+Dry run — would create `fibonacci.pack`:
+
+┌───────────────┬───────┬──────────────────┐
+│ File          │ Size  │ Hash             │
+├───────────────┼───────┼──────────────────┤
+│ fibonacci.cjc │ 192 B │ 3402c8cc3d398ba2 │
+└───────────────┴───────┴──────────────────┘
+Total: 1 files, 192 B
+Manifest hash: fce3865dd0fb4816</code></pre>
+</section>
+<section id="cjc-doctor-path-project-diagnostics-and-health-checks" class="level4">
+<h4 class="anchored" data-anchor-id="cjc-doctor-path-project-diagnostics-and-health-checks"><code>cjc doctor [path]</code> — Project diagnostics and health checks</h4>
+<p>Scans a directory for CJC source files and reports parse errors, type issues, and other warnings.</p>
+<pre><code>$ cjc doctor examples/
+
+[doctor] Diagnosing `examples/`...
+
+┌──────────────────┬───────┐
+│ Category         │ Count │
+├──────────────────┼───────┤
+│ CJC source files │ 11    │
+│ Snap files       │ 0     │
+│ CSV/TSV files    │ 0     │
+│ Total files      │ 17    │
+└──────────────────┴───────┘
+
+  [WARN] examples/etl_csv_parse.cjc — 3 type issue(s)
+  [WARN] examples/transformer_forward.cjc — 50 type issue(s)
+  ...
+
+┌──────────┬───────┐
+│ Severity │ Count │
+├──────────┼───────┤
+│ Warnings │ 9     │
+└──────────┴───────┘
+
+OK (with warnings)</code></pre>
 <hr>
+</section>
 </section>
 </section>
 <section id="part-10-design-decisions-and-trade-offs" class="level2">
