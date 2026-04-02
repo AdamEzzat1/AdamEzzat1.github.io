@@ -1008,22 +1008,56 @@ print(f"p-value: {test.p_value}");
 
 ## Part 9 — CLI Reference
 
-CJC ships as a single binary with multiple subcommands:
+CJC ships as a single binary with 22 subcommands across three tiers.
+
+### Core Commands
 
 | Command | Description |
 |---------|-------------|
-| `cjc run file.cjc` | Execute a program (AST interpreter) |
-| `cjc run file.cjc --mir` | Execute via MIR engine |
-| `cjc run file.cjc --mir-opt` | Execute via MIR engine with optimizations |
-| `cjc check file.cjc` | Type-check without executing |
+| `cjc run file.cjc` | Execute a program (AST tree-walk interpreter) |
+| `cjc run file.cjc --mir-opt` | Execute via MIR engine with optimizations (CF + DCE) |
+| `cjc run file.cjc --mir-mono` | Execute with MIR monomorphization |
 | `cjc lex file.cjc` | Show token stream |
-| `cjc parse file.cjc` | Show parse tree |
-| `cjc ast file.cjc` | Dump AST |
-| `cjc hir file.cjc` | Dump HIR |
-| `cjc mir file.cjc` | Dump MIR |
-| `cjc inspect file.cjc` | Show AST metrics + validation |
-| `cjc repl` | Interactive REPL |
-| `cjc bench file.cjc` | Benchmark execution |
+| `cjc parse file.cjc` | Parse and pretty-print AST |
+| `cjc check file.cjc` | Type-check without executing |
+| `cjc repl` | Interactive REPL (supports `:ast`, `:mir`, `:type`, `:env`, `:seed` meta-commands) |
+
+### Global Flags (for core commands)
+
+| Flag | Description |
+|------|-------------|
+| `--seed N` | Set RNG seed (default: 42) |
+| `--reproducible` | Enable reproducibility mode |
+| `--time` | Print execution time |
+| `--mir-opt` | Enable MIR optimizations |
+| `--mir-mono` | Enable MIR monomorphization |
+| `--multi-file` | Enable multi-file module resolution |
+| `--color` / `--no-color` | Force color output on/off |
+| `--diagnostic-format rich\|short` | Diagnostic output format |
+
+### Phase 1 CLI Suite — Data & Pipeline Tools
+
+| Command | Description |
+|---------|-------------|
+| `cjc view [path]` | Deterministic directory listing with hashes |
+| `cjc proof file.cjc` | Determinism and reproducibility profiler |
+| `cjc flow [file.csv]` | Streaming computation engine (stdin or CSV) |
+| `cjc patch file.csv` | Type-aware data transformation (impute, replace, rename, drop) |
+| `cjc seek [path] [pattern]` | Deterministic file discovery |
+| `cjc drift file_a file_b` | Mathematical and data diff engine |
+| `cjc forge run file.cjc` | Content-addressable pipeline runner with caching |
+
+### Phase 2 CLI Suite — Analysis & Diagnostics
+
+| Command | Description |
+|---------|-------------|
+| `cjc inspect file` | Deep file inspection (.cjc, .csv, .snap, or generic) |
+| `cjc schema file.csv` | CSV/TSV schema inference (types, nulls, uniques) |
+| `cjc trace file.cjc` | Deterministic execution tracing |
+| `cjc mem file.cjc` | Runtime memory visibility |
+| `cjc bench file.cjc` | Performance benchmarking with warmup |
+| `cjc pack file.cjc` | Reproducible packaging |
+| `cjc doctor [path]` | Project diagnostics and health checks |
 
 ---
 

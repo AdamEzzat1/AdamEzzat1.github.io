@@ -235,7 +235,13 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#example-4-quantum-chemistry" id="toc-example-4-quantum-chemistry" class="nav-link" data-scroll-target="#example-4-quantum-chemistry">Example 4: Quantum Chemistry</a></li>
   <li><a href="#example-5-statistical-analysis" id="toc-example-5-statistical-analysis" class="nav-link" data-scroll-target="#example-5-statistical-analysis">Example 5: Statistical Analysis</a></li>
   </ul></li>
-  <li><a href="#part-9-cli-reference" id="toc-part-9-cli-reference" class="nav-link" data-scroll-target="#part-9-cli-reference">Part 9 — CLI Reference</a></li>
+  <li><a href="#part-9-cli-reference" id="toc-part-9-cli-reference" class="nav-link" data-scroll-target="#part-9-cli-reference">Part 9 — CLI Reference</a>
+  <ul class="collapse">
+  <li><a href="#core-commands" id="toc-core-commands" class="nav-link" data-scroll-target="#core-commands">Core Commands</a></li>
+  <li><a href="#global-flags-for-core-commands" id="toc-global-flags-for-core-commands" class="nav-link" data-scroll-target="#global-flags-for-core-commands">Global Flags (for core commands)</a></li>
+  <li><a href="#phase-1-cli-suite-data-pipeline-tools" id="toc-phase-1-cli-suite-data-pipeline-tools" class="nav-link" data-scroll-target="#phase-1-cli-suite-data-pipeline-tools">Phase 1 CLI Suite — Data &amp; Pipeline Tools</a></li>
+  <li><a href="#phase-2-cli-suite-analysis-diagnostics" id="toc-phase-2-cli-suite-analysis-diagnostics" class="nav-link" data-scroll-target="#phase-2-cli-suite-analysis-diagnostics">Phase 2 CLI Suite — Analysis &amp; Diagnostics</a></li>
+  </ul></li>
   <li><a href="#part-10-design-decisions-and-trade-offs" id="toc-part-10-design-decisions-and-trade-offs" class="nav-link" data-scroll-target="#part-10-design-decisions-and-trade-offs">Part 10 — Design Decisions and Trade-offs</a>
   <ul class="collapse">
   <li><a href="#why-no-hashmap" id="toc-why-no-hashmap" class="nav-link" data-scroll-target="#why-no-hashmap">Why No HashMap?</a></li>
@@ -1626,7 +1632,9 @@ print(f"p-value: {test.p_value}");</code></pre>
 </section>
 <section id="part-9-cli-reference" class="level2">
 <h2 class="anchored" data-anchor-id="part-9-cli-reference">Part 9 — CLI Reference</h2>
-<p>CJC ships as a single binary with multiple subcommands:</p>
+<p>CJC ships as a single binary with 22 subcommands across three tiers.</p>
+<section id="core-commands" class="level3">
+<h3 class="anchored" data-anchor-id="core-commands">Core Commands</h3>
 <table class="table">
 <colgroup>
 <col style="width: 40%">
@@ -1641,55 +1649,171 @@ print(f"p-value: {test.p_value}");</code></pre>
 <tbody>
 <tr class="odd">
 <td><code>cjc run file.cjc</code></td>
-<td>Execute a program (AST interpreter)</td>
+<td>Execute a program (AST tree-walk interpreter)</td>
 </tr>
 <tr class="even">
-<td><code>cjc run file.cjc --mir</code></td>
-<td>Execute via MIR engine</td>
+<td><code>cjc run file.cjc --mir-opt</code></td>
+<td>Execute via MIR engine with optimizations (CF + DCE)</td>
 </tr>
 <tr class="odd">
-<td><code>cjc run file.cjc --mir-opt</code></td>
-<td>Execute via MIR engine with optimizations</td>
+<td><code>cjc run file.cjc --mir-mono</code></td>
+<td>Execute with MIR monomorphization</td>
+</tr>
+<tr class="even">
+<td><code>cjc lex file.cjc</code></td>
+<td>Show token stream</td>
+</tr>
+<tr class="odd">
+<td><code>cjc parse file.cjc</code></td>
+<td>Parse and pretty-print AST</td>
 </tr>
 <tr class="even">
 <td><code>cjc check file.cjc</code></td>
 <td>Type-check without executing</td>
 </tr>
 <tr class="odd">
-<td><code>cjc lex file.cjc</code></td>
-<td>Show token stream</td>
-</tr>
-<tr class="even">
-<td><code>cjc parse file.cjc</code></td>
-<td>Show parse tree</td>
-</tr>
-<tr class="odd">
-<td><code>cjc ast file.cjc</code></td>
-<td>Dump AST</td>
-</tr>
-<tr class="even">
-<td><code>cjc hir file.cjc</code></td>
-<td>Dump HIR</td>
-</tr>
-<tr class="odd">
-<td><code>cjc mir file.cjc</code></td>
-<td>Dump MIR</td>
-</tr>
-<tr class="even">
-<td><code>cjc inspect file.cjc</code></td>
-<td>Show AST metrics + validation</td>
-</tr>
-<tr class="odd">
 <td><code>cjc repl</code></td>
-<td>Interactive REPL</td>
+<td>Interactive REPL (supports <code>:ast</code>, <code>:mir</code>, <code>:type</code>, <code>:env</code>, <code>:seed</code> meta-commands)</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="global-flags-for-core-commands" class="level3">
+<h3 class="anchored" data-anchor-id="global-flags-for-core-commands">Global Flags (for core commands)</h3>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>--seed N</code></td>
+<td>Set RNG seed (default: 42)</td>
 </tr>
 <tr class="even">
+<td><code>--reproducible</code></td>
+<td>Enable reproducibility mode</td>
+</tr>
+<tr class="odd">
+<td><code>--time</code></td>
+<td>Print execution time</td>
+</tr>
+<tr class="even">
+<td><code>--mir-opt</code></td>
+<td>Enable MIR optimizations</td>
+</tr>
+<tr class="odd">
+<td><code>--mir-mono</code></td>
+<td>Enable MIR monomorphization</td>
+</tr>
+<tr class="even">
+<td><code>--multi-file</code></td>
+<td>Enable multi-file module resolution</td>
+</tr>
+<tr class="odd">
+<td><code>--color</code> / <code>--no-color</code></td>
+<td>Force color output on/off</td>
+</tr>
+<tr class="even">
+<td><code>--diagnostic-format rich\|short</code></td>
+<td>Diagnostic output format</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="phase-1-cli-suite-data-pipeline-tools" class="level3">
+<h3 class="anchored" data-anchor-id="phase-1-cli-suite-data-pipeline-tools">Phase 1 CLI Suite — Data &amp; Pipeline Tools</h3>
+<table class="table">
+<colgroup>
+<col style="width: 40%">
+<col style="width: 59%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Command</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>cjc view [path]</code></td>
+<td>Deterministic directory listing with hashes</td>
+</tr>
+<tr class="even">
+<td><code>cjc proof file.cjc</code></td>
+<td>Determinism and reproducibility profiler</td>
+</tr>
+<tr class="odd">
+<td><code>cjc flow [file.csv]</code></td>
+<td>Streaming computation engine (stdin or CSV)</td>
+</tr>
+<tr class="even">
+<td><code>cjc patch file.csv</code></td>
+<td>Type-aware data transformation (impute, replace, rename, drop)</td>
+</tr>
+<tr class="odd">
+<td><code>cjc seek [path] [pattern]</code></td>
+<td>Deterministic file discovery</td>
+</tr>
+<tr class="even">
+<td><code>cjc drift file_a file_b</code></td>
+<td>Mathematical and data diff engine</td>
+</tr>
+<tr class="odd">
+<td><code>cjc forge run file.cjc</code></td>
+<td>Content-addressable pipeline runner with caching</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="phase-2-cli-suite-analysis-diagnostics" class="level3">
+<h3 class="anchored" data-anchor-id="phase-2-cli-suite-analysis-diagnostics">Phase 2 CLI Suite — Analysis &amp; Diagnostics</h3>
+<table class="table">
+<colgroup>
+<col style="width: 40%">
+<col style="width: 59%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Command</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>cjc inspect file</code></td>
+<td>Deep file inspection (.cjc, .csv, .snap, or generic)</td>
+</tr>
+<tr class="even">
+<td><code>cjc schema file.csv</code></td>
+<td>CSV/TSV schema inference (types, nulls, uniques)</td>
+</tr>
+<tr class="odd">
+<td><code>cjc trace file.cjc</code></td>
+<td>Deterministic execution tracing</td>
+</tr>
+<tr class="even">
+<td><code>cjc mem file.cjc</code></td>
+<td>Runtime memory visibility</td>
+</tr>
+<tr class="odd">
 <td><code>cjc bench file.cjc</code></td>
-<td>Benchmark execution</td>
+<td>Performance benchmarking with warmup</td>
+</tr>
+<tr class="even">
+<td><code>cjc pack file.cjc</code></td>
+<td>Reproducible packaging</td>
+</tr>
+<tr class="odd">
+<td><code>cjc doctor [path]</code></td>
+<td>Project diagnostics and health checks</td>
 </tr>
 </tbody>
 </table>
 <hr>
+</section>
 </section>
 <section id="part-10-design-decisions-and-trade-offs" class="level2">
 <h2 class="anchored" data-anchor-id="part-10-design-decisions-and-trade-offs">Part 10 — Design Decisions and Trade-offs</h2>
