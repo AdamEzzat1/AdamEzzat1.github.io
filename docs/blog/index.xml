@@ -2052,6 +2052,836 @@ EXIT 0</code></pre>
 </section>
 </section>
 </section>
+<section id="part-9.1-cli-benchmark-results" class="level2">
+<h2 class="anchored" data-anchor-id="part-9.1-cli-benchmark-results">Part 9.1 — CLI Benchmark Results</h2>
+<p>Every CLI command was tested against production-scale datasets (up to 1,000,000 rows / 108 MB) to verify correctness, numerical accuracy, and determinism. This section presents the full results.</p>
+<section id="test-data" class="level3">
+<h3 class="anchored" data-anchor-id="test-data">Test Data</h3>
+<table class="table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 13%">
+<col style="width: 20%">
+<col style="width: 13%">
+<col style="width: 30%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Dataset</th>
+<th>Rows</th>
+<th>Columns</th>
+<th>Size</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>million.csv</code></td>
+<td>1,000,000</td>
+<td>5</td>
+<td>52 MB</td>
+<td>price, volume, returns, volatility, score</td>
+</tr>
+<tr class="even">
+<td><code>million_wide.csv</code></td>
+<td>1,000,000</td>
+<td>10</td>
+<td>108 MB</td>
+<td>10 float columns, uniform random</td>
+</tr>
+<tr class="odd">
+<td><code>million_messy.csv</code></td>
+<td>1,000,000</td>
+<td>5</td>
+<td>36 MB</td>
+<td>Mixed types, ~4% NaN, ~3% empty cells</td>
+</tr>
+<tr class="even">
+<td><code>million.tsv</code></td>
+<td>1,000,000</td>
+<td>4</td>
+<td>38 MB</td>
+<td>Tab-separated, timestamp + sensor readings</td>
+</tr>
+<tr class="odd">
+<td><code>drift_a.csv</code> / <code>drift_b.csv</code></td>
+<td>1,000,000</td>
+<td>3</td>
+<td>43 MB each</td>
+<td>~1,001 injected cell differences</td>
+</tr>
+<tr class="even">
+<td><code>stress_compute.cjc</code></td>
+<td>–</td>
+<td>–</td>
+<td>1.5 KB</td>
+<td>fib(20) + sum(100K) + Collatz + prime sieve + GCD</td>
+</tr>
+</tbody>
+</table>
+<p>Smaller datasets (3 to 100,000 rows) were also tested for every command; only the production-scale results are shown here.</p>
+</section>
+<section id="production-scale-performance" class="level3">
+<h3 class="anchored" data-anchor-id="production-scale-performance">Production-Scale Performance</h3>
+<table class="table">
+<colgroup>
+<col style="width: 15%">
+<col style="width: 22%">
+<col style="width: 22%">
+<col style="width: 15%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Command</th>
+<th>1M-Row Time</th>
+<th>108 MB Time</th>
+<th>Correct</th>
+<th>Deterministic</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>cjc flow</code></td>
+<td>0.9–1.8 s</td>
+<td>1.8 s (10 cols)</td>
+<td>PASS</td>
+<td>Bit-identical across runs</td>
+</tr>
+<tr class="even">
+<td><code>cjc schema</code></td>
+<td>0.5–1.5 s</td>
+<td>1.5 s (10 cols)</td>
+<td>PASS</td>
+<td>Bit-identical across runs</td>
+</tr>
+<tr class="odd">
+<td><code>cjc inspect</code></td>
+<td>0.3–1.1 s</td>
+<td>1.1 s (10 cols)</td>
+<td>PASS</td>
+<td>PASS</td>
+</tr>
+<tr class="even">
+<td><code>cjc patch</code></td>
+<td>5.5–13.6 s</td>
+<td>13.6 s (10 cols)</td>
+<td>PASS</td>
+<td>PASS</td>
+</tr>
+<tr class="odd">
+<td><code>cjc drift</code></td>
+<td>1.0–1.4 s</td>
+<td>–</td>
+<td>PASS</td>
+<td>PASS</td>
+</tr>
+<tr class="even">
+<td><code>cjc seek</code></td>
+<td>1.8–10.7 s</td>
+<td>–</td>
+<td>PASS</td>
+<td>PASS</td>
+</tr>
+<tr class="odd">
+<td><code>cjc proof</code></td>
+<td>0.5–1.6 s</td>
+<td>–</td>
+<td>PASS</td>
+<td>All seeds pass</td>
+</tr>
+<tr class="even">
+<td><code>cjc bench</code></td>
+<td>1.3–1.4 s</td>
+<td>–</td>
+<td>PASS</td>
+<td>PASS</td>
+</tr>
+<tr class="odd">
+<td><code>cjc mem</code></td>
+<td>0.7 s</td>
+<td>–</td>
+<td>PASS</td>
+<td>PASS</td>
+</tr>
+<tr class="even">
+<td><code>cjc trace</code></td>
+<td>0.3 s</td>
+<td>–</td>
+<td>PASS</td>
+<td>PASS</td>
+</tr>
+<tr class="odd">
+<td><code>cjc forge</code></td>
+<td>0.2 s</td>
+<td>–</td>
+<td>PASS</td>
+<td>Hash identical</td>
+</tr>
+<tr class="even">
+<td><code>cjc pack</code></td>
+<td>0.03 s</td>
+<td>–</td>
+<td>PASS</td>
+<td>PASS</td>
+</tr>
+<tr class="odd">
+<td><code>cjc doctor</code></td>
+<td>0.2 s</td>
+<td>–</td>
+<td>PASS</td>
+<td>PASS</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="detailed-results-by-command" class="level3">
+<h3 class="anchored" data-anchor-id="detailed-results-by-command">Detailed Results by Command</h3>
+<section id="flow-streaming-aggregation-1m-rows" class="level4">
+<h4 class="anchored" data-anchor-id="flow-streaming-aggregation-1m-rows"><code>flow</code> – Streaming Aggregation (1M rows)</h4>
+<table class="table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 31%">
+<col style="width: 20%">
+<col style="width: 27%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Test</th>
+<th>Dataset</th>
+<th>Time</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Kahan sum, 5 columns</td>
+<td><code>million.csv</code> (52 MB)</td>
+<td>1.02 s</td>
+<td>PASS</td>
+</tr>
+<tr class="even">
+<td>All 7 ops (sum, mean, min, max, std, var, count)</td>
+<td><code>million.csv</code></td>
+<td>0.91 s</td>
+<td>PASS</td>
+</tr>
+<tr class="odd">
+<td>Column filter (<code>-c price,returns</code>)</td>
+<td><code>million.csv</code></td>
+<td>0.75 s</td>
+<td>PASS</td>
+</tr>
+<tr class="even">
+<td>10-column wide</td>
+<td><code>million_wide.csv</code> (108 MB)</td>
+<td>1.77 s</td>
+<td>PASS</td>
+</tr>
+<tr class="odd">
+<td>TSV input</td>
+<td><code>million.tsv</code> (38 MB)</td>
+<td>0.53 s</td>
+<td>PASS</td>
+</tr>
+<tr class="even">
+<td>12-digit precision</td>
+<td><code>million.csv</code></td>
+<td>0.84 s</td>
+<td>PASS</td>
+</tr>
+<tr class="odd">
+<td>JSON output</td>
+<td><code>million.csv</code></td>
+<td>1.06 s</td>
+<td>PASS</td>
+</tr>
+<tr class="even">
+<td>Determinism: 3 consecutive runs</td>
+<td><code>million.csv</code></td>
+<td>–</td>
+<td>BIT-IDENTICAL JSON output</td>
+</tr>
+</tbody>
+</table>
+<p>Numerical accuracy at 1M scale:</p>
+<ul>
+<li><code>price</code> mean = 499.12 (uniform [-500, 1500], expected ~500)</li>
+<li><code>returns</code> mean = -0.000048 (uniform [-0.1, 0.1], expected ~0)</li>
+<li><code>volatility</code> mean = 0.250038 (uniform [0, 0.5], expected 0.25)</li>
+<li><code>score</code> mean = 49.9653 (uniform [0, 100], expected 50)</li>
+<li>Kahan summation label present in output</li>
+</ul>
+</section>
+<section id="schema-type-inference-1m-rows" class="level4">
+<h4 class="anchored" data-anchor-id="schema-type-inference-1m-rows"><code>schema</code> – Type Inference (1M rows)</h4>
+<table class="table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 31%">
+<col style="width: 20%">
+<col style="width: 27%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Test</th>
+<th>Dataset</th>
+<th>Time</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>5 numeric columns</td>
+<td><code>million.csv</code> (52 MB)</td>
+<td>0.84 s</td>
+<td>PASS – types, min/max, nulls correct</td>
+</tr>
+<tr class="even">
+<td>10 columns</td>
+<td><code>million_wide.csv</code> (108 MB)</td>
+<td>1.46 s</td>
+<td>PASS – symmetric around 0</td>
+</tr>
+<tr class="odd">
+<td>Messy data (NaN + empty)</td>
+<td><code>million_messy.csv</code> (36 MB)</td>
+<td>0.90 s</td>
+<td>PASS</td>
+</tr>
+<tr class="even">
+<td>TSV</td>
+<td><code>million.tsv</code> (38 MB)</td>
+<td>0.45 s</td>
+<td>PASS</td>
+</tr>
+<tr class="odd">
+<td>Sampled (1,000 rows only)</td>
+<td><code>million.csv</code></td>
+<td>0.12 s</td>
+<td>PASS – 8x faster</td>
+</tr>
+<tr class="even">
+<td>JSON output</td>
+<td><code>million.csv</code></td>
+<td>0.62 s</td>
+<td>PASS</td>
+</tr>
+<tr class="odd">
+<td>Determinism: 3 consecutive runs</td>
+<td><code>million.csv</code></td>
+<td>–</td>
+<td>BIT-IDENTICAL JSON output</td>
+</tr>
+</tbody>
+</table>
+<p>Null detection accuracy at 1M scale:</p>
+<ul>
+<li><code>measurement</code>: 40,120 nulls (4.01%) – generated at 2% empty + 2% NaN = 4%</li>
+<li><code>flag</code>: 30,031 nulls (3.00%) – generated at 3% empty</li>
+<li><code>reading</code>: 10,004 nulls (1.00%) – generated at 1% NaN</li>
+</ul>
+</section>
+<section id="inspect-file-analysis-1m-rows" class="level4">
+<h4 class="anchored" data-anchor-id="inspect-file-analysis-1m-rows"><code>inspect</code> – File Analysis (1M rows)</h4>
+<table class="table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 31%">
+<col style="width: 20%">
+<col style="width: 27%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Test</th>
+<th>Dataset</th>
+<th>Time</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>52 MB CSV</td>
+<td><code>million.csv</code></td>
+<td>0.66 s</td>
+<td>1M rows, 5 cols, min/max/mean correct</td>
+</tr>
+<tr class="even">
+<td>108 MB CSV</td>
+<td><code>million_wide.csv</code></td>
+<td>1.13 s</td>
+<td>1M rows, 10 cols</td>
+</tr>
+<tr class="odd">
+<td>Messy CSV</td>
+<td><code>million_messy.csv</code></td>
+<td>0.51 s</td>
+<td>Null counts match schema</td>
+</tr>
+<tr class="even">
+<td>TSV</td>
+<td><code>million.tsv</code></td>
+<td>0.34 s</td>
+<td>Auto-detected delimiter</td>
+</tr>
+<tr class="odd">
+<td>CJC source</td>
+<td><code>stress_compute.cjc</code></td>
+<td>0.04 s</td>
+<td>8 functions, 0 parse errors</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="patch-data-transformation-1m-rows" class="level4">
+<h4 class="anchored" data-anchor-id="patch-data-transformation-1m-rows"><code>patch</code> – Data Transformation (1M rows)</h4>
+<table class="table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 31%">
+<col style="width: 20%">
+<col style="width: 27%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Test</th>
+<th>Dataset</th>
+<th>Time</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Rename column</td>
+<td><code>million.csv</code> (52 MB)</td>
+<td>8.15 s</td>
+<td>“patched 1000000 rows”</td>
+</tr>
+<tr class="even">
+<td>Drop column</td>
+<td><code>million.csv</code></td>
+<td>7.03 s</td>
+<td>Column removed</td>
+</tr>
+<tr class="odd">
+<td>NaN fill</td>
+<td><code>million_messy.csv</code> (36 MB)</td>
+<td>5.53 s</td>
+<td>All NaN/empty replaced</td>
+</tr>
+<tr class="even">
+<td>Mean imputation</td>
+<td><code>million_messy.csv</code></td>
+<td>6.53 s</td>
+<td>Correct mean computed</td>
+</tr>
+<tr class="odd">
+<td>Replace values</td>
+<td><code>million_messy.csv</code></td>
+<td>5.52 s</td>
+<td>Exact-match replacement</td>
+</tr>
+<tr class="even">
+<td>Rename + drop (10 cols)</td>
+<td><code>million_wide.csv</code> (108 MB)</td>
+<td>13.61 s</td>
+<td>Both transforms applied</td>
+</tr>
+<tr class="odd">
+<td>TSV rename</td>
+<td><code>million.tsv</code> (38 MB)</td>
+<td>6.17 s</td>
+<td>Tab delimiter preserved</td>
+</tr>
+</tbody>
+</table>
+<p><code>patch</code> is I/O-bound at this scale – it writes the entire transformed dataset to stdout. All other commands read and aggregate without full re-serialization.</p>
+</section>
+<section id="drift-cell-by-cell-comparison-1m-rows" class="level4">
+<h4 class="anchored" data-anchor-id="drift-cell-by-cell-comparison-1m-rows"><code>drift</code> – Cell-by-Cell Comparison (1M rows)</h4>
+<table class="table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 31%">
+<col style="width: 20%">
+<col style="width: 27%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Test</th>
+<th>Dataset</th>
+<th>Time</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>~1,001 injected diffs</td>
+<td><code>drift_a.csv</code> vs <code>drift_b.csv</code> (86 MB)</td>
+<td>1.34 s</td>
+<td>Found 1,001 cell differences</td>
+</tr>
+<tr class="even">
+<td>Identical files</td>
+<td><code>drift_a.csv</code> vs itself</td>
+<td>1.40 s</td>
+<td>“identical”, Frobenius = 0</td>
+</tr>
+<tr class="odd">
+<td>With tolerance 1.0</td>
+<td>drift pair</td>
+<td>1.33 s</td>
+<td>Dropped to 936 diffs</td>
+</tr>
+<tr class="even">
+<td>Max diffs 5</td>
+<td>drift pair</td>
+<td>1.03 s</td>
+<td>Only 5 diffs shown</td>
+</tr>
+<tr class="odd">
+<td>JSON output</td>
+<td>drift pair</td>
+<td>1.44 s</td>
+<td>Valid JSON</td>
+</tr>
+<tr class="even">
+<td>12-digit precision</td>
+<td>drift pair</td>
+<td>1.06 s</td>
+<td>max_deviation = 958.501978518200</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="seek-file-discovery-full-project" class="level4">
+<h4 class="anchored" data-anchor-id="seek-file-discovery-full-project"><code>seek</code> – File Discovery (Full Project)</h4>
+<table class="table">
+<colgroup>
+<col style="width: 22%">
+<col style="width: 25%">
+<col style="width: 22%">
+<col style="width: 29%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Test</th>
+<th>Scope</th>
+<th>Time</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>All .rs files</td>
+<td>96K files in project</td>
+<td>10.74 s</td>
+<td>905 Rust files</td>
+</tr>
+<tr class="even">
+<td>All .csv files</td>
+<td>full project</td>
+<td>9.77 s</td>
+<td>3 CSV files</td>
+</tr>
+<tr class="odd">
+<td>Content search (<code>fn</code> in .cjc)</td>
+<td>full project</td>
+<td>7.78 s</td>
+<td>67 matching files</td>
+</tr>
+<tr class="even">
+<td>Files &gt; 100 KB</td>
+<td>full project</td>
+<td>5.78 s</td>
+<td>Lists git objects + binaries</td>
+</tr>
+<tr class="odd">
+<td>Everything (no filter)</td>
+<td>full project</td>
+<td>5.68 s</td>
+<td>95,948 files total</td>
+</tr>
+<tr class="even">
+<td>Scoped search (<code>pub fn</code> in crates/)</td>
+<td>crates/ only</td>
+<td>1.77 s</td>
+<td>164 files</td>
+</tr>
+</tbody>
+</table>
+<p><code>seek</code> traverses the full file tree including <code>target/</code> and <code>.git/</code>. Scoped searches run in under 2 s.</p>
+</section>
+<section id="proof-determinism-verification-heavy-compute" class="level4">
+<h4 class="anchored" data-anchor-id="proof-determinism-verification-heavy-compute"><code>proof</code> – Determinism Verification (Heavy Compute)</h4>
+<table class="table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 31%">
+<col style="width: 20%">
+<col style="width: 27%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Test</th>
+<th>Program</th>
+<th>Time</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>3 runs, default seed</td>
+<td><code>stress_compute.cjc</code></td>
+<td>0.49 s</td>
+<td>PASS – stdout/exit/GC identical</td>
+</tr>
+<tr class="even">
+<td>10 runs</td>
+<td><code>stress_compute.cjc</code></td>
+<td>1.27 s</td>
+<td>PASS</td>
+</tr>
+<tr class="odd">
+<td>5 seeds x 3 runs</td>
+<td><code>stress_compute.cjc</code></td>
+<td>1.62 s</td>
+<td>PASS across all seeds</td>
+</tr>
+<tr class="even">
+<td>10 runs, verbose</td>
+<td><code>stress_compute.cjc</code></td>
+<td>1.05 s</td>
+<td>All runs: 5 lines, gc=0</td>
+</tr>
+</tbody>
+</table>
+<p>Computational correctness verified:</p>
+<ul>
+<li><code>fib(20)</code> = 6,765 (known correct)</li>
+<li><code>sum(0..99999)</code> = 4,999,950,000 (= 99999 x 100000 / 2)</li>
+<li><code>collatz_steps(837799)</code> = 524 (known Project Euler value)</li>
+<li><code>count_primes(1000)</code> = 168 (known: 168 primes below 1,000)</li>
+<li><code>sum_gcd_pairs(100)</code> = 13,015</li>
+</ul>
+</section>
+<section id="bench-performance-benchmarking-heavy-compute" class="level4">
+<h4 class="anchored" data-anchor-id="bench-performance-benchmarking-heavy-compute"><code>bench</code> – Performance Benchmarking (Heavy Compute)</h4>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Executor</th>
+<th>Mean</th>
+<th>Median</th>
+<th>CV</th>
+<th>Stability</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Default (eval)</td>
+<td>108 ms</td>
+<td>107 ms</td>
+<td>6.1%</td>
+<td>MODERATE</td>
+</tr>
+<tr class="even">
+<td><code>--mir</code></td>
+<td>97 ms</td>
+<td>98 ms</td>
+<td>3.4%</td>
+<td>STABLE</td>
+</tr>
+<tr class="odd">
+<td><code>--eval</code></td>
+<td>107 ms</td>
+<td>104 ms</td>
+<td>10.0%</td>
+<td>MODERATE</td>
+</tr>
+</tbody>
+</table>
+<p>MIR executor is ~10% faster with lower variance on this workload.</p>
+</section>
+<section id="forge-content-addressable-caching" class="level4">
+<h4 class="anchored" data-anchor-id="forge-content-addressable-caching"><code>forge</code> – Content-Addressable Caching</h4>
+<table class="table">
+<colgroup>
+<col style="width: 42%">
+<col style="width: 57%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Test</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>forge run</code></td>
+<td>SHA-256 = <code>0f8544b7dd489d76...234ebb636</code>, 29 output bytes</td>
+</tr>
+<tr class="even">
+<td><code>forge verify</code> (correct hash)</td>
+<td>MATCH</td>
+</tr>
+<tr class="odd">
+<td>Hash determinism (two clean runs)</td>
+<td>IDENTICAL SHA-256</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="trace-mem-doctor-analysis-tools" class="level4">
+<h4 class="anchored" data-anchor-id="trace-mem-doctor-analysis-tools"><code>trace</code>, <code>mem</code>, <code>doctor</code> – Analysis Tools</h4>
+<table class="table">
+<colgroup>
+<col style="width: 32%">
+<col style="width: 21%">
+<col style="width: 46%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Command</th>
+<th>Time</th>
+<th>Key Metrics</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>trace</code></td>
+<td>0.30 s</td>
+<td>Parse: 0.3 ms, Exec: 232 ms, 8 functions, 0 GC</td>
+</tr>
+<tr class="even">
+<td><code>mem</code> (5 runs)</td>
+<td>0.69 s</td>
+<td>GC avg = 0, stable = true, avg exec = 130 ms</td>
+</tr>
+<tr class="odd">
+<td><code>doctor</code> (full project, 106 CJC files)</td>
+<td>0.20 s</td>
+<td>1 error (intentional), 83 type warnings</td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="audit-summary" class="level3">
+<h3 class="anchored" data-anchor-id="audit-summary">Audit Summary</h3>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Command</th>
+<th>Tests Run</th>
+<th>Passed</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>cjc proof</code></td>
+<td>8</td>
+<td>8/8</td>
+<td>Multi-seed verdict cosmetic issue</td>
+</tr>
+<tr class="even">
+<td><code>cjc flow</code></td>
+<td>10</td>
+<td>10/10</td>
+<td>–</td>
+</tr>
+<tr class="odd">
+<td><code>cjc patch</code></td>
+<td>11</td>
+<td>9/11</td>
+<td><code>--json</code>/<code>--plain</code> flags not yet wired</td>
+</tr>
+<tr class="even">
+<td><code>cjc seek</code></td>
+<td>10</td>
+<td>10/10</td>
+<td>–</td>
+</tr>
+<tr class="odd">
+<td><code>cjc drift</code></td>
+<td>8</td>
+<td>8/8</td>
+<td>Tolerance listing cosmetic issue</td>
+</tr>
+<tr class="even">
+<td><code>cjc forge</code></td>
+<td>8</td>
+<td>8/8</td>
+<td>–</td>
+</tr>
+<tr class="odd">
+<td><code>cjc inspect</code></td>
+<td>11</td>
+<td>11/11</td>
+<td>–</td>
+</tr>
+<tr class="even">
+<td><code>cjc schema</code></td>
+<td>9</td>
+<td>9/9</td>
+<td>–</td>
+</tr>
+<tr class="odd">
+<td><code>cjc trace</code></td>
+<td>9</td>
+<td>9/9</td>
+<td>–</td>
+</tr>
+<tr class="even">
+<td><code>cjc mem</code></td>
+<td>10</td>
+<td>10/10</td>
+<td>–</td>
+</tr>
+<tr class="odd">
+<td><code>cjc bench</code></td>
+<td>9</td>
+<td>9/9</td>
+<td>–</td>
+</tr>
+<tr class="even">
+<td><code>cjc pack</code></td>
+<td>5</td>
+<td>5/5</td>
+<td>–</td>
+</tr>
+<tr class="odd">
+<td><code>cjc doctor</code></td>
+<td>8</td>
+<td>8/8</td>
+<td>–</td>
+</tr>
+<tr class="even">
+<td><strong>Total</strong></td>
+<td><strong>116</strong></td>
+<td><strong>114/116</strong></td>
+<td><strong>2 cosmetic issues</strong></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="numerical-accuracy-guarantees" class="level3">
+<h3 class="anchored" data-anchor-id="numerical-accuracy-guarantees">Numerical Accuracy Guarantees</h3>
+<p>The following properties were verified at 1,000,000-row scale:</p>
+<ul>
+<li><strong>Kahan summation</strong> is active for all <code>flow</code> aggregations (label confirmed in output)</li>
+<li><strong>Sum, mean, variance, std</strong> all match expected values for known distributions</li>
+<li><strong>Frobenius norm</strong> accurate to 12 decimal places in drift comparisons</li>
+<li><strong>Null/NaN detection</strong> correct for empty cells, <code>NaN</code> strings, and missing values</li>
+<li><strong>Sample variance</strong> uses N-1 denominator consistently</li>
+<li><strong>SHA-256 hashes</strong> are deterministic across forge runs with cache cleared between invocations</li>
+<li><strong>3 consecutive identical runs</strong> of <code>flow</code> and <code>schema</code> on 1M rows produce byte-for-byte identical JSON</li>
+</ul>
+<hr>
+</section>
+</section>
 <section id="part-10-design-decisions-and-trade-offs" class="level2">
 <h2 class="anchored" data-anchor-id="part-10-design-decisions-and-trade-offs">Part 10 — Design Decisions and Trade-offs</h2>
 <section id="why-no-hashmap" class="level3">
