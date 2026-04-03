@@ -13,7 +13,7 @@ description: "The complete syntax guide for CJC v0.1.1 — covering core languag
 <div class="stats-row">
 <div class="stat"><span class="number">21</span><span class="stat-label">Rust crates</span></div>
 <div class="stat"><span class="number">287+</span><span class="stat-label">builtins</span></div>
-<div class="stat"><span class="number">1,847</span><span class="stat-label">tests passing</span></div>
+<div class="stat"><span class="number">6,500+</span><span class="stat-label">tests passing</span></div>
 </div>
 
 ::: {.callout-tip appearance="minimal"}
