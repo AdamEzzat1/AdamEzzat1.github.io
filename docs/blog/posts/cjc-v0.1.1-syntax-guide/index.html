@@ -237,6 +237,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   </ul></li>
   <li><a href="#part-9-cli-reference" id="toc-part-9-cli-reference" class="nav-link" data-scroll-target="#part-9-cli-reference">Part 9 — CLI Reference</a>
   <ul class="collapse">
+  <li><a href="#file-format-compatibility" id="toc-file-format-compatibility" class="nav-link" data-scroll-target="#file-format-compatibility">File Format Compatibility</a></li>
   <li><a href="#core-commands" id="toc-core-commands" class="nav-link" data-scroll-target="#core-commands">Core Commands</a></li>
   <li><a href="#global-flags-for-core-commands" id="toc-global-flags-for-core-commands" class="nav-link" data-scroll-target="#global-flags-for-core-commands">Global Flags (for core commands)</a></li>
   <li><a href="#phase-1-cli-suite-data-pipeline-tools" id="toc-phase-1-cli-suite-data-pipeline-tools" class="nav-link" data-scroll-target="#phase-1-cli-suite-data-pipeline-tools">Phase 1 CLI Suite — Data &amp; Pipeline Tools</a></li>
@@ -1634,6 +1635,77 @@ print(f"p-value: {test.p_value}");</code></pre>
 <section id="part-9-cli-reference" class="level2">
 <h2 class="anchored" data-anchor-id="part-9-cli-reference">Part 9 — CLI Reference</h2>
 <p>CJC ships as a single binary with 29 subcommands across three tiers.</p>
+<section id="file-format-compatibility" class="level3">
+<h3 class="anchored" data-anchor-id="file-format-compatibility">File Format Compatibility</h3>
+<p>Not every command operates on <code>.cjc</code> source files. Here’s what each command reads:</p>
+<p><strong>CJC source only</strong> (<code>.cjc</code>): <code>run</code>, <code>proof</code>, <code>emit</code>, <code>explain</code>, <code>gc</code>, <code>nogc</code>, <code>audit</code>, <code>precision</code>, <code>parity</code>, <code>test</code>, <code>bench</code>, <code>mem</code>, <code>trace</code>, <code>lock</code>, <code>check</code></p>
+<p><strong>CJC + other formats</strong> (read-only):</p>
+<table class="table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Command</th>
+<th>Formats</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>doctor</code></td>
+<td><code>.cjc</code>, <code>.snap</code> (binary), <code>.csv</code>/<code>.tsv</code>, plus metadata on all files for size warnings</td>
+</tr>
+<tr class="even">
+<td><code>ci</code></td>
+<td><code>.cjc</code> only (reimplements parse + type checks, does not run full <code>doctor</code>)</td>
+</tr>
+<tr class="odd">
+<td><code>view</code></td>
+<td>Directory metadata, <code>.cjc</code> source for effect annotations, <code>.snap</code> binary for hashes</td>
+</tr>
+<tr class="even">
+<td><code>inspect</code></td>
+<td>Dispatches on extension: <code>.snap</code> (binary decode), <code>.csv</code>/<code>.tsv</code> (schema), <code>.cjc</code> (source), anything else (generic: size + hash)</td>
+</tr>
+<tr class="odd">
+<td><code>seek</code></td>
+<td>Traverses any directory; reads any file’s content for <code>--contains</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Non-CJC formats exclusively:</strong></p>
+<table class="table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Command</th>
+<th>Formats</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>flow</code></td>
+<td><code>.csv</code>/<code>.tsv</code> or stdin</td>
+</tr>
+<tr class="even">
+<td><code>schema</code></td>
+<td><code>.csv</code>/<code>.tsv</code></td>
+</tr>
+<tr class="odd">
+<td><code>patch</code></td>
+<td><code>.csv</code>/<code>.tsv</code> or stdin</td>
+</tr>
+<tr class="even">
+<td><code>drift</code></td>
+<td>Any two files (auto-detects <code>.csv</code>/<code>.tsv</code> for structured diff, otherwise text diff)</td>
+</tr>
+</tbody>
+</table>
+</section>
 <section id="core-commands" class="level3">
 <h3 class="anchored" data-anchor-id="core-commands">Core Commands</h3>
 <table class="table">
