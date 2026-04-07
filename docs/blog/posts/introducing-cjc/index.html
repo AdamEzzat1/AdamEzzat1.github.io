@@ -8,9 +8,9 @@
 
 <meta name="author" content="Adam Ezzat">
 <meta name="dcterms.date" content="2026-03-21">
-<meta name="description" content="A deep dive into CJC — a deterministic scientific computing language built from scratch in Rust.">
+<meta name="description" content="A deep dive into CJC-Lang — a deterministic scientific computing language built from scratch in Rust.">
 
-<title>Adam Ezzat - Introducing CJC: Why I’m Building a Deterministic Scientific Computing Language</title>
+<title>Adam Ezzat - Introducing CJC-Lang: Why I’m Building a Deterministic Scientific Computing Language</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -162,7 +162,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#what-is-cjc" id="toc-what-is-cjc" class="nav-link active" data-scroll-target="#what-is-cjc">What Is CJC?</a></li>
+  <li><a href="#what-is-cjc-lang" id="toc-what-is-cjc-lang" class="nav-link active" data-scroll-target="#what-is-cjc-lang">What Is CJC-Lang?</a></li>
   <li><a href="#core-ideas" id="toc-core-ideas" class="nav-link" data-scroll-target="#core-ideas">Core Ideas</a>
   <ul class="collapse">
   <li><a href="#determinism-as-architecture" id="toc-determinism-as-architecture" class="nav-link" data-scroll-target="#determinism-as-architecture">Determinism as Architecture</a></li>
@@ -170,7 +170,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#dual-execution-engines" id="toc-dual-execution-engines" class="nav-link" data-scroll-target="#dual-execution-engines">Dual Execution Engines</a></li>
   <li><a href="#nogc-verification" id="toc-nogc-verification" class="nav-link" data-scroll-target="#nogc-verification">NoGC Verification</a></li>
   </ul></li>
-  <li><a href="#what-cjc-can-do-today" id="toc-what-cjc-can-do-today" class="nav-link" data-scroll-target="#what-cjc-can-do-today">What CJC Can Do Today</a>
+  <li><a href="#what-cjc-lang-can-do-today" id="toc-what-cjc-lang-can-do-today" class="nav-link" data-scroll-target="#what-cjc-lang-can-do-today">What CJC-Lang Can Do Today</a>
   <ul class="collapse">
   <li><a href="#closures-and-higher-order-functions" id="toc-closures-and-higher-order-functions" class="nav-link" data-scroll-target="#closures-and-higher-order-functions">Closures and Higher-Order Functions</a></li>
   <li><a href="#structs-enums-and-pattern-matching" id="toc-structs-enums-and-pattern-matching" class="nav-link" data-scroll-target="#structs-enums-and-pattern-matching">Structs, Enums, and Pattern Matching</a></li>
@@ -183,7 +183,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#beyond-neural-networks" id="toc-beyond-neural-networks" class="nav-link" data-scroll-target="#beyond-neural-networks">Beyond Neural Networks</a></li>
   <li><a href="#whats-native-and-why-that-matters" id="toc-whats-native-and-why-that-matters" class="nav-link" data-scroll-target="#whats-native-and-why-that-matters">What’s Native — and Why That Matters</a></li>
   <li><a href="#the-cli-toolchain" id="toc-the-cli-toolchain" class="nav-link" data-scroll-target="#the-cli-toolchain">The CLI Toolchain</a></li>
-  <li><a href="#why-cjc-is-still-in-beta" id="toc-why-cjc-is-still-in-beta" class="nav-link" data-scroll-target="#why-cjc-is-still-in-beta">Why CJC Is Still in Beta</a></li>
+  <li><a href="#why-cjc-lang-is-still-in-beta" id="toc-why-cjc-lang-is-still-in-beta" class="nav-link" data-scroll-target="#why-cjc-lang-is-still-in-beta">Why CJC-Lang Is Still in Beta</a></li>
   <li><a href="#what-comes-next" id="toc-what-comes-next" class="nav-link" data-scroll-target="#what-comes-next">What Comes Next</a></li>
   <li><a href="#why-share-this-now" id="toc-why-share-this-now" class="nav-link" data-scroll-target="#why-share-this-now">Why Share This Now?</a></li>
   </ul>
@@ -194,10 +194,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
-<h1 class="title">Introducing CJC: Why I’m Building a Deterministic Scientific Computing Language</h1>
-<p class="subtitle lead">What CJC is, why it exists, what it can already do, and where it stands today.</p>
+<h1 class="title">Introducing CJC-Lang: Why I’m Building a Deterministic Scientific Computing Language</h1>
+<p class="subtitle lead">What CJC-Lang is, why it exists, what it can already do, and where it stands today.</p>
   <div class="quarto-categories">
-    <div class="quarto-category">CJC</div>
+    <div class="quarto-category">CJC-Lang</div>
     <div class="quarto-category">compilers</div>
     <div class="quarto-category">scientific-computing</div>
   </div>
@@ -205,7 +205,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <div>
   <div class="description">
-    A deep dive into CJC — a deterministic scientific computing language built from scratch in Rust.
+    A deep dive into CJC-Lang — a deterministic scientific computing language built from scratch in Rust.
   </div>
 </div>
 
@@ -244,16 +244,16 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <p>I wanted a system where the same program with the same seed produces <strong>bit-identical output</strong> every time, on every platform. Not approximately the same — exactly the same.</p>
 <p>That constraint turned out to touch everything: memory layout, collection types, floating-point arithmetic, random number generation, parallelism. The deeper I went, the clearer it became that bolting determinism onto an existing language would mean fighting the language at every turn. So I built one where determinism is structural.</p>
 <hr>
-<section id="what-is-cjc" class="level2">
-<h2 class="anchored" data-anchor-id="what-is-cjc">What Is CJC?</h2>
-<p>CJC — <strong>Computation Jacobian Core</strong> — is a programming language I’m building from scratch for deterministic scientific computing. It’s written in Rust, organized as a 20-crate workspace, with nearly all functionality implemented from scratch using only the Rust standard library.</p>
+<section id="what-is-cjc-lang" class="level2">
+<h2 class="anchored" data-anchor-id="what-is-cjc-lang">What Is CJC-Lang?</h2>
+<p>CJC-Lang — <strong>Computation Jacobian Core</strong> — is a programming language I’m building from scratch for deterministic scientific computing. It’s written in Rust, organized as a 20-crate workspace, with nearly all functionality implemented from scratch using only the Rust standard library.</p>
 <div class="callout callout-style-simple callout-note no-icon">
 <div class="callout-body d-flex">
 <div class="callout-icon-container">
 <i class="callout-icon no-icon"></i>
 </div>
 <div class="callout-body-container">
-<p><strong>CJC is currently in beta.</strong> The core compiler pipeline and runtime are functional and backed by 5,300+ passing tests, but the language is still under active development and is not production-ready. I’m sharing it now because the ideas behind it are worth discussing even before everything is polished.</p>
+<p><strong>CJC-Lang is currently in beta.</strong> The core compiler pipeline and runtime are functional and backed by 5,300+ passing tests, but the language is still under active development and is not production-ready. I’m sharing it now because the ideas behind it are worth discussing even before everything is polished.</p>
 </div>
 </div>
 </div>
@@ -278,11 +278,11 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <h2 class="anchored" data-anchor-id="core-ideas">Core Ideas</h2>
 <section id="determinism-as-architecture" class="level3">
 <h3 class="anchored" data-anchor-id="determinism-as-architecture">Determinism as Architecture</h3>
-<p>CJC enforces determinism at every layer:</p>
+<p>CJC-Lang enforces determinism at every layer:</p>
 <ul>
 <li><strong>Ordered collections everywhere.</strong> <code>BTreeMap</code> and <code>BTreeSet</code> instead of hash-based containers. Iteration order is always defined.</li>
 <li><strong>Stable floating-point reductions.</strong> All summations use Kahan or binned accumulators — order-invariant superaccumulators that produce identical results regardless of evaluation order.</li>
-<li><strong>No FMA in SIMD kernels.</strong> Fused multiply-add produces different rounding than separate multiply and add. CJC avoids FMA to keep results identical across CPU architectures.</li>
+<li><strong>No FMA in SIMD kernels.</strong> Fused multiply-add produces different rounding than separate multiply and add. CJC-Lang avoids FMA to keep results identical across CPU architectures.</li>
 <li><strong>Seeded, explicit RNG.</strong> The random number generator is SplitMix64 with explicit seed threading. No global state, no entropy sources.</li>
 <li><strong>Deterministic parallelism.</strong> Parallel operations are structured so that results don’t depend on thread count or scheduling.</li>
 </ul>
@@ -305,7 +305,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="dual-execution-engines" class="level3">
 <h3 class="anchored" data-anchor-id="dual-execution-engines">Dual Execution Engines</h3>
-<p>CJC has two execution paths:</p>
+<p>CJC-Lang has two execution paths:</p>
 <ol type="1">
 <li><strong>AST interpreter</strong> (<code>cjc-eval</code>): walks the syntax tree directly. Simple, easy to debug, good for prototyping.</li>
 <li><strong>MIR executor</strong> (<code>cjc-mir-exec</code>): lowers through HIR → MIR, applies optimization passes (constant folding, dead code elimination), and runs on a register machine.</li>
@@ -314,16 +314,16 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </section>
 <section id="nogc-verification" class="level3">
 <h3 class="anchored" data-anchor-id="nogc-verification">NoGC Verification</h3>
-<p>CJC includes a static verifier that can prove code paths are free of GC allocations. The NoGC verifier performs transitive call-graph analysis to ensure that annotated functions — and everything they call — operate within reference-counted, copy-on-write memory without triggering GC. This matters for latency-sensitive workloads where GC pauses are unacceptable.</p>
+<p>CJC-Lang includes a static verifier that can prove code paths are free of GC allocations. The NoGC verifier performs transitive call-graph analysis to ensure that annotated functions — and everything they call — operate within reference-counted, copy-on-write memory without triggering GC. This matters for latency-sensitive workloads where GC pauses are unacceptable.</p>
 <hr>
 </section>
 </section>
-<section id="what-cjc-can-do-today" class="level2">
-<h2 class="anchored" data-anchor-id="what-cjc-can-do-today">What CJC Can Do Today</h2>
+<section id="what-cjc-lang-can-do-today" class="level2">
+<h2 class="anchored" data-anchor-id="what-cjc-lang-can-do-today">What CJC-Lang Can Do Today</h2>
 <p>Every example below comes from real files in the repository — demo programs, test fixtures, or integration tests.</p>
 <section id="closures-and-higher-order-functions" class="level3">
 <h3 class="anchored" data-anchor-id="closures-and-higher-order-functions">Closures and Higher-Order Functions</h3>
-<p>CJC supports lambda expressions with capture analysis. The compiler performs lambda lifting during HIR lowering, converting closures into top-level functions with explicit environment parameters:</p>
+<p>CJC-Lang supports lambda expressions with capture analysis. The compiler performs lambda lifting during HIR lowering, converting closures into top-level functions with explicit environment parameters:</p>
 <div class="code-label">
 Lambda with capture, passed as higher-order function
 </div>
@@ -341,7 +341,7 @@ fn main() -&gt; i64 {
 </section>
 <section id="structs-enums-and-pattern-matching" class="level3">
 <h3 class="anchored" data-anchor-id="structs-enums-and-pattern-matching">Structs, Enums, and Pattern Matching</h3>
-<p>CJC supports algebraic data types with structural destructuring:</p>
+<p>CJC-Lang supports algebraic data types with structural destructuring:</p>
 <pre><code>struct Point {
     x: f64,
     y: f64
@@ -357,7 +357,7 @@ print(distance(p));</code></pre>
 </section>
 <section id="tensors-and-linear-algebra" class="level3">
 <h3 class="anchored" data-anchor-id="tensors-and-linear-algebra">Tensors and Linear Algebra</h3>
-<p>This is where CJC starts to show its numerical computing focus. Tensors are N-dimensional arrays with zero-copy COW (copy-on-write) buffers:</p>
+<p>This is where CJC-Lang starts to show its numerical computing focus. Tensors are N-dimensional arrays with zero-copy COW (copy-on-write) buffers:</p>
 <div class="code-label">
 Matrix multiplication with shape verification
 </div>
@@ -379,7 +379,7 @@ assert_eq(C.get([0, 0]), 58.0);</code></pre>
 </section>
 <section id="neural-network-forward-pass" class="level3">
 <h3 class="anchored" data-anchor-id="neural-network-forward-pass">Neural Network Forward Pass</h3>
-<p>CJC can express multi-layer neural networks with struct-based layer definitions and a pipe operator (<code>|&gt;</code>) for readable data flow:</p>
+<p>CJC-Lang can express multi-layer neural networks with struct-based layer definitions and a pipe operator (<code>|&gt;</code>) for readable data flow:</p>
 <pre><code>struct Layer {
     weights: Tensor,
     bias: Tensor
@@ -388,7 +388,7 @@ assert_eq(C.get([0, 0]), 58.0);</code></pre>
 fn forward(layer: Layer, input: Tensor) -&gt; Tensor {
     matmul(input, layer.weights) |&gt; add_bias(layer.bias)
 }</code></pre>
-<p>The runtime provides built-in ML operations: <code>batch_norm</code>, <code>dropout_mask</code>, <code>sigmoid</code>, <code>relu</code>, <code>leaky_relu</code>, <code>attention</code>, <code>softmax</code>, learning rate schedulers, loss functions, and regularization. I’ll go deeper into the neural network architectures I’ve built and verified in CJC in the <a href="../../../blog/posts/neural-networks-in-cjc/index.html">next post</a>.</p>
+<p>The runtime provides built-in ML operations: <code>batch_norm</code>, <code>dropout_mask</code>, <code>sigmoid</code>, <code>relu</code>, <code>leaky_relu</code>, <code>attention</code>, <code>softmax</code>, learning rate schedulers, loss functions, and regularization. I’ll go deeper into the neural network architectures I’ve built and verified in CJC-Lang in the <a href="../../../blog/posts/neural-networks-in-cjc/index.html">next post</a>.</p>
 </section>
 <section id="gradient-descent-and-automatic-differentiation" class="level3">
 <h3 class="anchored" data-anchor-id="gradient-descent-and-automatic-differentiation">Gradient Descent and Automatic Differentiation</h3>
@@ -416,7 +416,7 @@ while i &lt; 100 {
 
 print("Final x:", x);          // ~3.0
 assert(abs(x - 3.0) &lt; 0.001);</code></pre>
-<p>For more complex cases, CJC has a full automatic differentiation engine — forward-mode via dual numbers and reverse-mode via tape-based gradient computation.</p>
+<p>For more complex cases, CJC-Lang has a full automatic differentiation engine — forward-mode via dual numbers and reverse-mode via tape-based gradient computation.</p>
 </section>
 <section id="statistics-and-distributions" class="level3">
 <h3 class="anchored" data-anchor-id="statistics-and-distributions">Statistics and Distributions</h3>
@@ -440,7 +440,7 @@ print(test_result);</code></pre>
 </section>
 <section id="data-manipulation" class="level3">
 <h3 class="anchored" data-anchor-id="data-manipulation">Data Manipulation</h3>
-<p>CJC includes a tidyverse-inspired data DSL with 73+ operations:</p>
+<p>CJC-Lang includes a tidyverse-inspired data DSL with 73+ operations:</p>
 <pre><code>let csv_data = "name,age,city\nAlice,30,NYC\nBob,25,LA\nCharlie,35,NYC\n";
 let df = Csv.parse(csv_data);
 let view = df.view();
@@ -455,7 +455,7 @@ let selected = filtered.select(["name", "city"]);</code></pre>
 </section>
 <section id="beyond-neural-networks" class="level2">
 <h2 class="anchored" data-anchor-id="beyond-neural-networks">Beyond Neural Networks</h2>
-<p>CJC isn’t just a machine learning language. The numerical infrastructure supports a broader range of scientific computing — and this is where the determinism guarantee pays the biggest dividends. When you’re debugging a failed ODE integration or a clustering result that doesn’t match your colleague’s run, knowing the computation is reproducible eliminates an entire class of “was it the code or was it the environment?” questions.</p>
+<p>CJC-Lang isn’t just a machine learning language. The numerical infrastructure supports a broader range of scientific computing — and this is where the determinism guarantee pays the biggest dividends. When you’re debugging a failed ODE integration or a clustering result that doesn’t match your colleague’s run, knowing the computation is reproducible eliminates an entire class of “was it the code or was it the environment?” questions.</p>
 <table class="table">
 <colgroup>
 <col style="width: 32%">
@@ -561,20 +561,20 @@ print("Final y:", result);         // ~0.00674 (matches exp(-5))</code></pre>
 </section>
 <section id="the-cli-toolchain" class="level2">
 <h2 class="anchored" data-anchor-id="the-cli-toolchain">The CLI Toolchain</h2>
-<p>CJC ships with 15+ CLI subcommands:</p>
-<div class="sourceCode" id="cb10"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cjc</span> run program.cjc              <span class="co"># execute a program</span></span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="ex">cjc</span> run program.cjc <span class="at">--seed</span> 42    <span class="co"># explicit RNG seed</span></span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="ex">cjc</span> run program.cjc <span class="at">--mir-opt</span>    <span class="co"># MIR-optimized execution</span></span>
-<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="ex">cjc</span> check program.cjc            <span class="co"># type-check without running</span></span>
-<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="ex">cjc</span> repl                         <span class="co"># interactive REPL</span></span>
-<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a><span class="ex">cjc</span> trace program.cjc            <span class="co"># execution tracing</span></span>
-<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a><span class="ex">cjc</span> bench program.cjc            <span class="co"># benchmarking</span></span>
-<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a><span class="ex">cjc</span> doctor                       <span class="co"># health/validation checks</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>CJC-Lang ships with 15+ CLI subcommands:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cjcl</span> run program.cjcl              <span class="co"># execute a program</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="ex">cjcl</span> run program.cjcl <span class="at">--seed</span> 42    <span class="co"># explicit RNG seed</span></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="ex">cjcl</span> run program.cjcl <span class="at">--mir-opt</span>    <span class="co"># MIR-optimized execution</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="ex">cjcl</span> check program.cjcl            <span class="co"># type-check without running</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="ex">cjcl</span> repl                         <span class="co"># interactive REPL</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a><span class="ex">cjcl</span> trace program.cjcl            <span class="co"># execution tracing</span></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a><span class="ex">cjcl</span> bench program.cjcl            <span class="co"># benchmarking</span></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a><span class="ex">cjcl</span> doctor                       <span class="co"># health/validation checks</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Additional commands include <code>inspect</code>, <code>schema</code>, <code>flow</code> (control flow graphs), <code>drift</code> (determinism drift detection), <code>mem</code> (memory profiling), <code>pack</code> (binary serialization), and <code>forge</code> (code generation).</p>
 <hr>
 </section>
-<section id="why-cjc-is-still-in-beta" class="level2">
-<h2 class="anchored" data-anchor-id="why-cjc-is-still-in-beta">Why CJC Is Still in Beta</h2>
+<section id="why-cjc-lang-is-still-in-beta" class="level2">
+<h2 class="anchored" data-anchor-id="why-cjc-lang-is-still-in-beta">Why CJC-Lang Is Still in Beta</h2>
 <p>The core is solid: the compiler pipeline works end-to-end, both execution engines agree, the test suite is extensive, and the runtime covers a wide surface area. But several areas need more work:</p>
 <ul>
 <li><strong>Type inference</strong> is limited — most types require explicit annotation</li>
@@ -599,9 +599,9 @@ print("Final y:", result);         // ~0.00674 (matches exp(-5))</code></pre>
 </section>
 <section id="why-share-this-now" class="level2">
 <h2 class="anchored" data-anchor-id="why-share-this-now">Why Share This Now?</h2>
-<p>CJC isn’t finished, but the ideas behind it are clear enough to discuss. Deterministic scientific computing is a real problem — I’ve seen it firsthand, from the lab bench to the data pipeline. Building the entire stack from scratch is an unusual approach, but the results so far suggest it’s viable.</p>
+<p>CJC-Lang isn’t finished, but the ideas behind it are clear enough to discuss. Deterministic scientific computing is a real problem — I’ve seen it firsthand, from the lab bench to the data pipeline. Building the entire stack from scratch is an unusual approach, but the results so far suggest it’s viable.</p>
 <p>If you’re interested in compiler design, numerical methods, reproducible computing, or just the experience of building a language from the ground up, I’ll be writing more here as the project develops.</p>
-<p>Next up: I’ll walk through <a href="../../../blog/posts/neural-networks-in-cjc/index.html">the neural network architectures I’ve built and verified in CJC</a> — REINFORCE agents, physics-informed networks, CNNs, and attention mechanisms, all running deterministically without any ML framework.</p>
+<p>Next up: I’ll walk through <a href="../../../blog/posts/neural-networks-in-cjc/index.html">the neural network architectures I’ve built and verified in CJC-Lang</a> — REINFORCE agents, physics-informed networks, CNNs, and attention mechanisms, all running deterministically without any ML framework.</p>
 <div class="callout callout-style-simple callout-tip no-icon callout-titled">
 <div class="callout-header d-flex align-content-center">
 <div class="callout-icon-container">
@@ -612,7 +612,7 @@ Follow the project
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p>CJC is open source and under active development. The project is in beta — functional and tested, but not yet production-ready. Follow <a href="https://linkedin.com/in/adamezzat"><span class="citation" data-cites="adamezzat">@adamezzat</span></a> for updates as new features land.</p>
+<p>CJC-Lang is open source and under active development. The project is in beta — functional and tested, but not yet production-ready. Follow <a href="https://linkedin.com/in/adamezzat"><span class="citation" data-cites="adamezzat">@adamezzat</span></a> for updates as new features land.</p>
 </div>
 </div>
 

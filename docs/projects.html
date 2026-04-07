@@ -125,7 +125,7 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#cjc-computation-jacobian-core-beta" id="toc-cjc-computation-jacobian-core-beta" class="nav-link active" data-scroll-target="#cjc-computation-jacobian-core-beta">CJC — Computation Jacobian Core <span class="badge-beta">Beta</span></a>
+  <li><a href="#cjc-lang-computational-jacobian-core-beta" id="toc-cjc-lang-computational-jacobian-core-beta" class="nav-link active" data-scroll-target="#cjc-lang-computational-jacobian-core-beta">CJC-Lang — Computational Jacobian Core <span class="badge-beta">Beta</span></a>
   <ul class="collapse">
   <li><a href="#compiler-and-runtime" id="toc-compiler-and-runtime" class="nav-link" data-scroll-target="#compiler-and-runtime">Compiler and Runtime</a></li>
   <li><a href="#dual-engine-compiler-pipeline" id="toc-dual-engine-compiler-pipeline" class="nav-link" data-scroll-target="#dual-engine-compiler-pipeline">Dual-Engine Compiler Pipeline</a></li>
@@ -166,10 +166,10 @@ ul.task-list li input[type="checkbox"] {
 
 </header>
 
-<section id="cjc-computation-jacobian-core-beta" class="level2">
-<h2 class="anchored" data-anchor-id="cjc-computation-jacobian-core-beta">CJC — Computation Jacobian Core <span class="badge-beta">Beta</span></h2>
+<section id="cjc-lang-computational-jacobian-core-beta" class="level2">
+<h2 class="anchored" data-anchor-id="cjc-lang-computational-jacobian-core-beta">CJC-Lang — Computational Jacobian Core <span class="badge-beta">Beta</span></h2>
 <p>A deterministic programming language for scientific computing, built from scratch in Rust with nearly zero external dependencies.</p>
-<p>CJC covers the full stack: lexer, parser, type checker, two intermediate representations (HIR and MIR), an optimizer, two execution engines, and a runtime with ~300 built-in functions spanning math, statistics, linear algebra, signal processing, machine learning, and data manipulation.</p>
+<p>CJC-Lang covers the full stack: lexer, parser, type checker, two intermediate representations (HIR and MIR), an optimizer, two execution engines, and a runtime with ~300 built-in functions spanning math, statistics, linear algebra, signal processing, machine learning, and data manipulation.</p>
 <p><strong>Key technical facts:</strong></p>
 <ul>
 <li><strong>6.4 MB single binary</strong> — the entire language in one file</li>
@@ -183,7 +183,7 @@ ul.task-list li input[type="checkbox"] {
 </section>
 <section id="dual-engine-compiler-pipeline" class="level3 project-card">
 <h3 class="anchored" data-anchor-id="dual-engine-compiler-pipeline">Dual-Engine Compiler Pipeline</h3>
-<p>CJC has two execution paths that must always agree:</p>
+<p>CJC-Lang has two execution paths that must always agree:</p>
 <ol type="1">
 <li><strong>AST Interpreter</strong> (<code>cjc-eval</code>) — direct tree-walk execution for rapid prototyping and debugging</li>
 <li><strong>MIR Executor</strong> (<code>cjc-mir-exec</code>) — register-machine execution through HIR → MIR lowering with optimization</li>
@@ -227,7 +227,7 @@ ul.task-list li input[type="checkbox"] {
 </section>
 <section id="chess-rl-benchmark" class="level3 project-card">
 <h3 class="anchored" data-anchor-id="chess-rl-benchmark">Chess RL Benchmark</h3>
-<p>A full chess environment and REINFORCE reinforcement learning agent written entirely in CJC. 69 tests covering board invariants, legal move generation, policy gradient updates, and training determinism. Validates that CJC can express a complete ML workflow end-to-end.</p>
+<p>A full chess environment and REINFORCE reinforcement learning agent written entirely in CJC-Lang. 69 tests covering board invariants, legal move generation, policy gradient updates, and training determinism. Validates that CJC can express a complete ML workflow end-to-end.</p>
 </section>
 <section id="physics-informed-ml-sciml" class="level3 project-card">
 <h3 class="anchored" data-anchor-id="physics-informed-ml-sciml">Physics-Informed ML (SciML)</h3>
@@ -243,7 +243,7 @@ ul.task-list li input[type="checkbox"] {
 </section>
 <section id="visualization-vizor" class="level3 project-card">
 <h3 class="anchored" data-anchor-id="visualization-vizor">Visualization (Vizor)</h3>
-<p>Grammar-of-graphics visualization library built into the CJC ecosystem. Declarative plot specification following principles similar to ggplot2. Currently integrated at the library level within the CJC runtime.</p>
+<p>Grammar-of-graphics visualization library built into the CJC-Lang ecosystem. Declarative plot specification following principles similar to ggplot2. Currently integrated at the library level within the CJC-Lang runtime.</p>
 </section>
 
 

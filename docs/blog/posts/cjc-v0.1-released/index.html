@@ -8,9 +8,9 @@
 
 <meta name="author" content="Adam Ezzat">
 <meta name="dcterms.date" content="2026-03-28">
-<meta name="description" content="CJC v0.1.0 is live — 20 crates, 282+ builtins, two execution engines, and deterministic-by-default numerical computing. Here’s what shipped.">
+<meta name="description" content="CJC-Lang v0.1.0 is live — 20 crates, 282+ builtins, two execution engines, and deterministic-by-default numerical computing. Here’s what shipped.">
 
-<title>Adam Ezzat - CJC v0.1.0: The First Public Release</title>
+<title>Adam Ezzat - CJC-Lang v0.1.0: The First Public Release</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -184,10 +184,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
-<h1 class="title">CJC v0.1.0: The First Public Release</h1>
+<h1 class="title">CJC-Lang v0.1.0: The First Public Release</h1>
 <p class="subtitle lead">A deterministic scientific computing language is now available on crates.io.</p>
   <div class="quarto-categories">
-    <div class="quarto-category">CJC</div>
+    <div class="quarto-category">CJC-Lang</div>
     <div class="quarto-category">release</div>
     <div class="quarto-category">compilers</div>
     <div class="quarto-category">scientific-computing</div>
@@ -196,7 +196,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <div>
   <div class="description">
-    CJC v0.1.0 is live — 20 crates, 282+ builtins, two execution engines, and deterministic-by-default numerical computing. Here’s what shipped.
+    CJC-Lang v0.1.0 is live — 20 crates, 282+ builtins, two execution engines, and deterministic-by-default numerical computing. Here’s what shipped.
   </div>
 </div>
 
@@ -256,22 +256,22 @@ TL;DR
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p>CJC v0.1.0 is live on <a href="https://crates.io/crates/cjc-cli">crates.io</a>. Install it with <code>cargo install cjc-cli</code> and start writing deterministic numerical programs today. Same seed, same output, always.</p>
+<p>CJC-Lang v0.1.0 is live on <a href="https://crates.io/crates/cjc-cli">crates.io</a>. Install it with <code>cargo install cjc-lang</code> and start writing deterministic numerical programs today. Same seed, same output, always.</p>
 </div>
 </div>
 <section id="it-ships" class="level2">
 <h2 class="anchored" data-anchor-id="it-ships">It Ships</h2>
-<p>Today I published CJC v0.1.0 — the first public release of a programming language I’ve been building from scratch in Rust. Twenty crates, roughly 96,000 lines of code, zero external runtime dependencies.</p>
-<div class="sourceCode" id="cb1"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> install cjc-cli</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Today I published CJC-Lang v0.1.0 — the first public release of a programming language I’ve been building from scratch in Rust. Twenty crates, roughly 96,000 lines of code, zero external runtime dependencies.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> install cjc-lang</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>That’s it. One command, one binary, everything included.</p>
-<p>If you read my <a href="../../../blog/posts/introducing-cjc/index.html">earlier post introducing CJC</a>, you know the motivation: I wanted a language where numerical computation is deterministic by default. Not “mostly reproducible” or “reproducible if you pin every dependency.” Deterministic. Same seed in, same bits out, every time, on every platform.</p>
+<p>If you read my <a href="../../../blog/posts/introducing-cjc/index.html">earlier post introducing CJC-Lang</a>, you know the motivation: I wanted a language where numerical computation is deterministic by default. Not “mostly reproducible” or “reproducible if you pin every dependency.” Deterministic. Same seed in, same bits out, every time, on every platform.</p>
 <p>v0.1.0 is the first version I’m confident enough to put a number on.</p>
 </section>
 <section id="whats-in-the-box" class="level2">
 <h2 class="anchored" data-anchor-id="whats-in-the-box">What’s in the Box</h2>
 <section id="a-complete-language" class="level3">
 <h3 class="anchored" data-anchor-id="a-complete-language">A Complete Language</h3>
-<p>CJC is a statically-aware, dynamically-typed language with a syntax that should feel familiar if you’ve written Rust, Python, or R:</p>
+<p>CJC-Lang is a statically-aware, dynamically-typed language with a syntax that should feel familiar if you’ve written Rust, Python, or R:</p>
 <pre><code>fn fibonacci(n: i64) -&gt; i64 {
     if n &lt;= 1 {
         return n;
@@ -291,18 +291,18 @@ print(fibonacci(30));</code></pre>
 </section>
 <section id="two-execution-engines" class="level3">
 <h3 class="anchored" data-anchor-id="two-execution-engines">Two Execution Engines</h3>
-<p>Every CJC program can run on two independent engines:</p>
+<p>Every CJC-Lang program can run on two independent engines:</p>
 <ol type="1">
 <li><strong><code>cjc-eval</code></strong> — an AST tree-walk interpreter. Fast startup, great for scripting and the REPL.</li>
 <li><strong><code>cjc-mir-exec</code></strong> — a MIR register-machine executor with an optimization pipeline: constant folding, strength reduction, dead code elimination, common subexpression elimination, and loop-invariant code motion.</li>
 </ol>
-<div class="sourceCode" id="cb3"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cjc</span> run program.cjc            <span class="co"># AST interpreter (default)</span></span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ex">cjc</span> run program.cjc <span class="at">--mir-opt</span>  <span class="co"># MIR executor with optimizations</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb3"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cjcl</span> run program.cjcl            <span class="co"># AST interpreter (default)</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="ex">cjcl</span> run program.cjcl <span class="at">--mir-opt</span>  <span class="co"># MIR executor with optimizations</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Both engines are tested for <strong>parity</strong> — given the same input and seed, they produce identical output. This dual-engine architecture catches bugs that a single implementation would miss.</p>
 </section>
 <section id="built-in-functions" class="level3">
 <h3 class="anchored" data-anchor-id="built-in-functions">282+ Built-in Functions</h3>
-<p>CJC ships with a broad standard library, all implemented from scratch:</p>
+<p>CJC-Lang ships with a broad standard library, all implemented from scratch:</p>
 <p><strong>Math &amp; Trig</strong>: <code>sin</code>, <code>cos</code>, <code>sqrt</code>, <code>pow</code>, <code>log</code>, <code>exp</code>, <code>abs</code>, <code>floor</code>, <code>ceil</code>, <code>round</code>, <code>hypot</code>, <code>atan2</code>, and more</p>
 <p><strong>Statistics</strong>: <code>mean</code>, <code>median</code>, <code>variance</code>, <code>sd</code>, <code>quantile</code>, <code>cor</code>, <code>cov</code>, <code>t_test</code>, <code>chi_squared_test</code>, <code>anova_oneway</code>, <code>logistic_regression</code></p>
 <p><strong>Linear Algebra</strong>: <code>matmul</code>, <code>det</code>, <code>solve</code>, <code>eigh</code>, <code>lstsq</code>, <code>linalg.lu</code>, <code>linalg.qr</code>, <code>linalg.cholesky</code>, <code>linalg.inv</code>, <code>kron</code>, <code>norm</code></p>
@@ -320,7 +320,7 @@ print(result);</code></pre>
 </section>
 <section id="determinism-as-a-contract" class="level3">
 <h3 class="anchored" data-anchor-id="determinism-as-a-contract">Determinism as a Contract</h3>
-<p>This is the core principle. CJC enforces determinism at every layer:</p>
+<p>This is the core principle. CJC-Lang enforces determinism at every layer:</p>
 <ul>
 <li><strong>RNG</strong>: SplitMix64 with explicit seed threading. No OS entropy, no thread-local state.</li>
 <li><strong>Floating-point reductions</strong>: Kahan compensated summation and binned accumulators. <code>sum([0.1, 0.2, 0.3])</code> gives the same bits whether you process forward, backward, or in parallel chunks.</li>
@@ -329,12 +329,12 @@ print(result);</code></pre>
 <li><strong>NoGC verification</strong>: A static pass that proves certain code paths never allocate on the GC heap.</li>
 </ul>
 <pre><code>// Run the same computation twice with the same seed — identical output guaranteed
-cjc run simulation.cjc --seed 42
-cjc run simulation.cjc --seed 42  // bit-for-bit identical</code></pre>
+cjcl run simulation.cjcl --seed 42
+cjcl run simulation.cjcl --seed 42  // bit-for-bit identical</code></pre>
 </section>
 <section id="the-compiler-pipeline" class="level3">
 <h3 class="anchored" data-anchor-id="the-compiler-pipeline">The Compiler Pipeline</h3>
-<p>CJC isn’t just an interpreter — it’s a full compiler pipeline:</p>
+<p>CJC-Lang isn’t just an interpreter — it’s a full compiler pipeline:</p>
 <pre><code>Source → Lexer → Parser → AST → HIR → MIR → Optimize → Execute</code></pre>
 <ul>
 <li><strong>Lexer</strong>: Hand-written tokenizer with full Unicode support</li>
@@ -347,7 +347,7 @@ cjc run simulation.cjc --seed 42  // bit-for-bit identical</code></pre>
 </section>
 <section id="real-world-examples-no-libraries-no-imports-no-dependencies" class="level3">
 <h3 class="anchored" data-anchor-id="real-world-examples-no-libraries-no-imports-no-dependencies">Real-World Examples — No Libraries, No Imports, No Dependencies</h3>
-<p>Everything below runs on <code>cjc</code> alone. No <code>pip install</code>, no <code>npm</code>, no linking against BLAS or LAPACK. Every tensor operation, every activation function, every optimizer, every statistical test — implemented from scratch inside CJC’s runtime.</p>
+<p>Everything below runs on <code>cjcl</code> alone. No <code>pip install</code>, no <code>npm</code>, no linking against BLAS or LAPACK. Every tensor operation, every activation function, every optimizer, every statistical test — implemented from scratch inside CJC-Lang’s runtime.</p>
 <p>Each example demonstrates a specific capability. I’ll show the code, the actual terminal output, and explain what it proves about the language.</p>
 <hr>
 <section id="transformer-forward-pass-multi-head-attention-kv-cache-layernorm" class="level4">
@@ -404,7 +404,7 @@ let output = x2 + ff_out;
 // ... (identical forward pass) ...
 assert_eq(val, val2);
 print("PASS: Transformer forward pass — deterministic, zero-GC");</code></pre>
-<pre><code>$ cjc run examples/transformer_forward.cjc
+<pre><code>$ cjcl run examples/transformer_forward.cjcl
 1. LayerNorm shape: [1, 4, 8]
 2. Q shape: [1, 4, 8] K shape: [1, 4, 8] V shape: [1, 4, 8]
 3. KV-Cache K len: 4 V len: 4
@@ -420,8 +420,8 @@ print("PASS: Transformer forward pass — deterministic, zero-GC");</code></pre>
 PASS: Transformer forward pass — deterministic, zero-GC</code></pre>
 <p><strong>What this proves:</strong></p>
 <ul>
-<li><strong>CJC can represent a full transformer block</strong> — the dominant architecture in modern AI. LayerNorm, multi-head scaled dot-product attention, split/merge heads, GELU activation, residual connections — all built-in.</li>
-<li><strong>KV-cache works with zero-allocation appends</strong> via <code>Scratchpad</code> — CJC’s paged memory abstraction designed for autoregressive generation.</li>
+<li><strong>CJC-Lang can represent a full transformer block</strong> — the dominant architecture in modern AI. LayerNorm, multi-head scaled dot-product attention, split/merge heads, GELU activation, residual connections — all built-in.</li>
+<li><strong>KV-cache works with zero-allocation appends</strong> via <code>Scratchpad</code> — CJC-Lang’s paged memory abstraction designed for autoregressive generation.</li>
 <li><strong>Tensor shape transformations work correctly</strong> — <code>split_heads</code> reshapes [1,4,8] → [1,2,4,4] and <code>merge_heads</code> reverses it. These are the exact operations real transformer libraries implement.</li>
 <li><strong>The determinism contract holds</strong> — the program runs the entire forward pass twice and asserts bit-identical output. No hidden state, no floating-point drift. <code>assert_eq(val, val2)</code> passes.</li>
 </ul>
@@ -477,7 +477,7 @@ while step &lt; 100 {
     }
     step = step + 1;
 }</code></pre>
-<pre><code>$ cjc run bench/nn_bench/bench_cjc_mlp.cjc
+<pre><code>$ cjcl run bench/nn_bench/bench_cjc_mlp.cjcl
 {"impl":"cjc", "case":"mini", "trial":1, "steps":100,
  "steps_per_sec":1525.4,
  "loss_start":0.2229116181138288,
@@ -488,7 +488,7 @@ while step &lt; 100 {
  "final_hash":"-10132257.426006595"}</code></pre>
 <p><strong>What this proves:</strong></p>
 <ul>
-<li><strong>CJC can train neural networks end-to-end</strong> — not just forward passes, but real gradient computation and weight updates. The loss drops from 0.223 to 0.046 in 100 steps — the network is learning.</li>
+<li><strong>CJC-Lang can train neural networks end-to-end</strong> — not just forward passes, but real gradient computation and weight updates. The loss drops from 0.223 to 0.046 in 100 steps — the network is learning.</li>
 <li><strong>Manual backpropagation works</strong> — chain rule through ReLU via element-wise masks, <code>.transpose()</code> for gradient routing, <code>.sum_axis(0)</code> for bias gradient accumulation. All the operations a deep learning framework needs.</li>
 <li><strong>Numerical stability</strong> — zero NaN values across 100 training steps with 1,525 steps/second throughput. Gradient norms stay bounded (0.18 to 1.22 — no exploding gradients).</li>
 <li><strong>Deterministic training</strong> — <code>final_hash</code> is a checksum of all weight tensors after training. Run it again → same hash. Same loss trajectory. Same gradients at every step.</li>
@@ -529,7 +529,7 @@ while frame_i &lt; 10 {
     frame_i = frame_i + 1;
 }
 print("Deterministic Fingerprint:", fingerprint);</code></pre>
-<pre><code>$ cjc run bench/bench_cnn_2d_vision.cjc
+<pre><code>$ cjcl run bench/bench_cnn_2d_vision.cjcl
 CNN_2D_START
 Frames processed: 10
 Total Time (s): 0.0043
@@ -537,8 +537,8 @@ Deterministic Fingerprint: 36.000000000000014</code></pre>
 <p><strong>What this proves:</strong></p>
 <ul>
 <li><strong>Real 2D spatial convolution</strong> — not just 1D signals, but proper <code>[N, C, H, W]</code> tensor layout with multi-channel input, multi-channel output, and configurable stride. This is the same convolution used in ResNet, VGG, and every vision model.</li>
-<li><strong>Feature map dimensions are correct</strong> — <code>[1,1,10,10]</code> with 3×3 kernel, valid padding, stride 1 → <code>[1,4,8,8]</code>. Then stride 2 → <code>[1,8,3,3]</code>. CJC computes the output shapes correctly.</li>
-<li><strong>BinnedAccumulator summation</strong> — the fingerprint accumulates <code>a2.sum()</code> across 10 frames. Because CJC uses binned floating-point accumulation internally, the fingerprint is 36.000000000000014 every single run. In Python with NumPy, you might get different values depending on thread scheduling.</li>
+<li><strong>Feature map dimensions are correct</strong> — <code>[1,1,10,10]</code> with 3×3 kernel, valid padding, stride 1 → <code>[1,4,8,8]</code>. Then stride 2 → <code>[1,8,3,3]</code>. CJC-Lang computes the output shapes correctly.</li>
+<li><strong>BinnedAccumulator summation</strong> — the fingerprint accumulates <code>a2.sum()</code> across 10 frames. Because CJC-Lang uses binned floating-point accumulation internally, the fingerprint is 36.000000000000014 every single run. In Python with NumPy, you might get different values depending on thread scheduling.</li>
 <li><strong>NoGC-safe operations</strong> — <code>conv2d</code> and <code>relu</code> are marked <code>@nogc</code>, meaning they allocate no garbage-collected memory. This is crucial for real-time vision pipelines.</li>
 </ul>
 <hr>
@@ -569,7 +569,7 @@ while step &lt; 10000 {
 // Read back any historical hidden state by index
 let first_h = state_cache.get_token(0);
 let last_h = state_cache.get_token(9999);</code></pre>
-<pre><code>$ cjc run bench/bench_rnn_latency.cjc
+<pre><code>$ cjcl run bench/bench_rnn_latency.cjcl
 RNN_BENCH_START
 hidden_dim: 16
 input_dim: 16
@@ -594,7 +594,7 @@ PASS</code></pre>
 </section>
 <section id="chess-rl-reinforce-policy-gradient-agent" class="level4">
 <h4 class="anchored" data-anchor-id="chess-rl-reinforce-policy-gradient-agent">5. Chess RL — REINFORCE Policy Gradient Agent</h4>
-<p>The most complex program in CJC’s test suite. A complete reinforcement learning system: a chess environment with legal move generation, check detection, and game termination; a policy network MLP; softmax action selection via categorical sampling; and REINFORCE gradient updates with manual backpropagation through the policy.</p>
+<p>The most complex program in CJC-Lang’s test suite. A complete reinforcement learning system: a chess environment with legal move generation, check detection, and game termination; a policy network MLP; softmax action selection via categorical sampling; and REINFORCE gradient updates with manual backpropagation through the policy.</p>
 <pre><code>// ── Chess Environment (600+ lines of CJC) ──
 fn init_board() -&gt; Any {
     [4, 2, 3, 5, 6, 3, 2, 4,      // white back rank
@@ -657,7 +657,7 @@ fn train_episode(W1: Tensor, b1: Tensor, W2: Tensor, lr: f64) -&gt; Any {
 }</code></pre>
 <p><strong>What this proves:</strong></p>
 <ul>
-<li><strong>CJC can implement an entire game engine</strong> — board representation, piece-specific move generation (pawns, knights, bishops, rooks, queens, kings with sliding ray attacks), check detection via attack tables, legal move filtering, stalemate/checkmate detection. All in pure CJC.</li>
+<li><strong>CJC-Lang can implement an entire game engine</strong> — board representation, piece-specific move generation (pawns, knights, bishops, rooks, queens, kings with sliding ray attacks), check detection via attack tables, legal move filtering, stalemate/checkmate detection. All in pure CJC-Lang.</li>
 <li><strong>Policy gradient RL works end-to-end</strong> — the agent learns to play chess via REINFORCE: forward pass scores each legal move, softmax produces a probability distribution, <code>categorical_sample()</code> selects an action, and the gradient of the log-probability flows back through the network. The training test suite verifies that loss is finite, rewards are valid ({-1, 0, 1}), and weights change after training.</li>
 <li><strong>Complex control flow</strong> — deeply nested loops and conditionals (move generation alone has 5 levels of nesting), recursive data structures (arrays of arrays for knight offsets), and boolean logic across hundreds of lines. CJC handles all of it.</li>
 <li><strong>Deterministic RL training</strong> — same seed produces identical game trajectories, identical action selections, identical gradient updates, identical final weights. The test suite runs training twice with the same seed and asserts every output matches.</li>
@@ -684,7 +684,7 @@ fn train_episode(W1: Tensor, b1: Tensor, W2: Tensor, lr: f64) -&gt; Any {
 
 // Optimizer: Adam (β1=0.9, β2=0.999)
 // Trained for 500 epochs</code></pre>
-<pre><code>$ cjc run examples/pinn_demo.cjc
+<pre><code>$ cjcl run examples/pinn_demo.cjcl
 === PINN: Harmonic Oscillator (u_xx + u = 0) ===
 Seed:           42
 Data points:    20
@@ -705,8 +705,8 @@ After training:
   - Results are BIT-IDENTICAL across runs (same seed)</code></pre>
 <p><strong>What this proves:</strong></p>
 <ul>
-<li><strong>Scientific ML is a first-class use case</strong> — PINNs are one of the most important applications of neural networks in science and engineering. CJC supports the full workflow: define a PDE, sample collocation points, compute physics residuals via finite differences, combine data loss and physics loss, and optimize.</li>
-<li><strong>Automatic differentiation</strong> — CJC has built-in forward-mode dual numbers and reverse-mode tape for gradient computation. The PINN test suite (in <code>cargo test --test pinn_correctness</code>) verifies that the trained network actually approximates sin(x) within tolerance.</li>
+<li><strong>Scientific ML is a first-class use case</strong> — PINNs are one of the most important applications of neural networks in science and engineering. CJC-Lang supports the full workflow: define a PDE, sample collocation points, compute physics residuals via finite differences, combine data loss and physics loss, and optimize.</li>
+<li><strong>Automatic differentiation</strong> — CJC-Lang has built-in forward-mode dual numbers and reverse-mode tape for gradient computation. The PINN test suite (in <code>cargo test --test pinn_correctness</code>) verifies that the trained network actually approximates sin(x) within tolerance.</li>
 <li><strong>Adam optimizer</strong> — not just SGD, but the adaptive moment estimation optimizer with β1/β2 momentum and bias correction. This is the standard optimizer for neural network training.</li>
 <li><strong>Reproducible science</strong> — the PINN produces bit-identical results across runs. When a physicist uses CJC to solve a PDE, their colleague gets the exact same solution from the exact same code.</li>
 </ul>
@@ -727,7 +727,7 @@ while i &lt; 100 {
     x = x - lr * g;
     i = i + 1;
 }</code></pre>
-<pre><code>$ cjc run demos/demo2_gradient.cjc
+<pre><code>$ cjcl run demos/demo2_gradient.cjcl
 Starting gradient descent on f(x) = (x-3)^2
 Initial x: 0  f(x): 9
 Step 20  x = 2.9654123548617948  f(x) = 0.0011963051962064115
@@ -738,9 +738,9 @@ Step 100 x = 2.9999999993888893  f(x) = 0.00000000000000000037345630914781746
 Gradient descent converged! x is within 0.001 of optimal.</code></pre>
 <p><strong>What this proves:</strong></p>
 <ul>
-<li><strong>Floating-point precision is preserved</strong> — the loss reaches 3.73×10⁻¹⁹, approaching the limits of f64 precision. CJC’s arithmetic doesn’t introduce hidden rounding errors or precision loss. Every digit in that output is exact.</li>
-<li><strong>Functions work as values</strong> — <code>f</code> and <code>grad_f</code> are first-class functions called in the optimization loop. CJC supports user-defined functions with proper scoping and recursion.</li>
-<li><strong>The convergence rate is exact</strong> — for a quadratic with learning rate 0.1, the contraction factor is (1 - 2·0.1) = 0.8 per step. You can verify that f(x) at step 20 matches the analytical prediction 9 × 0.8²⁰ = 0.00115… The output confirms CJC’s floating-point arithmetic is correct.</li>
+<li><strong>Floating-point precision is preserved</strong> — the loss reaches 3.73×10⁻¹⁹, approaching the limits of f64 precision. CJC-Lang’s arithmetic doesn’t introduce hidden rounding errors or precision loss. Every digit in that output is exact.</li>
+<li><strong>Functions work as values</strong> — <code>f</code> and <code>grad_f</code> are first-class functions called in the optimization loop. CJC-Lang supports user-defined functions with proper scoping and recursion.</li>
+<li><strong>The convergence rate is exact</strong> — for a quadratic with learning rate 0.1, the contraction factor is (1 - 2·0.1) = 0.8 per step. You can verify that f(x) at step 20 matches the analytical prediction 9 × 0.8²⁰ = 0.00115… The output confirms CJC-Lang’s floating-point arithmetic is correct.</li>
 </ul>
 <hr>
 </section>
@@ -766,7 +766,7 @@ print(t_test(data, 24.0));
 let x = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0];
 let y = [2.1, 4.0, 5.8, 8.1, 9.9, 12.2, 13.8, 16.1, 18.0, 20.1];
 print("Pearson r:", cor(x, y));</code></pre>
-<pre><code>$ cjc run statistics.cjc
+<pre><code>$ cjcl run statistics.cjcl
 === Descriptive Statistics ===
 Mean: 24.23
 Median: 24.35
@@ -783,7 +783,7 @@ TTestResult { df: 9, mean: 24.23, p_value: 0.5489, t_statistic: 0.6226 }
 Pearson r: 0.9997491236405732</code></pre>
 <p><strong>What this proves:</strong></p>
 <ul>
-<li><strong>CJC is a viable R/scipy alternative for basic statistics</strong> — mean, median, standard deviation, variance, quantiles, normal CDF/PPF/PDF, t-tests, and correlation are all built-in.</li>
+<li><strong>CJC-Lang is a viable R/scipy alternative for basic statistics</strong> — mean, median, standard deviation, variance, quantiles, normal CDF/PPF/PDF, t-tests, and correlation are all built-in.</li>
 <li><strong>The numbers are correct</strong> — <code>normal_cdf(1.96)</code> = 0.97500… (the textbook value). <code>normal_ppf(0.975)</code> = 1.95996… (the inverse). <code>sd</code> uses Bessel’s correction (n-1 denominator). These aren’t approximations; CJC implements the actual algorithms (Abramowitz-Stegun for erfc, Newton’s method for PPF).</li>
 <li><strong>Structured result types</strong> — <code>t_test</code> returns a <code>TTestResult</code> with degrees of freedom, mean, p-value, standard error, and t-statistic. Not a raw number — a properly structured statistical result.</li>
 <li><strong>The p-value is 0.549</strong> — meaning we fail to reject H₀ (mean = 24.0) at any reasonable significance level. This is the correct conclusion for this data.</li>
@@ -813,7 +813,7 @@ while pos &lt;= signal_length {
 
     pos = pos + process_every;
 }</code></pre>
-<pre><code>$ cjc run bench/bench_cnn_signal.cjc
+<pre><code>$ cjcl run bench/bench_cnn_signal.cjcl
 CNN_BENCH_START
 signal_length: 10000
 window_size: 64
@@ -828,13 +828,13 @@ PASS</code></pre>
 <p><strong>What this proves:</strong></p>
 <ul>
 <li><strong>Streaming convolution pipelines work</strong> — 622 overlapping windows extracted and processed with two convolutional layers. This is how audio processing, vibration analysis, and real-time anomaly detection actually work.</li>
-<li><strong>Deterministic accumulation over 622 windows</strong> — <code>accum = 60.68800000000005</code> is identical across runs. In a non-deterministic language, accumulating 622 floating-point partial sums could give slightly different results depending on thread scheduling or operation ordering. CJC’s Kahan summation prevents this.</li>
+<li><strong>Deterministic accumulation over 622 windows</strong> — <code>accum = 60.68800000000005</code> is identical across runs. In a non-deterministic language, accumulating 622 floating-point partial sums could give slightly different results depending on thread scheduling or operation ordering. CJC-Lang’s Kahan summation prevents this.</li>
 <li><strong>Performance is practical</strong> — 0.145 seconds for 622 windows with two Conv1D layers. That’s ~4,300 windows/second on a tree-walk interpreter. The MIR executor would be faster.</li>
 </ul>
 <hr>
-<p>All of these examples — transformer attention, backpropagation, 2D convolution, recurrent networks, reinforcement learning, PDE solving, statistical tests, signal processing — run without importing a single library. They’re built into CJC.</p>
+<p>All of these examples — transformer attention, backpropagation, 2D convolution, recurrent networks, reinforcement learning, PDE solving, statistical tests, signal processing — run without importing a single library. They’re built into CJC-Lang.</p>
 <p>The code is real. The outputs are real. You can install CJC right now and run every example yourself:</p>
-<div class="sourceCode" id="cb24"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> install cjc-cli</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb24"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> install cjc-lang</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </section>
 </section>
 </section>
@@ -842,9 +842,9 @@ PASS</code></pre>
 <h2 class="anchored" data-anchor-id="whats-not-in-v0.1.0">What’s Not in v0.1.0</h2>
 <p>I want to be upfront about the limitations:</p>
 <ul>
-<li><strong>Single-file only</strong>: The module system (<code>mod</code>, <code>import</code>) is parsed but not functional. Every program lives in one <code>.cjc</code> file.</li>
+<li><strong>Single-file only</strong>: The module system (<code>mod</code>, <code>import</code>) is parsed but not functional. Every program lives in one <code>.cjcl</code> file.</li>
 <li><strong>No package manager</strong>: There’s a design (ADR-0013) for a git-based deterministic package manager, but it’s not implemented.</li>
-<li><strong>No formatter</strong>: No <code>cjc fmt</code> yet.</li>
+<li><strong>No formatter</strong>: No <code>cjcl fmt</code> yet.</li>
 <li><strong>Parser recovery is limited</strong>: A syntax error mid-function loses the rest of that function body. You still get the error with line/column, but you only get one error per function.</li>
 <li><strong>Visibility not enforced</strong>: <code>pub</code> and <code>priv</code> are parsed but everything is treated as public.</li>
 <li><strong>Some CLI commands are stubs</strong>: <code>mem</code> and <code>trace</code> are placeholders.</li>
@@ -898,16 +898,16 @@ PASS</code></pre>
 </section>
 <section id="try-it" class="level2">
 <h2 class="anchored" data-anchor-id="try-it">Try It</h2>
-<div class="sourceCode" id="cb25"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> install cjc-cli</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb25"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> install cjc-lang</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Write a file:</p>
 <pre><code>let xs: Any = Tensor.linspace(0.0, 6.28, 100);
 let ys: Any = sin(xs);
 print(mean(ys));
 print(variance(ys));</code></pre>
 <p>Run it:</p>
-<div class="sourceCode" id="cb27"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cjc</span> run analysis.cjc</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb27"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cjcl</span> run analysis.cjcl</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Or just open the REPL:</p>
-<div class="sourceCode" id="cb28"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cjc</span> repl</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb28"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cjcl</span> repl</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>The source code is at <a href="https://github.com/AdamEzzat1/CJC">github.com/AdamEzzat1/CJC</a>. The crates are on <a href="https://crates.io/crates/cjc-cli">crates.io</a>.</p>
 </section>
 <section id="whats-next" class="level2">
@@ -916,13 +916,13 @@ print(variance(ys));</code></pre>
 <ul>
 <li><strong>Multi-file module system</strong> with proper visibility enforcement</li>
 <li><strong>Package manager</strong> with git-based pinning and deterministic resolution</li>
-<li><strong>Code formatter</strong> (<code>cjc fmt</code>)</li>
+<li><strong>Code formatter</strong> (<code>cjcl fmt</code>)</li>
 <li><strong>Better error recovery</strong> inside function bodies</li>
 <li><strong>Gradual migration</strong> from <code>unwrap()</code> to <code>Result&lt;&gt;</code> in public APIs</li>
 </ul>
-<p>If deterministic computation matters to you — whether for scientific reproducibility, ML training pipelines, or just wanting <code>sum()</code> to give the same answer twice — give CJC a try.</p>
+<p>If deterministic computation matters to you — whether for scientific reproducibility, ML training pipelines, or just wanting <code>sum()</code> to give the same answer twice — give CJC-Lang a try.</p>
 <hr>
-<p><em>CJC v0.1.0 is available now via <code>cargo install cjc-cli</code>. The full source is at <a href="https://github.com/AdamEzzat1/CJC">github.com/AdamEzzat1/CJC</a>.</em></p>
+<p><em>CJC-Lang v0.1.0 is available now via <code>cargo install cjc-lang</code>. The full source is at <a href="https://github.com/AdamEzzat1/CJC">github.com/AdamEzzat1/CJC</a>.</em></p>
 
 
 </section>

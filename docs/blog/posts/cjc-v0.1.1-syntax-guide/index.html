@@ -8,7 +8,7 @@
 
 <meta name="author" content="Adam Ezzat">
 <meta name="dcterms.date" content="2026-04-02">
-<meta name="description" content="The complete syntax guide for CJC v0.1.1 — covering core language constructs, 287+ builtins, the dual-engine compiler pipeline, quantum simulation extensions, and deterministic numerical computing.">
+<meta name="description" content="The complete syntax guide for CJC-Lang v0.1.1 — covering core language constructs, 287+ builtins, the dual-engine compiler pipeline, quantum simulation extensions, and deterministic numerical computing.">
 
 <title>Adam Ezzat - Syntax Guide for CJC Version 0.1.1</title>
 <style>
@@ -270,9 +270,9 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
 <h1 class="title">Syntax Guide for CJC Version 0.1.1</h1>
-<p class="subtitle lead">A comprehensive reference for CJC’s language features, compiler infrastructure, and quantum computing extensions.</p>
+<p class="subtitle lead">A comprehensive reference for CJC-Lang’s language features, compiler infrastructure, and quantum computing extensions.</p>
   <div class="quarto-categories">
-    <div class="quarto-category">CJC</div>
+    <div class="quarto-category">CJC-Lang</div>
     <div class="quarto-category">syntax</div>
     <div class="quarto-category">compilers</div>
     <div class="quarto-category">scientific-computing</div>
@@ -282,7 +282,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <div>
   <div class="description">
-    The complete syntax guide for CJC v0.1.1 — covering core language constructs, 287+ builtins, the dual-engine compiler pipeline, quantum simulation extensions, and deterministic numerical computing.
+    The complete syntax guide for CJC-Lang v0.1.1 — covering core language constructs, 287+ builtins, the dual-engine compiler pipeline, quantum simulation extensions, and deterministic numerical computing.
   </div>
 </div>
 
@@ -339,13 +339,13 @@ What’s New in v0.1.1
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p>CJC v0.1.1 adds <strong>Quantum Hardening Phase 3</strong> (Jordan-Wigner, Suzuki-Trotter, Zero-Noise Extrapolation), <strong>AST Evolution v0.3</strong> (visitor trait, metrics, validation), <strong>MIR Evolution v0.3</strong> (schedule metadata, reduction analysis, SSA loop overlay), and <strong>MPS enhancements</strong> (canonical forms, SWAP networks). This guide covers every language feature and builtin available as of this release.</p>
+<p>CJC-Lang v0.1.1 adds <strong>Quantum Hardening Phase 3</strong> (Jordan-Wigner, Suzuki-Trotter, Zero-Noise Extrapolation), <strong>AST Evolution v0.3</strong> (visitor trait, metrics, validation), <strong>MIR Evolution v0.3</strong> (schedule metadata, reduction analysis, SSA loop overlay), and <strong>MPS enhancements</strong> (canonical forms, SWAP networks). This guide covers every language feature and builtin available as of this release.</p>
 </div>
 </div>
 <hr>
 <section id="part-1-the-language" class="level2">
 <h2 class="anchored" data-anchor-id="part-1-the-language">Part 1 — The Language</h2>
-<p>CJC is a statically-aware, dynamically-typed language for deterministic scientific computing. If you’ve written Rust, Python, or R, the syntax will feel familiar. This section covers every construct the language supports.</p>
+<p>CJC-Lang is a statically-aware, dynamically-typed language for deterministic scientific computing. If you’ve written Rust, Python, or R, the syntax will feel familiar. This section covers every construct the language supports.</p>
 <section id="functions" class="level3">
 <h3 class="anchored" data-anchor-id="functions">Functions</h3>
 <p>Every function parameter requires a type annotation. Return types are optional but recommended.</p>
@@ -388,11 +388,11 @@ fn apply_generic&lt;T&gt;(x: T) -&gt; T { wrap(x) }</code></pre>
 <p>Immutable by default. Use <code>let mut</code> for mutation.</p>
 <pre><code>let x: i64 = 42
 let pi = 3.14159
-let name = "CJC"
+let name = "CJC-Lang"
 
 let mut count = 0
 count = count + 1</code></pre>
-<p>CJC supports type inference, but you can always be explicit:</p>
+<p>CJC-Lang supports type inference, but you can always be explicit:</p>
 <pre><code>let a: f64 = 1.0
 let b: bool = true
 let c: String = "hello"
@@ -493,7 +493,7 @@ while i &lt; 5 {
 </section>
 <section id="pattern-matching" class="level3">
 <h3 class="anchored" data-anchor-id="pattern-matching">Pattern Matching</h3>
-<p>CJC has full structural pattern matching with <code>match</code> expressions:</p>
+<p>CJC-Lang has full structural pattern matching with <code>match</code> expressions:</p>
 <pre><code>// Match on integers
 let x = 99;
 let label = match x {
@@ -610,7 +610,7 @@ let parts = str_split("a,b,c", ",");
 let joined = str_join(["a", "b", "c"], "-");
 let sub = str_contains(s, "world");</code></pre>
 <p>Formatted strings use <code>f"..."</code> syntax:</p>
-<pre><code>let name = "CJC";
+<pre><code>let name = "CJC-Lang";
 let version = "0.1.1";
 print(f"Welcome to {name} v{version}");</code></pre>
 </section>
@@ -652,7 +652,7 @@ x /= 4;</code></pre>
 <pre><code>Source → Lexer → Parser → AST → [TypeChecker] → HIR → MIR → [Optimize] → Exec</code></pre>
 <section id="stage-1-lexer" class="level3">
 <h3 class="anchored" data-anchor-id="stage-1-lexer">Stage 1: Lexer</h3>
-<p>The lexer (<code>cjc-lexer</code>) converts source text into a flat token stream. It recognizes all CJC keywords, operators (including <code>|&gt;</code>, <code>+=</code>, <code>@</code>), literals (integers, floats, strings, byte strings), and identifiers.</p>
+<p>The lexer (<code>cjc-lexer</code>) converts source text into a flat token stream. It recognizes all CJC-Lang keywords, operators (including <code>|&gt;</code>, <code>+=</code>, <code>@</code>), literals (integers, floats, strings, byte strings), and identifiers.</p>
 <div class="sourceCode" id="cb27"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> (tokens<span class="op">,</span> diags) <span class="op">=</span> <span class="pp">Lexer::</span>new(src)<span class="op">.</span>tokenize()<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </section>
 <section id="stage-2-parser" class="level3">
@@ -693,7 +693,7 @@ x /= 4;</code></pre>
 </section>
 <section id="stage-6-execution-dual-engine" class="level3">
 <h3 class="anchored" data-anchor-id="stage-6-execution-dual-engine">Stage 6: Execution (Dual Engine)</h3>
-<p>CJC has two execution engines that must produce identical results:</p>
+<p>CJC-Lang has two execution engines that must produce identical results:</p>
 <table class="table">
 <colgroup>
 <col style="width: 19%">
@@ -725,18 +725,18 @@ x /= 4;</code></pre>
 </tbody>
 </table>
 <p>The MIR executor also supports an optimized mode:</p>
-<pre><code>cjc run program.cjc --mir-opt</code></pre>
+<pre><code>cjcl run program.cjcl --mir-opt</code></pre>
 <p>Parity tests in the test suite verify that both engines produce bit-identical output for every supported program.</p>
 </section>
 <section id="diagnostics" class="level3">
 <h3 class="anchored" data-anchor-id="diagnostics">Diagnostics</h3>
-<p>CJC uses structured error codes (<code>E0xxx</code>-<code>E8xxx</code>) via the <code>cjc-diag</code> crate. Diagnostics carry source spans, severity levels, and optional fix suggestions.</p>
+<p>CJC-Lang uses structured error codes (<code>E0xxx</code>-<code>E8xxx</code>) via the <code>cjc-diag</code> crate. Diagnostics carry source spans, severity levels, and optional fix suggestions.</p>
 <hr>
 </section>
 </section>
 <section id="part-3-determinism-architecture" class="level2">
 <h2 class="anchored" data-anchor-id="part-3-determinism-architecture">Part 3 — Determinism Architecture</h2>
-<p>Determinism is CJC’s defining architectural constraint. Every design decision flows from one requirement: <strong>same seed in, same bits out, every time, on every platform.</strong></p>
+<p>Determinism is CJC-Lang’s defining architectural constraint. Every design decision flows from one requirement: <strong>same seed in, same bits out, every time, on every platform.</strong></p>
 <section id="how-cjc-achieves-determinism" class="level3">
 <h3 class="anchored" data-anchor-id="how-cjc-achieves-determinism">How CJC Achieves Determinism</h3>
 <table class="table">
@@ -784,8 +784,8 @@ x /= 4;</code></pre>
 </section>
 <section id="kahan-summation" class="level3">
 <h3 class="anchored" data-anchor-id="kahan-summation">Kahan Summation</h3>
-<p>Naive floating-point addition loses precision as terms accumulate. CJC uses compensated summation everywhere:</p>
-<pre><code>// Under the hood, CJC's runtime uses Kahan summation:
+<p>Naive floating-point addition loses precision as terms accumulate. CJC-Lang uses compensated summation everywhere:</p>
+<pre><code>// Under the hood, CJC-Lang's runtime uses Kahan summation:
 // sum = 0.0, compensation = 0.0
 // for each term:
 //   y = term - compensation
@@ -796,11 +796,11 @@ x /= 4;</code></pre>
 </section>
 <section id="binnedaccumulator" class="level3">
 <h3 class="anchored" data-anchor-id="binnedaccumulator">BinnedAccumulator</h3>
-<p>For even higher-precision requirements, CJC provides binned accumulators that partition the floating-point range into bins, accumulate within each bin, then combine — guaranteeing reproducible results even under reordering.</p>
+<p>For even higher-precision requirements, CJC-Lang provides binned accumulators that partition the floating-point range into bins, accumulate within each bin, then combine — guaranteeing reproducible results even under reordering.</p>
 </section>
 <section id="splitmix64" class="level3">
 <h3 class="anchored" data-anchor-id="splitmix64">SplitMix64</h3>
-<p>All randomness in CJC flows through a seeded SplitMix64 generator. There is no global RNG state. Every function that needs randomness takes an explicit seed parameter:</p>
+<p>All randomness in CJC-Lang flows through a seeded SplitMix64 generator. There is no global RNG state. Every function that needs randomness takes an explicit seed parameter:</p>
 <pre><code>let samples = q_sample(circuit, 1000, 42);
 let measurement = q_measure(circuit, 42);</code></pre>
 <hr>
@@ -808,7 +808,7 @@ let measurement = q_measure(circuit, 42);</code></pre>
 </section>
 <section id="part-4-builtin-functions" class="level2">
 <h2 class="anchored" data-anchor-id="part-4-builtin-functions">Part 4 — Builtin Functions</h2>
-<p>CJC ships with 287+ builtin functions registered in <code>cjc-runtime</code>. These are available without imports in every CJC program.</p>
+<p>CJC-Lang ships with 287+ builtin functions registered in <code>cjc-runtime</code>. These are available without imports in every CJC-Lang program.</p>
 <section id="mathematics" class="level3">
 <h3 class="anchored" data-anchor-id="mathematics">Mathematics</h3>
 <table class="table">
@@ -1186,7 +1186,7 @@ let measurement = q_measure(circuit, 42);</code></pre>
 </section>
 <section id="automatic-differentiation" class="level3">
 <h3 class="anchored" data-anchor-id="automatic-differentiation">Automatic Differentiation</h3>
-<p>CJC has built-in AD support via <code>cjc-ad</code>:</p>
+<p>CJC-Lang has built-in AD support via <code>cjc-ad</code>:</p>
 <table class="table">
 <thead>
 <tr class="header">
@@ -1215,7 +1215,7 @@ let measurement = q_measure(circuit, 42);</code></pre>
 </section>
 <section id="part-5-dataframe-operations" class="level2">
 <h2 class="anchored" data-anchor-id="part-5-dataframe-operations">Part 5 — DataFrame Operations</h2>
-<p>CJC includes a tidyverse-inspired DataFrame library (<code>cjc-data</code>) for tabular data manipulation:</p>
+<p>CJC-Lang includes a tidyverse-inspired DataFrame library (<code>cjc-data</code>) for tabular data manipulation:</p>
 <pre><code>let df = dataframe([
     column("name", ["Alice", "Bob", "Charlie"]),
     column("age", [30, 25, 35]),
@@ -1281,7 +1281,7 @@ p.render();</code></pre>
 </section>
 <section id="part-7-quantum-computing-extensions" class="level2">
 <h2 class="anchored" data-anchor-id="part-7-quantum-computing-extensions">Part 7 — Quantum Computing Extensions</h2>
-<p>CJC v0.1.1 includes a comprehensive quantum simulation framework (<code>cjc-quantum</code>) with 45+ quantum builtins. The framework spans five simulation backends, each suited to different qubit scales and circuit types.</p>
+<p>CJC-Lang v0.1.1 includes a comprehensive quantum simulation framework (<code>cjc-quantum</code>) with 45+ quantum builtins. The framework spans five simulation backends, each suited to different qubit scales and circuit types.</p>
 <section id="circuit-simulation-statevector-up-to-26-qubits" class="level3">
 <h3 class="anchored" data-anchor-id="circuit-simulation-statevector-up-to-26-qubits">Circuit Simulation (Statevector, up to ~26 qubits)</h3>
 <p>Full statevector simulation for small circuits:</p>
@@ -1642,11 +1642,11 @@ print(f"p-value: {test.p_value}");</code></pre>
 </section>
 <section id="part-9-cli-reference" class="level2">
 <h2 class="anchored" data-anchor-id="part-9-cli-reference">Part 9 — CLI Reference</h2>
-<p>CJC ships as a single binary with 29 subcommands across three tiers.</p>
+<p>CJC-Lang ships as a single binary with 29 subcommands across three tiers.</p>
 <section id="file-format-compatibility" class="level3">
 <h3 class="anchored" data-anchor-id="file-format-compatibility">File Format Compatibility</h3>
-<p>Not every command operates on <code>.cjc</code> source files. Here’s what each command reads:</p>
-<p><strong>CJC source only</strong> (<code>.cjc</code>): <code>run</code>, <code>proof</code>, <code>emit</code>, <code>explain</code>, <code>gc</code>, <code>nogc</code>, <code>audit</code>, <code>precision</code>, <code>parity</code>, <code>test</code>, <code>bench</code>, <code>mem</code>, <code>trace</code>, <code>lock</code>, <code>check</code></p>
+<p>Not every command operates on <code>.cjcl</code> source files. Here’s what each command reads:</p>
+<p><strong>CJC-Lang source only</strong> (<code>.cjcl</code>): <code>run</code>, <code>proof</code>, <code>emit</code>, <code>explain</code>, <code>gc</code>, <code>nogc</code>, <code>audit</code>, <code>precision</code>, <code>parity</code>, <code>test</code>, <code>bench</code>, <code>mem</code>, <code>trace</code>, <code>lock</code>, <code>check</code></p>
 <p><strong>CJC + other formats</strong> (read-only):</p>
 <table class="table">
 <colgroup>
@@ -1662,19 +1662,19 @@ print(f"p-value: {test.p_value}");</code></pre>
 <tbody>
 <tr class="odd">
 <td><code>doctor</code></td>
-<td><code>.cjc</code>, <code>.snap</code> (binary), <code>.csv</code>/<code>.tsv</code>, plus metadata on all files for size warnings</td>
+<td><code>.cjcl</code>, <code>.snap</code> (binary), <code>.csv</code>/<code>.tsv</code>, plus metadata on all files for size warnings</td>
 </tr>
 <tr class="even">
 <td><code>ci</code></td>
-<td><code>.cjc</code> only (reimplements parse + type checks, does not run full <code>doctor</code>)</td>
+<td><code>.cjcl</code> only (reimplements parse + type checks, does not run full <code>doctor</code>)</td>
 </tr>
 <tr class="odd">
 <td><code>view</code></td>
-<td>Directory metadata, <code>.cjc</code> source for effect annotations, <code>.snap</code> binary for hashes</td>
+<td>Directory metadata, <code>.cjcl</code> source for effect annotations, <code>.snap</code> binary for hashes</td>
 </tr>
 <tr class="even">
 <td><code>inspect</code></td>
-<td>Dispatches on extension: <code>.snap</code> (binary decode), <code>.csv</code>/<code>.tsv</code> (schema), <code>.cjc</code> (source), anything else (generic: size + hash)</td>
+<td>Dispatches on extension: <code>.snap</code> (binary decode), <code>.csv</code>/<code>.tsv</code> (schema), <code>.cjcl</code> (source), anything else (generic: size + hash)</td>
 </tr>
 <tr class="odd">
 <td><code>seek</code></td>
@@ -1682,7 +1682,7 @@ print(f"p-value: {test.p_value}");</code></pre>
 </tr>
 </tbody>
 </table>
-<p><strong>Non-CJC formats exclusively:</strong></p>
+<p><strong>Non-CJC-Lang formats exclusively:</strong></p>
 <table class="table">
 <colgroup>
 <col style="width: 50%">
@@ -1729,31 +1729,31 @@ print(f"p-value: {test.p_value}");</code></pre>
 </thead>
 <tbody>
 <tr class="odd">
-<td><code>cjc run file.cjc</code></td>
+<td><code>cjcl run file.cjcl</code></td>
 <td>Execute a program (AST tree-walk interpreter)</td>
 </tr>
 <tr class="even">
-<td><code>cjc run file.cjc --mir-opt</code></td>
+<td><code>cjcl run file.cjcl --mir-opt</code></td>
 <td>Execute via MIR engine with optimizations (CF + DCE)</td>
 </tr>
 <tr class="odd">
-<td><code>cjc run file.cjc --mir-mono</code></td>
+<td><code>cjcl run file.cjcl --mir-mono</code></td>
 <td>Execute with MIR monomorphization</td>
 </tr>
 <tr class="even">
-<td><code>cjc lex file.cjc</code></td>
+<td><code>cjcl lex file.cjcl</code></td>
 <td>Show token stream</td>
 </tr>
 <tr class="odd">
-<td><code>cjc parse file.cjc</code></td>
+<td><code>cjcl parse file.cjcl</code></td>
 <td>Parse and pretty-print AST</td>
 </tr>
 <tr class="even">
-<td><code>cjc check file.cjc</code></td>
+<td><code>cjcl check file.cjcl</code></td>
 <td>Type-check without executing</td>
 </tr>
 <tr class="odd">
-<td><code>cjc repl</code></td>
+<td><code>cjcl repl</code></td>
 <td>Interactive REPL (supports <code>:ast</code>, <code>:mir</code>, <code>:type</code>, <code>:env</code>, <code>:seed</code> meta-commands)</td>
 </tr>
 </tbody>
@@ -1806,11 +1806,11 @@ print(f"p-value: {test.p_value}");</code></pre>
 </section>
 <section id="phase-1-cli-suite-data-pipeline-tools" class="level3">
 <h3 class="anchored" data-anchor-id="phase-1-cli-suite-data-pipeline-tools">Phase 1 CLI Suite — Data &amp; Pipeline Tools</h3>
-<section id="cjc-view-path-deterministic-directory-listing" class="level4">
-<h4 class="anchored" data-anchor-id="cjc-view-path-deterministic-directory-listing"><code>cjc view [path]</code> — Deterministic directory listing</h4>
+<section id="cjcl-view-path-deterministic-directory-listing" class="level4">
+<h4 class="anchored" data-anchor-id="cjcl-view-path-deterministic-directory-listing"><code>cjcl view [path]</code> — Deterministic directory listing</h4>
 <p>Lists directory contents with file kinds, sizes, and effect annotations. Output is sorted deterministically. Hash display is off by default for cleaner output; opt in with <code>--hash</code> when you need content-addressable verification.</p>
 <p><strong>Flags:</strong> <code>-r, --recursive</code> | <code>--hash</code> | <code>--no-effects</code> | <code>--no-size</code> | <code>--no-header</code> | <code>--plain / --json / --table / --color</code></p>
-<pre><code>$ cjc view examples/
+<pre><code>$ cjcl view examples/
 
   examples/ (17 entries)
 
@@ -1819,18 +1819,18 @@ print(f"p-value: {test.p_value}");</code></pre>
 ├───────────────────────────────────────────┼──────┼───────────┼─────────┤
 │ examples/chess_replay.html                │ file │ 17.9 KiB  │ -       │
 │ examples/chess_rl_dashboard.html          │ file │ 11.4 KiB  │ -       │
-│ examples/etl_csv_parse.cjc               │ cjc  │ 774 B     │ -       │
-│ examples/nlp_tokenize.cjc                │ cjc  │ 766 B     │ -       │
-│ examples/transformer_forward.cjc         │ cjc  │ 5.7 KiB   │ -       │
-│ examples/vizor_bar.cjc                   │ cjc  │ 439 B     │ -       │
+│ examples/etl_csv_parse.cjcl               │ cjcl │ 774 B     │ -       │
+│ examples/nlp_tokenize.cjcl                │ cjcl │ 766 B     │ -       │
+│ examples/transformer_forward.cjcl         │ cjcl │ 5.7 KiB   │ -       │
+│ examples/vizor_bar.cjcl                   │ cjcl │ 439 B     │ -       │
 │ ...                                       │      │           │         │
 └───────────────────────────────────────────┴──────┴───────────┴─────────┘</code></pre>
 </section>
-<section id="cjc-proof-file.cjc-determinism-reproducibility-profiler" class="level4">
-<h4 class="anchored" data-anchor-id="cjc-proof-file.cjc-determinism-reproducibility-profiler"><code>cjc proof &lt;file.cjc&gt;</code> — Determinism &amp; reproducibility profiler</h4>
+<section id="cjcl-proof-file.cjcl-determinism-reproducibility-profiler" class="level4">
+<h4 class="anchored" data-anchor-id="cjcl-proof-file.cjcl-determinism-reproducibility-profiler"><code>cjcl proof &lt;file.cjcl&gt;</code> — Determinism &amp; reproducibility profiler</h4>
 <p>Runs a program multiple times and verifies that stdout, exit status, and GC behavior are identical across runs. Supports testing across multiple seeds to catch seed-dependent nondeterminism.</p>
 <p><strong>Flags:</strong> <code>-n, --runs &lt;N&gt;</code> | <code>--seed &lt;N&gt;</code> | <code>--seeds &lt;N,M,...&gt;</code> | <code>-v, --verbose</code> | <code>--plain / --json / --color</code></p>
-<pre><code>$ cjc proof fibonacci.cjc
+<pre><code>$ cjcl proof fibonacci.cjcl
 
 [proof] Running 3 iterations with seed 42...
 55
@@ -1847,13 +1847,13 @@ print(f"p-value: {test.p_value}");</code></pre>
 
 Verdict: PASS (3 runs, seed=42)</code></pre>
 <p>Multi-seed mode tests reproducibility across different RNG seeds in a single invocation:</p>
-<pre><code>$ cjc proof fibonacci.cjc --seeds 42,99,256</code></pre>
+<pre><code>$ cjcl proof fibonacci.cjcl --seeds 42,99,256</code></pre>
 </section>
-<section id="cjc-flow-file.csv-streaming-computation-engine" class="level4">
-<h4 class="anchored" data-anchor-id="cjc-flow-file.csv-streaming-computation-engine"><code>cjc flow [file.csv]</code> — Streaming computation engine</h4>
+<section id="cjcl-flow-file.csv-streaming-computation-engine" class="level4">
+<h4 class="anchored" data-anchor-id="cjcl-flow-file.csv-streaming-computation-engine"><code>cjcl flow [file.csv]</code> — Streaming computation engine</h4>
 <p>Applies aggregation operations to CSV columns using O(1) memory per column. Uses Kahan summation for numerically stable sums and Welford’s algorithm for online variance. Reads from stdin if no file is given.</p>
 <p><strong>Flags:</strong> <code>-d, --delimiter &lt;c&gt;</code> | <code>--tsv</code> | <code>--no-header</code> | <code>--op &lt;ops&gt;</code> (sum, mean, min, max, count, var, std) | <code>-c, --columns &lt;cols&gt;</code> | <code>--precision &lt;N&gt;</code> | <code>--plain / --json / --color</code></p>
-<pre><code>$ cjc flow data.csv --op sum
+<pre><code>$ cjcl flow data.csv --op sum
 
 ┌────────┬───────────┐
 │ Column │ sum       │
@@ -1864,12 +1864,12 @@ Verdict: PASS (3 runs, seed=42)</code></pre>
 └────────┴───────────┘
 (3 rows processed)</code></pre>
 </section>
-<section id="cjc-patch-file.csv-type-aware-data-transformation" class="level4">
-<h4 class="anchored" data-anchor-id="cjc-patch-file.csv-type-aware-data-transformation"><code>cjc patch &lt;file.csv&gt;</code> — Type-aware data transformation</h4>
+<section id="cjcl-patch-file.csv-type-aware-data-transformation" class="level4">
+<h4 class="anchored" data-anchor-id="cjcl-patch-file.csv-type-aware-data-transformation"><code>cjcl patch &lt;file.csv&gt;</code> — Type-aware data transformation</h4>
 <p>Apply transforms like rename, drop, impute, and replace to CSV data.</p>
 <p><strong>Transforms:</strong> <code>--nan-fill &lt;value&gt;</code> | <code>--impute &lt;column&gt;</code> | <code>--replace &lt;col&gt; &lt;from&gt; &lt;to&gt;</code> | <code>--drop &lt;column&gt;</code> | <code>--rename &lt;old&gt; &lt;new&gt;</code> | <code>--fill-empty &lt;col&gt; &lt;value&gt;</code></p>
 <p><strong>Flags:</strong> <code>-d, --delimiter &lt;c&gt;</code> | <code>--tsv</code> | <code>--no-header</code> | <code>-o, --output &lt;file&gt;</code> | <code>--plain / --json / --color</code></p>
-<pre><code>$ cjc patch data.csv --rename a x
+<pre><code>$ cjcl patch data.csv --rename a x
 
 x,b,c
 1,2,3
@@ -1877,28 +1877,28 @@ x,b,c
 7,8,9
 patched 3 rows</code></pre>
 </section>
-<section id="cjc-seek-path-pattern-deterministic-file-discovery" class="level4">
-<h4 class="anchored" data-anchor-id="cjc-seek-path-pattern-deterministic-file-discovery"><code>cjc seek [path] [pattern]</code> — Deterministic file discovery</h4>
+<section id="cjcl-seek-path-pattern-deterministic-file-discovery" class="level4">
+<h4 class="anchored" data-anchor-id="cjcl-seek-path-pattern-deterministic-file-discovery"><code>cjcl seek [path] [pattern]</code> — Deterministic file discovery</h4>
 <p>Find files by type, content, or size with deterministic ordering.</p>
 <p><strong>Flags:</strong> <code>-t, --type &lt;ext&gt;</code> | <code>--contains &lt;text&gt;</code> | <code>--min-size &lt;size&gt;</code> | <code>--max-size &lt;size&gt;</code> | <code>--max-depth &lt;N&gt;</code> | <code>--count</code> | <code>--plain / --json / --color</code></p>
-<pre><code>$ cjc seek examples/ --type cjc
+<pre><code>$ cjcl seek examples/ --type cjc
 
-examples/etl_csv_parse.cjc
-examples/nlp_tokenize.cjc
-examples/nlp_vocab_count.cjc
-examples/piml_demo.cjc
-examples/pinn_demo.cjc
-examples/transformer_forward.cjc
-examples/vizor_bar.cjc
+examples/etl_csv_parse.cjcl
+examples/nlp_tokenize.cjcl
+examples/nlp_vocab_count.cjcl
+examples/piml_demo.cjcl
+examples/pinn_demo.cjcl
+examples/transformer_forward.cjcl
+examples/vizor_bar.cjcl
 ...
 11 files found</code></pre>
 </section>
-<section id="cjc-drift-a-b-mathematical-and-data-diff-engine" class="level4">
-<h4 class="anchored" data-anchor-id="cjc-drift-a-b-mathematical-and-data-diff-engine"><code>cjc drift &lt;a&gt; &lt;b&gt;</code> — Mathematical and data diff engine</h4>
+<section id="cjcl-drift-a-b-mathematical-and-data-diff-engine" class="level4">
+<h4 class="anchored" data-anchor-id="cjcl-drift-a-b-mathematical-and-data-diff-engine"><code>cjcl drift &lt;a&gt; &lt;b&gt;</code> — Mathematical and data diff engine</h4>
 <p>Compares two files cell-by-cell with optional numeric tolerance. Auto-detects mode from file extension, or specify explicitly.</p>
 <p><strong>Modes:</strong> <code>--text</code> | <code>--numeric</code> | <code>--csv</code></p>
 <p><strong>Flags:</strong> <code>-e, --tolerance &lt;N&gt;</code> | <code>--precision &lt;N&gt;</code> | <code>--max-diffs &lt;N&gt;</code> | <code>-d, --delimiter &lt;c&gt;</code> | <code>--plain / --json / --color</code></p>
-<pre><code>$ cjc drift a.csv b.csv --csv
+<pre><code>$ cjcl drift a.csv b.csv --csv
 
 ┌──────────────────┬──────────┐
 │ Metric           │ Value    │
@@ -1914,38 +1914,38 @@ examples/vizor_bar.cjc
 First differences:
   [3,3]: "6" → "7"</code></pre>
 </section>
-<section id="cjc-forge-action-content-addressable-pipeline-runner" class="level4">
-<h4 class="anchored" data-anchor-id="cjc-forge-action-content-addressable-pipeline-runner"><code>cjc forge &lt;action&gt;</code> — Content-addressable pipeline runner</h4>
+<section id="cjcl-forge-action-content-addressable-pipeline-runner" class="level4">
+<h4 class="anchored" data-anchor-id="cjcl-forge-action-content-addressable-pipeline-runner"><code>cjcl forge &lt;action&gt;</code> — Content-addressable pipeline runner</h4>
 <p>Runs a program, hashes the output, and caches the result. Re-running with the same source skips execution.</p>
-<p><strong>Actions:</strong> <code>run &lt;file.cjc&gt;</code> | <code>verify &lt;file.cjc&gt; &lt;hash&gt;</code> | <code>list</code> | <code>show &lt;hash-prefix&gt;</code> | <code>clean</code></p>
+<p><strong>Actions:</strong> <code>run &lt;file.cjcl&gt;</code> | <code>verify &lt;file.cjcl&gt; &lt;hash&gt;</code> | <code>list</code> | <code>show &lt;hash-prefix&gt;</code> | <code>clean</code></p>
 <p><strong>Flags:</strong> <code>--seed &lt;N&gt;</code> | <code>--cache-dir &lt;path&gt;</code> | <code>-v, --verbose</code> | <code>--plain / --json / --color</code></p>
-<pre><code>$ cjc forge run fibonacci.cjc
+<pre><code>$ cjcl forge run fibonacci.cjcl
 
 55
 ┌──────────┬──────────────────────────────────────────────────────────────────┐
 │ Property │ Value                                                            │
 ├──────────┼──────────────────────────────────────────────────────────────────┤
-│ Source   │ fibonacci.cjc                                                    │
+│ Source   │ fibonacci.cjcl                                                    │
 │ Seed     │ 42                                                               │
 │ SHA-256  │ 02d20bbd7e394ad5999a4cebabac9619732c343a4cac99470c03e23ba2bdc2bc │
-│ Artifact │ .cjc-forge/02d20bbd...bdc2bc.artifact                            │
+│ Artifact │ .cjcl-forge/02d20bbd...bdc2bc.artifact                            │
 └──────────┴──────────────────────────────────────────────────────────────────┘
 forged</code></pre>
 </section>
 </section>
 <section id="phase-2-cli-suite-analysis-diagnostics" class="level3">
 <h3 class="anchored" data-anchor-id="phase-2-cli-suite-analysis-diagnostics">Phase 2 CLI Suite — Analysis &amp; Diagnostics</h3>
-<section id="cjc-inspect-file-deep-file-inspection" class="level4">
-<h4 class="anchored" data-anchor-id="cjc-inspect-file-deep-file-inspection"><code>cjc inspect &lt;file&gt;</code> — Deep file inspection</h4>
-<p>Analyzes <code>.cjc</code>, <code>.csv</code>, <code>.snap</code>, or generic files. For CJC source, reports parse results, function signatures, and structural statistics.</p>
+<section id="cjcl-inspect-file-deep-file-inspection" class="level4">
+<h4 class="anchored" data-anchor-id="cjcl-inspect-file-deep-file-inspection"><code>cjcl inspect &lt;file&gt;</code> — Deep file inspection</h4>
+<p>Analyzes <code>.cjcl</code>, <code>.csv</code>, <code>.snap</code>, or generic files. For CJC-Lang source, reports parse results, function signatures, and structural statistics.</p>
 <p><strong>Flags:</strong> <code>--no-stats</code> | <code>--no-hash</code> | <code>--preview &lt;N&gt;</code> | <code>--plain / --json / --color</code></p>
-<pre><code>$ cjc inspect fibonacci.cjc
+<pre><code>$ cjcl inspect fibonacci.cjcl
 
 ┌──────────────┬────────────────┐
 │ Property     │ Value          │
 ├──────────────┼────────────────┤
-│ File         │ fibonacci.cjc  │
-│ Type         │ cjc source     │
+│ File         │ fibonacci.cjcl  │
+│ Type         │ cjcl source    │
 │ Size         │ 192 B          │
 │ Lines        │ 10             │
 │ Parse errors │ 0              │
@@ -1958,11 +1958,11 @@ Functions:
   fn fibonacci(n: i64)
   fn main()</code></pre>
 </section>
-<section id="cjc-schema-file.csv-csvtsv-schema-inference" class="level4">
-<h4 class="anchored" data-anchor-id="cjc-schema-file.csv-csvtsv-schema-inference"><code>cjc schema &lt;file.csv&gt;</code> — CSV/TSV schema inference</h4>
+<section id="cjcl-schema-file.csv-csvtsv-schema-inference" class="level4">
+<h4 class="anchored" data-anchor-id="cjcl-schema-file.csv-csvtsv-schema-inference"><code>cjcl schema &lt;file.csv&gt;</code> — CSV/TSV schema inference</h4>
 <p>Infers column types, null counts, unique values, and numeric ranges from CSV data.</p>
 <p><strong>Flags:</strong> <code>-d, --delimiter &lt;c&gt;</code> | <code>--tsv</code> | <code>--no-header</code> | <code>--no-uniques</code> | <code>--sample &lt;N&gt;</code> | <code>--plain / --json / --color</code></p>
-<pre><code>$ cjc schema data.csv
+<pre><code>$ cjcl schema data.csv
 
 Schema for `data.csv` (3 rows sampled):
 
@@ -1974,13 +1974,13 @@ Schema for `data.csv` (3 rows sampled):
 │ c      │ int  │ 0     │ 3     │ 3      │ 3.0000 │ 9.0000 │
 └────────┴──────┴───────┴───────┴────────┴────────┴────────┘</code></pre>
 </section>
-<section id="cjc-trace-file.cjc-deterministic-execution-tracing" class="level4">
-<h4 class="anchored" data-anchor-id="cjc-trace-file.cjc-deterministic-execution-tracing"><code>cjc trace &lt;file.cjc&gt;</code> — Deterministic execution tracing</h4>
+<section id="cjcl-trace-file.cjcl-deterministic-execution-tracing" class="level4">
+<h4 class="anchored" data-anchor-id="cjcl-trace-file.cjcl-deterministic-execution-tracing"><code>cjcl trace &lt;file.cjcl&gt;</code> — Deterministic execution tracing</h4>
 <p>Traces parse time, execution time, AST structure, and runtime behavior.</p>
 <p><strong>Flags:</strong> <code>--seed &lt;N&gt;</code> | <code>--ast</code> | <code>--no-output</code> | <code>-v, --verbose</code> | <code>--plain / --json / --color</code></p>
-<pre><code>$ cjc trace fibonacci.cjc
+<pre><code>$ cjcl trace fibonacci.cjcl
 
-[trace] Tracing `fibonacci.cjc`...
+[trace] Tracing `fibonacci.cjcl`...
 
 ┌────────────┬──────────┐
 │ Phase      │ Detail   │
@@ -2008,13 +2008,13 @@ Schema for `data.csv` (3 rows sampled):
 │ GC collections │ 0     │
 └────────────────┴───────┘</code></pre>
 </section>
-<section id="cjc-mem-file.cjc-runtime-memory-visibility" class="level4">
-<h4 class="anchored" data-anchor-id="cjc-mem-file.cjc-runtime-memory-visibility"><code>cjc mem &lt;file.cjc&gt;</code> — Runtime memory visibility</h4>
+<section id="cjcl-mem-file.cjcl-runtime-memory-visibility" class="level4">
+<h4 class="anchored" data-anchor-id="cjcl-mem-file.cjcl-runtime-memory-visibility"><code>cjcl mem &lt;file.cjcl&gt;</code> — Runtime memory visibility</h4>
 <p>Profiles GC collections, heap object counts, output size, and execution time. Supports NoGC pre-verification and executor selection.</p>
 <p><strong>Flags:</strong> <code>--seed &lt;N&gt;</code> | <code>-n, --runs &lt;N&gt;</code> | <code>-v, --verbose</code> | <code>--nogc</code> | <code>--mir</code> | <code>--eval</code> | <code>--plain / --json / --color</code></p>
-<pre><code>$ cjc mem fibonacci.cjc
+<pre><code>$ cjcl mem fibonacci.cjcl
 
-[mem] Memory profile for `fibonacci.cjc` (1 run, seed=42)
+[mem] Memory profile for `fibonacci.cjcl` (1 run, seed=42)
 
 ┌───────────────────────┬──────────┐
 │ Metric                │ Value    │
@@ -2027,13 +2027,13 @@ Schema for `data.csv` (3 rows sampled):
 │ Avg exec time         │ 755.0 us │
 └───────────────────────┴──────────┘</code></pre>
 </section>
-<section id="cjc-bench-file.cjc-performance-benchmarking" class="level4">
-<h4 class="anchored" data-anchor-id="cjc-bench-file.cjc-performance-benchmarking"><code>cjc bench &lt;file.cjc&gt;</code> — Performance benchmarking</h4>
+<section id="cjcl-bench-file.cjcl-performance-benchmarking" class="level4">
+<h4 class="anchored" data-anchor-id="cjcl-bench-file.cjcl-performance-benchmarking"><code>cjcl bench &lt;file.cjcl&gt;</code> — Performance benchmarking</h4>
 <p>Runs warmup iterations, then measured iterations with statistical analysis. Reports mean, median, min, max, standard deviation, coefficient of variation, P95, and throughput.</p>
 <p><strong>Flags:</strong> <code>--seed &lt;N&gt;</code> | <code>-n, --runs &lt;N&gt;</code> | <code>--warmup &lt;N&gt;</code> | <code>-v, --verbose</code> | <code>--nogc</code> | <code>--mir</code> | <code>--eval</code> | <code>--plain / --json / --color</code></p>
-<pre><code>$ cjc bench fibonacci.cjc
+<pre><code>$ cjcl bench fibonacci.cjcl
 
-[bench] Benchmarking `fibonacci.cjc` (1 warmup + 10 measured runs, seed=42)
+[bench] Benchmarking `fibonacci.cjcl` (1 warmup + 10 measured runs, seed=42)
 
 ┌──────────────┬─────────────────┐
 │ Metric       │ Value           │
@@ -2049,27 +2049,27 @@ Schema for `data.csv` (3 rows sampled):
 │ Throughput   │ 1543.7 runs/sec │
 └──────────────┴─────────────────┘</code></pre>
 </section>
-<section id="cjc-pack-file.cjc-reproducible-packaging" class="level4">
-<h4 class="anchored" data-anchor-id="cjc-pack-file.cjc-reproducible-packaging"><code>cjc pack &lt;file.cjc&gt;</code> — Reproducible packaging</h4>
+<section id="cjcl-pack-file.cjcl-reproducible-packaging" class="level4">
+<h4 class="anchored" data-anchor-id="cjcl-pack-file.cjcl-reproducible-packaging"><code>cjcl pack &lt;file.cjcl&gt;</code> — Reproducible packaging</h4>
 <p>Bundles source files and their referenced artifacts (<code>.snap</code>, <code>.csv</code>, <code>.tsv</code>, <code>.json</code>) into a content-addressed package with manifest hashes.</p>
 <p><strong>Flags:</strong> <code>-o, --output &lt;dir&gt;</code> | <code>--include &lt;file&gt;</code> (repeatable) | <code>--dry-run</code> | <code>--plain / --json / --color</code></p>
-<pre><code>$ cjc pack fibonacci.cjc --dry-run
+<pre><code>$ cjcl pack fibonacci.cjcl --dry-run
 
 Dry run — would create `fibonacci.pack`:
 
 ┌───────────────┬───────┬──────────────────┐
 │ File          │ Size  │ Hash             │
 ├───────────────┼───────┼──────────────────┤
-│ fibonacci.cjc │ 192 B │ 3402c8cc3d398ba2 │
+│ fibonacci.cjcl │ 192 B │ 3402c8cc3d398ba2 │
 └───────────────┴───────┴──────────────────┘
 Total: 1 files, 192 B
 Manifest hash: fce3865dd0fb4816</code></pre>
 </section>
-<section id="cjc-doctor-path-project-diagnostics-and-health-checks" class="level4">
-<h4 class="anchored" data-anchor-id="cjc-doctor-path-project-diagnostics-and-health-checks"><code>cjc doctor [path]</code> — Project diagnostics and health checks</h4>
+<section id="cjcl-doctor-path-project-diagnostics-and-health-checks" class="level4">
+<h4 class="anchored" data-anchor-id="cjcl-doctor-path-project-diagnostics-and-health-checks"><code>cjcl doctor [path]</code> — Project diagnostics and health checks</h4>
 <p>Scans a directory for CJC source files, snap files, and CSV data. Reports parse errors, type issues, corrupt snap files, ragged CSV rows, nondeterministic patterns, and large files.</p>
 <p><strong>Flags:</strong> <code>-v, --verbose</code> | <code>--fix</code> | <code>--strict</code> (exit non-zero on warnings, useful for CI) | <code>--plain / --json / --color</code></p>
-<pre><code>$ cjc doctor examples/
+<pre><code>$ cjcl doctor examples/
 
 [doctor] Diagnosing `examples/`...
 
@@ -2082,8 +2082,8 @@ Manifest hash: fce3865dd0fb4816</code></pre>
 │ Total files      │ 17    │
 └──────────────────┴───────┘
 
-  [WARN] examples/etl_csv_parse.cjc — 3 type issue(s)
-  [WARN] examples/transformer_forward.cjc — 50 type issue(s)
+  [WARN] examples/etl_csv_parse.cjcl — 3 type issue(s)
+  [WARN] examples/transformer_forward.cjcl — 50 type issue(s)
   ...
 
 ┌──────────┬───────┐
@@ -2097,13 +2097,13 @@ OK (with warnings)</code></pre>
 </section>
 <section id="phase-3-cli-suite-compiler-visibility-verification" class="level3">
 <h3 class="anchored" data-anchor-id="phase-3-cli-suite-compiler-visibility-verification">Phase 3 CLI Suite — Compiler Visibility &amp; Verification</h3>
-<section id="cjc-emit-file.cjc-dump-intermediate-representations" class="level4">
-<h4 class="anchored" data-anchor-id="cjc-emit-file.cjc-dump-intermediate-representations"><code>cjc emit &lt;file.cjc&gt;</code> — Dump intermediate representations</h4>
+<section id="cjcl-emit-file.cjcl-dump-intermediate-representations" class="level4">
+<h4 class="anchored" data-anchor-id="cjcl-emit-file.cjcl-dump-intermediate-representations"><code>cjcl emit &lt;file.cjcl&gt;</code> — Dump intermediate representations</h4>
 <p>Dumps the compiler’s internal representation at any pipeline stage: AST (parsed source), HIR (desugared form), or MIR (register-machine IR). Use <code>--opt</code> to see the MIR after constant folding and dead code elimination, or <code>--diff</code> to compare both side by side.</p>
 <p><strong>Flags:</strong> <code>-s, --stage &lt;S&gt;</code> (ast, hir, mir) | <code>--opt</code> | <code>--diff</code> | <code>--plain / --json / --color</code></p>
-<pre><code>$ cjc emit fibonacci.cjc --stage ast
+<pre><code>$ cjcl emit fibonacci.cjcl --stage ast
 
-=== fibonacci.cjc (AST) ===
+=== fibonacci.cjcl (AST) ===
 
 fn fibonacci(n: i64) -&gt; i64 {
     if (n &lt;= 1) {
@@ -2116,9 +2116,9 @@ fn main() -&gt; i64 {
     print(result);
     result
 }</code></pre>
-<pre><code>$ cjc emit fibonacci.cjc --stage mir
+<pre><code>$ cjcl emit fibonacci.cjcl --stage mir
 
-=== fibonacci.cjc (MIR) ===
+=== fibonacci.cjcl (MIR) ===
 
 fn fibonacci(n: i64) -&gt; i64:
   if (n &lt;= 1):
@@ -2128,13 +2128,13 @@ fn fibonacci(n: i64) -&gt; i64:
 fn main() -&gt; void:
   print(fibonacci(10))</code></pre>
 </section>
-<section id="cjc-explain-file.cjc-show-desugaredlowered-forms" class="level4">
-<h4 class="anchored" data-anchor-id="cjc-explain-file.cjc-show-desugaredlowered-forms"><code>cjc explain &lt;file.cjc&gt;</code> — Show desugared/lowered forms</h4>
+<section id="cjcl-explain-file.cjcl-show-desugaredlowered-forms" class="level4">
+<h4 class="anchored" data-anchor-id="cjcl-explain-file.cjcl-show-desugaredlowered-forms"><code>cjcl explain &lt;file.cjcl&gt;</code> — Show desugared/lowered forms</h4>
 <p>Lowers the source to HIR and displays function signatures, struct definitions, NoGC annotations, and decorators. Use <code>--verbose</code> to see the full HIR body for each function.</p>
 <p><strong>Flags:</strong> <code>-v, --verbose</code> | <code>--plain / --json / --color</code></p>
-<pre><code>$ cjc explain fibonacci.cjc
+<pre><code>$ cjcl explain fibonacci.cjcl
 
-[explain] Explaining `fibonacci.cjc`...
+[explain] Explaining `fibonacci.cjcl`...
 
 fn fibonacci(n: i64)
   body: 2 statements
@@ -2151,13 +2151,13 @@ fn main()
 │ Total items    │ 2     │
 └────────────────┴───────┘</code></pre>
 </section>
-<section id="cjc-gc-file.cjc-gc-analysis-allocation-timeline" class="level4">
-<h4 class="anchored" data-anchor-id="cjc-gc-file.cjc-gc-analysis-allocation-timeline"><code>cjc gc &lt;file.cjc&gt;</code> — GC analysis &amp; allocation timeline</h4>
+<section id="cjcl-gc-file.cjcl-gc-analysis-allocation-timeline" class="level4">
+<h4 class="anchored" data-anchor-id="cjcl-gc-file.cjcl-gc-analysis-allocation-timeline"><code>cjcl gc &lt;file.cjcl&gt;</code> — GC analysis &amp; allocation timeline</h4>
 <p>Dedicated garbage collection analysis. Runs the program multiple times and reports GC pause count, peak/average heap objects, allocation timeline, and GC stability across runs.</p>
 <p><strong>Flags:</strong> <code>--seed &lt;N&gt;</code> | <code>-n, --runs &lt;N&gt;</code> | <code>-v, --verbose</code> | <code>--plain / --json / --color</code></p>
-<pre><code>$ cjc gc fibonacci.cjc
+<pre><code>$ cjcl gc fibonacci.cjcl
 
-[gc] GC analysis for `fibonacci.cjc` (3 runs, seed=42)
+[gc] GC analysis for `fibonacci.cjcl` (3 runs, seed=42)
 
 ┌────────────────────────┬─────────────────────┐
 │ Metric                 │ Value               │
@@ -2184,13 +2184,13 @@ Allocation timeline:
 
 STABLE — GC behavior is deterministic across 3 runs.</code></pre>
 </section>
-<section id="cjc-nogc-file.cjc-nogc-static-verification" class="level4">
-<h4 class="anchored" data-anchor-id="cjc-nogc-file.cjc-nogc-static-verification"><code>cjc nogc &lt;file.cjc&gt;</code> — NoGC static verification</h4>
+<section id="cjc-nogc-file.cjcl-nogc-static-verification" class="level4">
+<h4 class="anchored" data-anchor-id="cjc-nogc-file.cjcl-nogc-static-verification"><code>cjc nogc &lt;file.cjcl&gt;</code> — NoGC static verification</h4>
 <p>Verifies that all <code>nogc</code> functions in the program are free of GC allocations. Lists every function with its annotation status and per-function PASS/FAIL. Exit code 1 if any violations are found.</p>
 <p><strong>Flags:</strong> <code>-v, --verbose</code> | <code>--plain / --json / --color</code></p>
-<pre><code>$ cjc nogc fibonacci.cjc
+<pre><code>$ cjcl nogc fibonacci.cjcl
 
-[nogc] NoGC verification for `fibonacci.cjc`
+[nogc] NoGC verification for `fibonacci.cjcl`
 
 ┌───────────┬─────────┬────────┐
 │ Function  │ #[nogc] │ Status │
@@ -2201,14 +2201,14 @@ STABLE — GC behavior is deterministic across 3 runs.</code></pre>
 
 Verdict: PASS (2 functions, 0 #[nogc])</code></pre>
 </section>
-<section id="cjc-audit-file.cjc-numerical-hygiene-analysis" class="level4">
-<h4 class="anchored" data-anchor-id="cjc-audit-file.cjc-numerical-hygiene-analysis"><code>cjc audit &lt;file.cjc&gt;</code> — Numerical hygiene analysis</h4>
-<p>Static analysis of CJC source for floating-point anti-patterns. Catches common numerical issues before they become silent precision bugs.</p>
+<section id="cjc-audit-file.cjcl-numerical-hygiene-analysis" class="level4">
+<h4 class="anchored" data-anchor-id="cjc-audit-file.cjcl-numerical-hygiene-analysis"><code>cjc audit &lt;file.cjcl&gt;</code> — Numerical hygiene analysis</h4>
+<p>Static analysis of CJC-Lang source for floating-point anti-patterns. Catches common numerical issues before they become silent precision bugs.</p>
 <p><strong>Patterns detected:</strong> naive summation in loops (suggests <code>kahan_sum()</code> or <code>binned_sum()</code>), float equality comparison (suggests <code>approx_eq</code>), division without zero-guard, catastrophic cancellation.</p>
 <p><strong>Flags:</strong> <code>-v, --verbose</code> | <code>--plain / --json / --color</code></p>
-<pre><code>$ cjc audit naive_sum.cjc
+<pre><code>$ cjcl audit naive_sum.cjcl
 
-[audit] Auditing `naive_sum.cjc`...
+[audit] Auditing `naive_sum.cjcl`...
 
   [WARN] line 1: naive summation: `total = total + ...` in loop
          suggestion: use `kahan_sum()` or `binned_sum()`
@@ -2223,19 +2223,19 @@ Verdict: PASS (2 functions, 0 #[nogc])</code></pre>
 │ Total findings │ 4     │
 └────────────────┴───────┘</code></pre>
 <p>A clean program reports no findings:</p>
-<pre><code>$ cjc audit fibonacci.cjc
+<pre><code>$ cjcl audit fibonacci.cjcl
 
-[audit] Auditing `fibonacci.cjc`...
+[audit] Auditing `fibonacci.cjcl`...
 
 CLEAN — no numerical hygiene issues found</code></pre>
 </section>
-<section id="cjc-precision-file.cjc-precision-analysis" class="level4">
-<h4 class="anchored" data-anchor-id="cjc-precision-file.cjc-precision-analysis"><code>cjc precision &lt;file.cjc&gt;</code> — Precision analysis</h4>
+<section id="cjc-precision-file.cjcl-precision-analysis" class="level4">
+<h4 class="anchored" data-anchor-id="cjc-precision-file.cjcl-precision-analysis"><code>cjc precision &lt;file.cjcl&gt;</code> — Precision analysis</h4>
 <p>Runs the program, captures all numeric output, and compares each f64 value against its f32-truncated approximation. Reports per-value relative error and an overall stability verdict.</p>
 <p><strong>Flags:</strong> <code>--seed &lt;N&gt;</code> | <code>--plain / --json / --color</code></p>
-<pre><code>$ cjc precision fibonacci.cjc
+<pre><code>$ cjcl precision fibonacci.cjcl
 
-[precision] Precision analysis for `fibonacci.cjc` (seed=42)
+[precision] Precision analysis for `fibonacci.cjcl` (seed=42)
 
 ┌──────┬─────────────────┬─────────────────┬────────────┐
 │ Line │ f64             │ f32             │ Rel. error │
@@ -2246,13 +2246,13 @@ CLEAN — no numerical hygiene issues found</code></pre>
 Max relative error: 0.00e+00
 Verdict: STABLE (within f32 epsilon bounds)</code></pre>
 </section>
-<section id="cjc-lock-file.cjc-deterministic-lockfile-generator-verifier" class="level4">
-<h4 class="anchored" data-anchor-id="cjc-lock-file.cjc-deterministic-lockfile-generator-verifier"><code>cjc lock &lt;file.cjc&gt;</code> — Deterministic lockfile generator &amp; verifier</h4>
+<section id="cjc-lock-file.cjcl-deterministic-lockfile-generator-verifier" class="level4">
+<h4 class="anchored" data-anchor-id="cjc-lock-file.cjcl-deterministic-lockfile-generator-verifier"><code>cjc lock &lt;file.cjcl&gt;</code> — Deterministic lockfile generator &amp; verifier</h4>
 <p>Generates a lockfile recording source SHA-256, seed, executor version, platform, and expected output SHA-256. Use <code>--verify</code> to check that the current run matches the lockfile. Enables cross-platform and cross-version reproducibility verification.</p>
 <p><strong>Flags:</strong> <code>--seed &lt;N&gt;</code> | <code>--verify</code> | <code>--plain / --json / --color</code></p>
-<pre><code>$ cjc lock fibonacci.cjc
+<pre><code>$ cjcl lock fibonacci.cjcl
 
-[lock] Generated lockfile: fibonacci.cjc.lock
+[lock] Generated lockfile: fibonacci.cjcl.lock
 ┌───────────────┬──────────────────────────────────────────────────────────────────┐
 │ Field         │ Value                                                            │
 ├───────────────┼──────────────────────────────────────────────────────────────────┤
@@ -2262,9 +2262,9 @@ Verdict: STABLE (within f32 epsilon bounds)</code></pre>
 │ platform      │ windows-x86_64                                                   │
 │ output_sha256 │ 02d20bbd7e394ad5999a4cebabac9619732c343a4cac99470c03e23ba2bdc2bc │
 └───────────────┴──────────────────────────────────────────────────────────────────┘</code></pre>
-<pre><code>$ cjc lock fibonacci.cjc --verify
+<pre><code>$ cjcl lock fibonacci.cjcl --verify
 
-[lock] Verifying against fibonacci.cjc.lock
+[lock] Verifying against fibonacci.cjcl.lock
 
 ┌───────────────┬─────────────────────┬─────────────────────┬────────┐
 │ Check         │ Expected            │ Actual              │ Status │
@@ -2276,11 +2276,11 @@ Verdict: STABLE (within f32 epsilon bounds)</code></pre>
 
 Verdict: MATCH</code></pre>
 </section>
-<section id="cjc-parity-file.cjc-dual-executor-parity-checker" class="level4">
-<h4 class="anchored" data-anchor-id="cjc-parity-file.cjc-dual-executor-parity-checker"><code>cjc parity &lt;file.cjc&gt;</code> — Dual-executor parity checker</h4>
+<section id="cjc-parity-file.cjcl-dual-executor-parity-checker" class="level4">
+<h4 class="anchored" data-anchor-id="cjc-parity-file.cjcl-dual-executor-parity-checker"><code>cjc parity &lt;file.cjcl&gt;</code> — Dual-executor parity checker</h4>
 <p>Runs both the eval tree-walk interpreter (v1) and the MIR register-machine executor (v2) and compares their output. Verifies that both backends produce identical stdout, return values, and GC behavior.</p>
 <p><strong>Flags:</strong> <code>--seed &lt;N&gt;</code> | <code>-v, --verbose</code> | <code>--plain / --json / --color</code></p>
-<pre><code>$ cjc parity fibonacci.cjc
+<pre><code>$ cjcl parity fibonacci.cjcl
 
 [parity] eval vs mir-exec (seed=42)
 
@@ -2294,11 +2294,11 @@ Verdict: MATCH</code></pre>
 
 Verdict: IDENTICAL</code></pre>
 </section>
-<section id="cjc-test-file.cjc-native-test-runner" class="level4">
-<h4 class="anchored" data-anchor-id="cjc-test-file.cjc-native-test-runner"><code>cjc test &lt;file.cjc&gt;</code> — Native test runner</h4>
+<section id="cjc-test-file.cjcl-native-test-runner" class="level4">
+<h4 class="anchored" data-anchor-id="cjc-test-file.cjcl-native-test-runner"><code>cjc test &lt;file.cjcl&gt;</code> — Native test runner</h4>
 <p>Discovers functions starting with <code>test_</code> or decorated with <code>@test</code>. Each test runs in isolation with a fresh interpreter instance. Tests execute in alphabetical order for deterministic results.</p>
 <p><strong>Flags:</strong> <code>--seed &lt;N&gt;</code> | <code>--filter &lt;pattern&gt;</code> | <code>-v, --verbose</code> | <code>--plain / --json / --color</code></p>
-<pre><code>$ cjc test math_tests.cjc
+<pre><code>$ cjcl test math_tests.cjcl
 
 [test] Running 2 tests (seed=42)
 
@@ -2311,7 +2311,7 @@ Verdict: IDENTICAL</code></pre>
 <h4 class="anchored" data-anchor-id="cjc-ci-path-full-ci-diagnostic-suite"><code>cjc ci [path]</code> — Full CI diagnostic suite</h4>
 <p>Orchestrates the complete verification pipeline in a single command: doctor (project health), proof (determinism across 3 seeds), parity (eval vs mir-exec), test (native test runner), and nogc (static verification). Exit code 0 means everything passes.</p>
 <p><strong>Flags:</strong> <code>--seed &lt;N&gt;</code> | <code>--strict</code> | <code>--plain / --json / --color</code></p>
-<pre><code>$ cjc ci examples/
+<pre><code>$ cjcl ci examples/
 
 [ci] Running full diagnostic suite on `examples/`...
 
@@ -2385,7 +2385,7 @@ EXIT 0</code></pre>
 <td>~1,001 injected cell differences</td>
 </tr>
 <tr class="even">
-<td><code>stress_compute.cjc</code></td>
+<td><code>stress_compute.cjcl</code></td>
 <td>–</td>
 <td>–</td>
 <td>1.5 KB</td>
@@ -2416,91 +2416,91 @@ EXIT 0</code></pre>
 </thead>
 <tbody>
 <tr class="odd">
-<td><code>cjc flow</code></td>
+<td><code>cjcl flow</code></td>
 <td>0.9–1.8 s</td>
 <td>1.8 s (10 cols)</td>
 <td>PASS</td>
 <td>Bit-identical across runs</td>
 </tr>
 <tr class="even">
-<td><code>cjc schema</code></td>
+<td><code>cjcl schema</code></td>
 <td>0.5–1.5 s</td>
 <td>1.5 s (10 cols)</td>
 <td>PASS</td>
 <td>Bit-identical across runs</td>
 </tr>
 <tr class="odd">
-<td><code>cjc inspect</code></td>
+<td><code>cjcl inspect</code></td>
 <td>0.3–1.1 s</td>
 <td>1.1 s (10 cols)</td>
 <td>PASS</td>
 <td>PASS</td>
 </tr>
 <tr class="even">
-<td><code>cjc patch</code></td>
+<td><code>cjcl patch</code></td>
 <td>5.5–13.6 s</td>
 <td>13.6 s (10 cols)</td>
 <td>PASS</td>
 <td>PASS</td>
 </tr>
 <tr class="odd">
-<td><code>cjc drift</code></td>
+<td><code>cjcl drift</code></td>
 <td>1.0–1.4 s</td>
 <td>–</td>
 <td>PASS</td>
 <td>PASS</td>
 </tr>
 <tr class="even">
-<td><code>cjc seek</code></td>
+<td><code>cjcl seek</code></td>
 <td>1.8–10.7 s</td>
 <td>–</td>
 <td>PASS</td>
 <td>PASS</td>
 </tr>
 <tr class="odd">
-<td><code>cjc proof</code></td>
+<td><code>cjcl proof</code></td>
 <td>0.5–1.6 s</td>
 <td>–</td>
 <td>PASS</td>
 <td>All seeds pass</td>
 </tr>
 <tr class="even">
-<td><code>cjc bench</code></td>
+<td><code>cjcl bench</code></td>
 <td>1.3–1.4 s</td>
 <td>–</td>
 <td>PASS</td>
 <td>PASS</td>
 </tr>
 <tr class="odd">
-<td><code>cjc mem</code></td>
+<td><code>cjcl mem</code></td>
 <td>0.7 s</td>
 <td>–</td>
 <td>PASS</td>
 <td>PASS</td>
 </tr>
 <tr class="even">
-<td><code>cjc trace</code></td>
+<td><code>cjcl trace</code></td>
 <td>0.3 s</td>
 <td>–</td>
 <td>PASS</td>
 <td>PASS</td>
 </tr>
 <tr class="odd">
-<td><code>cjc forge</code></td>
+<td><code>cjcl forge</code></td>
 <td>0.2 s</td>
 <td>–</td>
 <td>PASS</td>
 <td>Hash identical</td>
 </tr>
 <tr class="even">
-<td><code>cjc pack</code></td>
+<td><code>cjcl pack</code></td>
 <td>0.03 s</td>
 <td>–</td>
 <td>PASS</td>
 <td>PASS</td>
 </tr>
 <tr class="odd">
-<td><code>cjc doctor</code></td>
+<td><code>cjcl doctor</code></td>
 <td>0.2 s</td>
 <td>–</td>
 <td>PASS</td>
@@ -2701,7 +2701,7 @@ EXIT 0</code></pre>
 </tr>
 <tr class="odd">
 <td>CJC source</td>
-<td><code>stress_compute.cjc</code></td>
+<td><code>stress_compute.cjcl</code></td>
 <td>0.04 s</td>
 <td>8 functions, 0 parse errors</td>
 </tr>
@@ -2860,7 +2860,7 @@ EXIT 0</code></pre>
 <td>3 CSV files</td>
 </tr>
 <tr class="odd">
-<td>Content search (<code>fn</code> in .cjc)</td>
+<td>Content search (<code>fn</code> in .cjcl)</td>
 <td>full project</td>
 <td>7.78 s</td>
 <td>67 matching files</td>
@@ -2907,25 +2907,25 @@ EXIT 0</code></pre>
 <tbody>
 <tr class="odd">
 <td>3 runs, default seed</td>
-<td><code>stress_compute.cjc</code></td>
+<td><code>stress_compute.cjcl</code></td>
 <td>0.49 s</td>
 <td>PASS – stdout/exit/GC identical</td>
 </tr>
 <tr class="even">
 <td>10 runs</td>
-<td><code>stress_compute.cjc</code></td>
+<td><code>stress_compute.cjcl</code></td>
 <td>1.27 s</td>
 <td>PASS</td>
 </tr>
 <tr class="odd">
 <td>5 seeds x 3 runs</td>
-<td><code>stress_compute.cjc</code></td>
+<td><code>stress_compute.cjcl</code></td>
 <td>1.62 s</td>
 <td>PASS across all seeds</td>
 </tr>
 <tr class="even">
 <td>10 runs, verbose</td>
-<td><code>stress_compute.cjc</code></td>
+<td><code>stress_compute.cjcl</code></td>
 <td>1.05 s</td>
 <td>All runs: 5 lines, gc=0</td>
 </tr>
@@ -3055,79 +3055,79 @@ EXIT 0</code></pre>
 </thead>
 <tbody>
 <tr class="odd">
-<td><code>cjc proof</code></td>
+<td><code>cjcl proof</code></td>
 <td>8</td>
 <td>8/8</td>
 <td>Multi-seed verdict cosmetic issue</td>
 </tr>
 <tr class="even">
-<td><code>cjc flow</code></td>
+<td><code>cjcl flow</code></td>
 <td>10</td>
 <td>10/10</td>
 <td>–</td>
 </tr>
 <tr class="odd">
-<td><code>cjc patch</code></td>
+<td><code>cjcl patch</code></td>
 <td>11</td>
 <td>9/11</td>
 <td><code>--json</code>/<code>--plain</code> flags not yet wired</td>
 </tr>
 <tr class="even">
-<td><code>cjc seek</code></td>
+<td><code>cjcl seek</code></td>
 <td>10</td>
 <td>10/10</td>
 <td>–</td>
 </tr>
 <tr class="odd">
-<td><code>cjc drift</code></td>
+<td><code>cjcl drift</code></td>
 <td>8</td>
 <td>8/8</td>
 <td>Tolerance listing cosmetic issue</td>
 </tr>
 <tr class="even">
-<td><code>cjc forge</code></td>
+<td><code>cjcl forge</code></td>
 <td>8</td>
 <td>8/8</td>
 <td>–</td>
 </tr>
 <tr class="odd">
-<td><code>cjc inspect</code></td>
+<td><code>cjcl inspect</code></td>
 <td>11</td>
 <td>11/11</td>
 <td>–</td>
 </tr>
 <tr class="even">
-<td><code>cjc schema</code></td>
+<td><code>cjcl schema</code></td>
 <td>9</td>
 <td>9/9</td>
 <td>–</td>
 </tr>
 <tr class="odd">
-<td><code>cjc trace</code></td>
+<td><code>cjcl trace</code></td>
 <td>9</td>
 <td>9/9</td>
 <td>–</td>
 </tr>
 <tr class="even">
-<td><code>cjc mem</code></td>
+<td><code>cjcl mem</code></td>
 <td>10</td>
 <td>10/10</td>
 <td>–</td>
 </tr>
 <tr class="odd">
-<td><code>cjc bench</code></td>
+<td><code>cjcl bench</code></td>
 <td>9</td>
 <td>9/9</td>
 <td>–</td>
 </tr>
 <tr class="even">
-<td><code>cjc pack</code></td>
+<td><code>cjcl pack</code></td>
 <td>5</td>
 <td>5/5</td>
 <td>–</td>
 </tr>
 <tr class="odd">
-<td><code>cjc doctor</code></td>
+<td><code>cjcl doctor</code></td>
 <td>8</td>
 <td>8/8</td>
 <td>–</td>
@@ -3160,11 +3160,11 @@ EXIT 0</code></pre>
 <h2 class="anchored" data-anchor-id="part-10-design-decisions-and-trade-offs">Part 10 — Design Decisions and Trade-offs</h2>
 <section id="why-no-hashmap" class="level3">
 <h3 class="anchored" data-anchor-id="why-no-hashmap">Why No HashMap?</h3>
-<p><code>HashMap</code> uses random iteration order in Rust (and most languages). This means any code that iterates over a hash map produces non-deterministic results. CJC uses <code>BTreeMap</code> and <code>BTreeSet</code> exclusively, trading some average-case performance for guaranteed deterministic iteration.</p>
+<p><code>HashMap</code> uses random iteration order in Rust (and most languages). This means any code that iterates over a hash map produces non-deterministic results. CJC-Lang uses <code>BTreeMap</code> and <code>BTreeSet</code> exclusively, trading some average-case performance for guaranteed deterministic iteration.</p>
 </section>
 <section id="why-no-fma" class="level3">
 <h3 class="anchored" data-anchor-id="why-no-fma">Why No FMA?</h3>
-<p>Fused multiply-add (FMA) computes <code>a * b + c</code> in a single instruction with one rounding step instead of two. This is faster and more accurate — but it produces different results depending on whether the hardware has FMA support. CJC uses <code>mul_fixed</code> (separate multiply and add) to guarantee identical results across all platforms.</p>
+<p>Fused multiply-add (FMA) computes <code>a * b + c</code> in a single instruction with one rounding step instead of two. This is faster and more accurate — but it produces different results depending on whether the hardware has FMA support. CJC-Lang uses <code>mul_fixed</code> (separate multiply and add) to guarantee identical results across all platforms.</p>
 </section>
 <section id="why-two-execution-engines" class="level3">
 <h3 class="anchored" data-anchor-id="why-two-execution-engines">Why Two Execution Engines?</h3>
@@ -3177,7 +3177,7 @@ EXIT 0</code></pre>
 </section>
 <section id="why-vec-based-pauli-terms" class="level3">
 <h3 class="anchored" data-anchor-id="why-vec-based-pauli-terms">Why Vec-Based Pauli Terms?</h3>
-<p>Quantum Hamiltonians are sums of Pauli terms. A natural representation is a hash map from Pauli string to coefficient. CJC uses <code>Vec&lt;PauliTerm&gt;</code> instead, because:</p>
+<p>Quantum Hamiltonians are sums of Pauli terms. A natural representation is a hash map from Pauli string to coefficient. CJC-Lang uses <code>Vec&lt;PauliTerm&gt;</code> instead, because:</p>
 <ul>
 <li>Iteration order is deterministic</li>
 <li>No hashing overhead for small Hamiltonians</li>
@@ -3186,13 +3186,13 @@ EXIT 0</code></pre>
 </section>
 <section id="why-sign-stabilized-svd" class="level3">
 <h3 class="anchored" data-anchor-id="why-sign-stabilized-svd">Why Sign-Stabilized SVD?</h3>
-<p>SVD is ambiguous in the signs of singular vectors. Two runs of the same SVD can produce vectors that differ by a sign flip. CJC’s MPS canonical form uses a sign convention (largest-magnitude element is positive) to eliminate this ambiguity. This is critical for deterministic tensor network simulations.</p>
+<p>SVD is ambiguous in the signs of singular vectors. Two runs of the same SVD can produce vectors that differ by a sign flip. CJC-Lang’s MPS canonical form uses a sign convention (largest-magnitude element is positive) to eliminate this ambiguity. This is critical for deterministic tensor network simulations.</p>
 <hr>
 </section>
 </section>
 <section id="whats-next" class="level2">
 <h2 class="anchored" data-anchor-id="whats-next">What’s Next</h2>
-<p>CJC v0.1.1 lays the groundwork for quantum-classical hybrid algorithms, noise-aware quantum simulation, and tensor network methods. Upcoming work includes:</p>
+<p>CJC-Lang v0.1.1 lays the groundwork for quantum-classical hybrid algorithms, noise-aware quantum simulation, and tensor network methods. Upcoming work includes:</p>
 <ul>
 <li><strong>Multi-file module system</strong> — programs that span multiple files with deterministic resolution</li>
 <li><strong>Default parameters and variadic functions</strong> — <code>fn solve(x: f64, tol: f64 = 1e-6)</code></li>
@@ -3208,7 +3208,7 @@ EXIT 0</code></pre>
 <i class="callout-icon no-icon"></i>
 </div>
 <div class="callout-body-container">
-<p><strong>CJC is open source and under active development.</strong> The codebase spans 21 Rust crates with zero external runtime dependencies. If deterministic numerical computing interests you, check out the <a href="../../../blog/posts/introducing-cjc/index.html">introductory post</a> or the <a href="../../../blog/posts/cjc-v0.1-released/index.html">v0.1.0 release notes</a>.</p>
+<p><strong>CJC-Lang is open source and under active development.</strong> The codebase spans 21 Rust crates with zero external runtime dependencies. If deterministic numerical computing interests you, check out the <a href="../../../blog/posts/introducing-cjc/index.html">introductory post</a> or the <a href="../../../blog/posts/cjc-v0.1-released/index.html">v0.1.0 release notes</a>.</p>
 </div>
 </div>
 </div>

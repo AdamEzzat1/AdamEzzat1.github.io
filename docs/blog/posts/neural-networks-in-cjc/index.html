@@ -8,9 +8,9 @@
 
 <meta name="author" content="Adam Ezzat">
 <meta name="dcterms.date" content="2026-03-22">
-<meta name="description" content="A walkthrough of the neural network architectures implemented and verified in CJC — MLP, REINFORCE, PINN, PIML, CNN, and attention — all running deterministically.">
+<meta name="description" content="A walkthrough of the neural network architectures implemented and verified in CJC-Lang — MLP, REINFORCE, PINN, PIML, CNN, and attention — all running deterministically.">
 
-<title>Adam Ezzat - Neural Networks in CJC: From MLPs to Attention, Without a Framework</title>
+<title>Adam Ezzat - Neural Networks in CJC-Lang: From MLPs to Attention, Without a Framework</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -147,10 +147,10 @@ ul.task-list li input[type="checkbox"] {
 
 <header id="title-block-header" class="quarto-title-block default">
 <div class="quarto-title">
-<h1 class="title">Neural Networks in CJC: From MLPs to Attention, Without a Framework</h1>
+<h1 class="title">Neural Networks in CJC-Lang: From MLPs to Attention, Without a Framework</h1>
 <p class="subtitle lead">Six architectures built and verified in a deterministic language with no PyTorch, no TensorFlow — just tensors, AD, and a seed.</p>
   <div class="quarto-categories">
-    <div class="quarto-category">CJC</div>
+    <div class="quarto-category">CJC-Lang</div>
     <div class="quarto-category">neural-networks</div>
     <div class="quarto-category">scientific-computing</div>
   </div>
@@ -158,7 +158,7 @@ ul.task-list li input[type="checkbox"] {
 
 <div>
   <div class="description">
-    A walkthrough of the neural network architectures implemented and verified in CJC — MLP, REINFORCE, PINN, PIML, CNN, and attention — all running deterministically.
+    A walkthrough of the neural network architectures implemented and verified in CJC-Lang — MLP, REINFORCE, PINN, PIML, CNN, and attention — all running deterministically.
   </div>
 </div>
 
@@ -188,12 +188,12 @@ ul.task-list li input[type="checkbox"] {
 <div class="reading-time">
 🕑 ~15 min read
 </div>
-<p>In the <a href="../../../blog/posts/introducing-cjc/index.html">previous post</a>, I introduced CJC and the design decisions behind its determinism guarantees. This post goes deeper into one specific question: <strong>can you build real neural network architectures in a language with no ML framework?</strong></p>
-<p>The answer is yes — and the determinism makes verification straightforward. Every architecture below has been implemented in pure CJC, run through both execution engines, and verified with assertions. Same seed, same output, every time.</p>
+<p>In the <a href="../../../blog/posts/introducing-cjc/index.html">previous post</a>, I introduced CJC-Lang and the design decisions behind its determinism guarantees. This post goes deeper into one specific question: <strong>can you build real neural network architectures in a language with no ML framework?</strong></p>
+<p>The answer is yes — and the determinism makes verification straightforward. Every architecture below has been implemented in pure CJC-Lang, run through both execution engines, and verified with assertions. Same seed, same output, every time.</p>
 <hr>
 <section id="feedforward-mlp-multi-layer-perceptron" class="level2">
 <h2 class="anchored" data-anchor-id="feedforward-mlp-multi-layer-perceptron">Feedforward MLP (Multi-Layer Perceptron)</h2>
-<p>The most fundamental architecture — and the building block for everything else. CJC expresses neural networks as struct-based layers with explicit weight tensors:</p>
+<p>The most fundamental architecture — and the building block for everything else. CJC-Lang expresses neural networks as struct-based layers with explicit weight tensors:</p>
 <pre><code>struct Layer {
     weights: Tensor,
     bias: Tensor
@@ -235,7 +235,7 @@ print("Network output:", out);</code></pre>
 </section>
 <section id="reinforce-policy-network-reinforcement-learning" class="level2">
 <h2 class="anchored" data-anchor-id="reinforce-policy-network-reinforcement-learning">REINFORCE Policy Network (Reinforcement Learning)</h2>
-<p>The chess RL benchmark implements a full policy gradient agent in pure CJC — not a toy example, but an agent that plays chess, selects moves via softmax sampling, and updates weights via REINFORCE.</p>
+<p>The chess RL benchmark implements a full policy gradient agent in pure CJC-Lang — not a toy example, but an agent that plays chess, selects moves via softmax sampling, and updates weights via REINFORCE.</p>
 <div class="cell" data-fig-width="7">
 <div class="cell-output-display">
 <div>
@@ -297,13 +297,13 @@ fn select_action(W1: Tensor, b1: Tensor, W2: Tensor,
 </div>
 </div>
 </div>
-<p>This is a complete RL pipeline — feature construction, forward pass, softmax action selection, log-probability tracking, and gradient computation — written entirely in CJC. The agent manually computes <code>d(log_prob)/d(theta)</code> through softmax, ReLU, and matmul.</p>
-<p>The key property: <code>categorical_sample()</code> uses CJC’s seeded SplitMix64 RNG, and the softmax goes through Kahan summation. Running <code>cjc run chess_agent.cjc --seed 42</code> produces the exact same game, moves, and weight updates every time. 69 tests verify the chess RL pipeline end-to-end.</p>
+<p>This is a complete RL pipeline — feature construction, forward pass, softmax action selection, log-probability tracking, and gradient computation — written entirely in CJC-Lang. The agent manually computes <code>d(log_prob)/d(theta)</code> through softmax, ReLU, and matmul.</p>
+<p>The key property: <code>categorical_sample()</code> uses CJC-Lang’s seeded SplitMix64 RNG, and the softmax goes through Kahan summation. Running <code>cjcl run chess_agent.cjcl --seed 42</code> produces the exact same game, moves, and weight updates every time. 69 tests verify the chess RL pipeline end-to-end.</p>
 <hr>
 </section>
 <section id="physics-informed-neural-network-pinn" class="level2">
 <h2 class="anchored" data-anchor-id="physics-informed-neural-network-pinn">Physics-Informed Neural Network (PINN)</h2>
-<p>CJC’s AD engine supports PINNs — neural networks that learn to satisfy differential equations, not just fit data. This is where determinism isn’t just convenient — it’s scientifically necessary.</p>
+<p>CJC-Lang’s AD engine supports PINNs — neural networks that learn to satisfy differential equations, not just fit data. This is where determinism isn’t just convenient — it’s scientifically necessary.</p>
 <div class="cell" data-fig-width="7">
 <div class="cell-output-display">
 <div>
@@ -331,7 +331,7 @@ fn select_action(W1: Tensor, b1: Tensor, W2: Tensor,
 <li><strong>Optimizer</strong>: Adam with learning rate scheduling</li>
 </ul>
 <p>The exact solution is <code>sin(x)</code>, and the trained network converges to it with verified L2 error below tolerance.</p>
-<p>When you’re claiming a network satisfies a PDE, you need to reproduce the training run exactly to verify the claim. CJC’s deterministic AD engine, seeded RNG, and Kahan-summed loss computations mean the verification is airtight. The test suite trains the same PINN twice with seed 42 and asserts that every parameter is bit-identical using <code>to_bits()</code> comparison on the raw IEEE 754 representation. No other ML framework provides this guarantee without significant configuration overhead.</p>
+<p>When you’re claiming a network satisfies a PDE, you need to reproduce the training run exactly to verify the claim. CJC-Lang’s deterministic AD engine, seeded RNG, and Kahan-summed loss computations mean the verification is airtight. The test suite trains the same PINN twice with seed 42 and asserts that every parameter is bit-identical using <code>to_bits()</code> comparison on the raw IEEE 754 representation. No other ML framework provides this guarantee without significant configuration overhead.</p>
 <hr>
 </section>
 <section id="physics-informed-ml-piml" class="level2">
@@ -342,7 +342,7 @@ fn select_action(W1: Tensor, b1: Tensor, W2: Tensor,
 </section>
 <section id="convolutional-neural-networks-cnn" class="level2">
 <h2 class="anchored" data-anchor-id="convolutional-neural-networks-cnn">Convolutional Neural Networks (CNN)</h2>
-<p>CJC’s tensor runtime includes native 1D and 2D convolution, maxpooling, and the full pipeline for building convolutional architectures.</p>
+<p>CJC-Lang’s tensor runtime includes native 1D and 2D convolution, maxpooling, and the full pipeline for building convolutional architectures.</p>
 <div class="cell" data-fig-width="7">
 <div class="cell-output-display">
 <div>
@@ -351,7 +351,7 @@ fn select_action(W1: Tensor, b1: Tensor, W2: Tensor,
     I["Input\n[4,3,28,28]"] --&gt; C["Conv2D\n32 filters 3x3"] --&gt; R["ReLU"] --&gt; BN["BatchNorm"] --&gt; MP["MaxPool2D\n2x2"] --&gt; O["Output\n[4,32,13,13]"]
 </pre>
 </div>
-<p>CNN pipeline in CJC. Native conv2d, ReLU, batch normalization, and maxpooling — all deterministic.</p>
+<p>CNN pipeline in CJC-Lang. Native conv2d, ReLU, batch normalization, and maxpooling — all deterministic.</p>
 </div>
 </div>
 </div>
@@ -364,7 +364,7 @@ let conv_out = input.conv2d(filters, bias, 1);   // -&gt; [4, 32, 26, 26]
 // Activation + normalization + pooling
 let activated = conv_out.relu();
 let pooled = activated.maxpool2d(2, 2);          // -&gt; [4, 32, 13, 13]</code></pre>
-<p>CJC also supports 1D convolution with circular padding (<code>conv1d_circular</code>) for signal processing, and the full set of CNN building blocks: <code>batch_norm</code>, <code>dropout_mask</code>, arbitrary strides, and multi-channel operations.</p>
+<p>CJC-Lang also supports 1D convolution with circular padding (<code>conv1d_circular</code>) for signal processing, and the full set of CNN building blocks: <code>batch_norm</code>, <code>dropout_mask</code>, arbitrary strides, and multi-channel operations.</p>
 <hr>
 </section>
 <section id="attention-mechanism-transformer-building-block" class="level2">
@@ -382,7 +382,7 @@ let pooled = activated.maxpool2d(2, 2);          // -&gt; [4, 32, 13, 13]</code>
     MV --&gt; O["Output\n[batch, seq, d_k]"]
 </pre>
 </div>
-<p>Scaled dot-product attention — softmax(QK^T / sqrt(d_k)) * V — as a single native CJC operation.</p>
+<p>Scaled dot-product attention — softmax(QK^T / sqrt(d_k)) * V — as a single native CJC-Lang operation.</p>
 </div>
 </div>
 </div>
@@ -396,7 +396,7 @@ let output = attention(Q, K, V);      // -&gt; [2, 8, 64]</code></pre>
 </section>
 <section id="deep-network-stress-tests" class="level2">
 <h2 class="anchored" data-anchor-id="deep-network-stress-tests">Deep Network Stress Tests</h2>
-<p>Beyond the architecture-specific examples above, CJC includes benchmark programs that push forward passes to realistic scale:</p>
+<p>Beyond the architecture-specific examples above, CJC-Lang includes benchmark programs that push forward passes to realistic scale:</p>
 <table class="table">
 <colgroup>
 <col style="width: 26%">
@@ -444,9 +444,9 @@ let output = attention(Q, K, V);      // -&gt; [2, 8, 64]</code></pre>
 <li>The <strong>attention mechanism</strong> handles batched multi-sequence inputs</li>
 <li>The <strong>deep network benchmarks</strong> verify hash-level determinism through 50 sequential layers</li>
 </ul>
-<p>All of them produce identical results across runs. In CJC, that’s not an opt-in mode — it’s how computation works.</p>
+<p>All of them produce identical results across runs. In CJC-Lang, that’s not an opt-in mode — it’s how computation works.</p>
 <hr>
-<p>If you haven’t read the introduction to CJC and the design decisions behind the language, start with <a href="../../../blog/posts/introducing-cjc/index.html">Introducing CJC</a>.</p>
+<p>If you haven’t read the introduction to CJC-Lang and the design decisions behind the language, start with <a href="../../../blog/posts/introducing-cjc/index.html">Introducing CJC-Lang</a>.</p>
 <p>Next up: I’ll write about what it took to build a dual-engine compiler pipeline in Rust — and the design decisions that made parity testing between an AST interpreter and a register machine actually tractable.</p>
 <div class="callout callout-style-simple callout-tip no-icon callout-titled">
 <div class="callout-header d-flex align-content-center">
@@ -458,7 +458,7 @@ Follow the project
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p>CJC is open source and under active development. Follow <a href="https://linkedin.com/in/adamezzat"><span class="citation" data-cites="adamezzat">@adamezzat</span></a> for updates as new features land.</p>
+<p>CJC-Lang is open source and under active development. Follow <a href="https://linkedin.com/in/adamezzat"><span class="citation" data-cites="adamezzat">@adamezzat</span></a> for updates as new features land.</p>
 </div>
 </div>
 
