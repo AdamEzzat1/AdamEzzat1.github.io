@@ -1,11 +1,11 @@
 ---
-title: "Introducing CJC: Why I'm Building a Deterministic Scientific Computing Language"
-subtitle: "What CJC is, why it exists, what it can already do, and where it stands today."
+title: "Introducing CJC-Lang: Why I'm Building a Deterministic Scientific Computing Language"
+subtitle: "What CJC-Lang is, why it exists, what it can already do, and where it stands today."
 author: "Adam Ezzat"
 date: "2026-03-21"
 date-modified: "2026-03-22"
-categories: [CJC, compilers, scientific-computing]
-description: "A deep dive into CJC — a deterministic scientific computing language built from scratch in Rust."
+categories: [CJC-Lang, compilers, scientific-computing]
+description: "A deep dive into CJC-Lang — a deterministic scientific computing language built from scratch in Rust."
 ---
 
 I didn't set out to build a programming language. I set out to solve a problem.
@@ -20,12 +20,12 @@ That constraint turned out to touch everything: memory layout, collection types,
 
 ---
 
-## What Is CJC?
+## What Is CJC-Lang?
 
-CJC — **Computation Jacobian Core** — is a programming language I'm building from scratch for deterministic scientific computing. It's written in Rust, organized as a 20-crate workspace, with nearly all functionality implemented from scratch using only the Rust standard library.
+CJC-Lang — **Computation Jacobian Core** — is a programming language I'm building from scratch for deterministic scientific computing. It's written in Rust, organized as a 20-crate workspace, with nearly all functionality implemented from scratch using only the Rust standard library.
 
 ::: {.callout-note appearance="minimal"}
-**CJC is currently in beta.** The core compiler pipeline and runtime are functional and backed by 5,300+ passing tests, but the language is still under active development and is not production-ready. I'm sharing it now because the ideas behind it are worth discussing even before everything is polished.
+**CJC-Lang is currently in beta.** The core compiler pipeline and runtime are functional and backed by 5,300+ passing tests, but the language is still under active development and is not production-ready. I'm sharing it now because the ideas behind it are worth discussing even before everything is polished.
 :::
 
 <div class="stats-row">
@@ -43,11 +43,11 @@ The language covers the full compilation and execution pipeline: a lexer, recurs
 
 ### Determinism as Architecture
 
-CJC enforces determinism at every layer:
+CJC-Lang enforces determinism at every layer:
 
 - **Ordered collections everywhere.** `BTreeMap` and `BTreeSet` instead of hash-based containers. Iteration order is always defined.
 - **Stable floating-point reductions.** All summations use Kahan or binned accumulators — order-invariant superaccumulators that produce identical results regardless of evaluation order.
-- **No FMA in SIMD kernels.** Fused multiply-add produces different rounding than separate multiply and add. CJC avoids FMA to keep results identical across CPU architectures.
+- **No FMA in SIMD kernels.** Fused multiply-add produces different rounding than separate multiply and add. CJC-Lang avoids FMA to keep results identical across CPU architectures.
 - **Seeded, explicit RNG.** The random number generator is SplitMix64 with explicit seed threading. No global state, no entropy sources.
 - **Deterministic parallelism.** Parallel operations are structured so that results don't depend on thread count or scheduling.
 
@@ -75,7 +75,7 @@ This is a deliberate choice. External dependencies introduce version churn, plat
 
 ### Dual Execution Engines
 
-CJC has two execution paths:
+CJC-Lang has two execution paths:
 
 1. **AST interpreter** (`cjc-eval`): walks the syntax tree directly. Simple, easy to debug, good for prototyping.
 2. **MIR executor** (`cjc-mir-exec`): lowers through HIR → MIR, applies optimization passes (constant folding, dead code elimination), and runs on a register machine.
@@ -84,17 +84,17 @@ Both engines must produce identical results for every program. Parity tests enfo
 
 ### NoGC Verification
 
-CJC includes a static verifier that can prove code paths are free of GC allocations. The NoGC verifier performs transitive call-graph analysis to ensure that annotated functions — and everything they call — operate within reference-counted, copy-on-write memory without triggering GC. This matters for latency-sensitive workloads where GC pauses are unacceptable.
+CJC-Lang includes a static verifier that can prove code paths are free of GC allocations. The NoGC verifier performs transitive call-graph analysis to ensure that annotated functions — and everything they call — operate within reference-counted, copy-on-write memory without triggering GC. This matters for latency-sensitive workloads where GC pauses are unacceptable.
 
 ---
 
-## What CJC Can Do Today
+## What CJC-Lang Can Do Today
 
 Every example below comes from real files in the repository — demo programs, test fixtures, or integration tests.
 
 ### Closures and Higher-Order Functions
 
-CJC supports lambda expressions with capture analysis. The compiler performs lambda lifting during HIR lowering, converting closures into top-level functions with explicit environment parameters:
+CJC-Lang supports lambda expressions with capture analysis. The compiler performs lambda lifting during HIR lowering, converting closures into top-level functions with explicit environment parameters:
 
 <div class="code-label">Lambda with capture, passed as higher-order function</div>
 
@@ -115,7 +115,7 @@ The capture analysis feeds into the NoGC verifier — if a closure captures a re
 
 ### Structs, Enums, and Pattern Matching
 
-CJC supports algebraic data types with structural destructuring:
+CJC-Lang supports algebraic data types with structural destructuring:
 
 ```
 struct Point {
@@ -135,7 +135,7 @@ Match expressions support literal patterns, wildcards, and structural destructur
 
 ### Tensors and Linear Algebra
 
-This is where CJC starts to show its numerical computing focus. Tensors are N-dimensional arrays with zero-copy COW (copy-on-write) buffers:
+This is where CJC-Lang starts to show its numerical computing focus. Tensors are N-dimensional arrays with zero-copy COW (copy-on-write) buffers:
 
 <div class="code-label">Matrix multiplication with shape verification</div>
 
@@ -160,7 +160,7 @@ The runtime provides the full suite: SVD, QR, Cholesky, eigenvalue decomposition
 
 ### Neural Network Forward Pass
 
-CJC can express multi-layer neural networks with struct-based layer definitions and a pipe operator (`|>`) for readable data flow:
+CJC-Lang can express multi-layer neural networks with struct-based layer definitions and a pipe operator (`|>`) for readable data flow:
 
 ```
 struct Layer {
@@ -173,7 +173,7 @@ fn forward(layer: Layer, input: Tensor) -> Tensor {
 }
 ```
 
-The runtime provides built-in ML operations: `batch_norm`, `dropout_mask`, `sigmoid`, `relu`, `leaky_relu`, `attention`, `softmax`, learning rate schedulers, loss functions, and regularization. I'll go deeper into the neural network architectures I've built and verified in CJC in the [next post](../neural-networks-in-cjc/index.qmd).
+The runtime provides built-in ML operations: `batch_norm`, `dropout_mask`, `sigmoid`, `relu`, `leaky_relu`, `attention`, `softmax`, learning rate schedulers, loss functions, and regularization. I'll go deeper into the neural network architectures I've built and verified in CJC-Lang in the [next post](../neural-networks-in-cjc/index.qmd).
 
 ### Gradient Descent and Automatic Differentiation
 
@@ -204,7 +204,7 @@ print("Final x:", x);          // ~3.0
 assert(abs(x - 3.0) < 0.001);
 ```
 
-For more complex cases, CJC has a full automatic differentiation engine — forward-mode via dual numbers and reverse-mode via tape-based gradient computation.
+For more complex cases, CJC-Lang has a full automatic differentiation engine — forward-mode via dual numbers and reverse-mode via tape-based gradient computation.
 
 ### Statistics and Distributions
 
@@ -233,7 +233,7 @@ Distributions include normal, beta, gamma, exponential, F, Weibull, Poisson, bin
 
 ### Data Manipulation
 
-CJC includes a tidyverse-inspired data DSL with 73+ operations:
+CJC-Lang includes a tidyverse-inspired data DSL with 73+ operations:
 
 ```
 let csv_data = "name,age,city\nAlice,30,NYC\nBob,25,LA\nCharlie,35,NYC\n";
@@ -252,7 +252,7 @@ The data layer supports typed columns, joins (inner, left, right, anti, semi), p
 
 ## Beyond Neural Networks
 
-CJC isn't just a machine learning language. The numerical infrastructure supports a broader range of scientific computing — and this is where the determinism guarantee pays the biggest dividends. When you're debugging a failed ODE integration or a clustering result that doesn't match your colleague's run, knowing the computation is reproducible eliminates an entire class of "was it the code or was it the environment?" questions.
+CJC-Lang isn't just a machine learning language. The numerical infrastructure supports a broader range of scientific computing — and this is where the determinism guarantee pays the biggest dividends. When you're debugging a failed ODE integration or a clustering result that doesn't match your colleague's run, knowing the computation is reproducible eliminates an entire class of "was it the code or was it the environment?" questions.
 
 | Domain | Key Capabilities |
 |--------|-----------------|
@@ -297,24 +297,24 @@ No `pip install`. No `npm install`. No version conflicts. Just the binary, the s
 
 ## The CLI Toolchain
 
-CJC ships with 15+ CLI subcommands:
+CJC-Lang ships with 15+ CLI subcommands:
 
 ```bash
-cjc run program.cjc              # execute a program
-cjc run program.cjc --seed 42    # explicit RNG seed
-cjc run program.cjc --mir-opt    # MIR-optimized execution
-cjc check program.cjc            # type-check without running
-cjc repl                         # interactive REPL
-cjc trace program.cjc            # execution tracing
-cjc bench program.cjc            # benchmarking
-cjc doctor                       # health/validation checks
+cjcl run program.cjcl              # execute a program
+cjcl run program.cjcl --seed 42    # explicit RNG seed
+cjcl run program.cjcl --mir-opt    # MIR-optimized execution
+cjcl check program.cjcl            # type-check without running
+cjcl repl                         # interactive REPL
+cjcl trace program.cjcl            # execution tracing
+cjcl bench program.cjcl            # benchmarking
+cjcl doctor                       # health/validation checks
 ```
 
 Additional commands include `inspect`, `schema`, `flow` (control flow graphs), `drift` (determinism drift detection), `mem` (memory profiling), `pack` (binary serialization), and `forge` (code generation).
 
 ---
 
-## Why CJC Is Still in Beta
+## Why CJC-Lang Is Still in Beta
 
 The core is solid: the compiler pipeline works end-to-end, both execution engines agree, the test suite is extensive, and the runtime covers a wide surface area. But several areas need more work:
 
@@ -339,13 +339,13 @@ The near-term roadmap includes:
 
 ## Why Share This Now?
 
-CJC isn't finished, but the ideas behind it are clear enough to discuss. Deterministic scientific computing is a real problem — I've seen it firsthand, from the lab bench to the data pipeline. Building the entire stack from scratch is an unusual approach, but the results so far suggest it's viable.
+CJC-Lang isn't finished, but the ideas behind it are clear enough to discuss. Deterministic scientific computing is a real problem — I've seen it firsthand, from the lab bench to the data pipeline. Building the entire stack from scratch is an unusual approach, but the results so far suggest it's viable.
 
 If you're interested in compiler design, numerical methods, reproducible computing, or just the experience of building a language from the ground up, I'll be writing more here as the project develops.
 
-Next up: I'll walk through [the neural network architectures I've built and verified in CJC](../neural-networks-in-cjc/index.qmd) — REINFORCE agents, physics-informed networks, CNNs, and attention mechanisms, all running deterministically without any ML framework.
+Next up: I'll walk through [the neural network architectures I've built and verified in CJC-Lang](../neural-networks-in-cjc/index.qmd) — REINFORCE agents, physics-informed networks, CNNs, and attention mechanisms, all running deterministically without any ML framework.
 
 ::: {.callout-tip appearance="minimal"}
 ## Follow the project
-CJC is open source and under active development. The project is in beta — functional and tested, but not yet production-ready. Follow [@adamezzat](https://linkedin.com/in/adamezzat) for updates as new features land.
+CJC-Lang is open source and under active development. The project is in beta — functional and tested, but not yet production-ready. Follow [@adamezzat](https://linkedin.com/in/adamezzat) for updates as new features land.
 :::
