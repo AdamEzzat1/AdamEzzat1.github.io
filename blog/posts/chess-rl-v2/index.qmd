@@ -1,0 +1,456 @@
+---
+title: "Chess RL in CJC-Lang: Training a Chess Agent from Scratch with Zero Dependencies"
+subtitle: "A2C, autodiff, and a complete chess engine — 1,715 lines of CJC-Lang, compiled by a Rust toolchain I also built."
+author: "Adam Ezzat"
+date: "2026-04-11"
+categories: [CJC-Lang, reinforcement-learning, chess, compilers, scientific-computing]
+description: "A deep technical walkthrough of building a chess-playing reinforcement learning agent entirely in CJC-Lang — a numerical programming language written in Rust — with no PyTorch, no NumPy, no Stockfish, and zero external dependencies."
+---
+
+<div class="reading-time">&#128337; ~20 min read</div>
+
+I built a chess-playing AI from scratch — in a programming language I also built from scratch. No PyTorch. No NumPy. No Stockfish. Zero external dependencies.
+
+This post is a technical walkthrough of how that works: the language design decisions that made it possible, the RL algorithm, the chess engine, the autodiff engine, the performance engineering, and what I learned along the way.
+
+---
+
+## The Live Demo
+
+Before diving into the technical details, here's the training visualization running live. This shows the agent playing self-play chess games, with real-time stats from the v2.5 training run:
+
+<div id="demo-container" style="border-radius: 12px; overflow: hidden; margin: 2em 0; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
+<iframe src="demo.html" width="100%" height="720" style="border: none; border-radius: 12px;"></iframe>
+</div>
+
+::: {.callout-tip}
+The board animates through sample self-play games. The stats, speed bars, and evolution list are all real numbers from the v2.5 training run.
+:::
+
+---
+
+## What is CJC-Lang?
+
+CJC-Lang (Computational Jacobian Core) is a numerical programming language I wrote in Rust — 21 crates, roughly 96,000 lines of code. It's designed for ML pipelines, numerical systems, and scientific computing where reproducibility matters.
+
+Reproducibility is a first-class concern, not an afterthought. The language enforces it through specific engineering choices:
+
+- **Kahan summation** for all floating-point reductions — prevents accumulation error from corrupting results
+- **Ordered data structures** throughout (BTreeMap/BTreeSet, never HashMap) — no iteration-order non-determinism
+- **Explicit seed threading** via SplitMix64 — every source of randomness is traceable
+- **No FMA instructions** in SIMD paths — fused multiply-add can produce different results on different hardware
+- **Two execution backends** (AST interpreter + MIR register machine) that are required to produce identical results
+
+The result: same input, same output. Every time.
+
+CJC-Lang has built-in tensors, automatic differentiation, copy-on-write memory, pattern matching, closures, structs, for/while loops, if-expressions, file I/O, and SVG visualization. The compiler pipeline looks like this:
+
+```{mermaid}
+%%| fig-width: 8
+%%| fig-cap: "CJC-Lang compiler pipeline. Source code flows through seven stages before execution."
+flowchart LR
+    S["Source\n.cjcl"] --> L["Lexer"] --> P["Parser"] --> A["AST"] --> T["Type\nChecker"] --> H["HIR"] --> M["MIR"] --> E["Executor"]
+```
+
+The chess RL demo exercises nearly every one of these language features — it's the most demanding program CJC-Lang runs.
+
+---
+
+## The Chess Engine
+
+The chess engine is written entirely in CJC-Lang. Not a wrapper around Stockfish. Not a simplified variant. A complete implementation.
+
+### Move Generation
+
+Legal move generation covers every piece type with every special rule:
+
+- **Pawns**: single push, double push from starting rank, diagonal capture, en passant capture, promotion to queen/rook/bishop/knight
+- **Knights, bishops, rooks, queen**: full movement patterns with board-boundary checking
+- **King**: standard moves plus castling (kingside and queenside, with path-clear and through-check validation)
+
+### Board Representation
+
+The board is encoded as a 774-dimensional input vector for the neural network:
+
+```
+12 piece planes x 64 squares = 768 features
++ 4 castling rights (K, Q, k, q)
++ 1 normalized move clock (for 50-move rule)
++ 1 en passant file indicator
+= 774 total input features
+```
+
+Each piece plane is a binary 64-element vector indicating where that piece type exists on the board. This gives the network a spatially structured view of the position.
+
+::: {.callout-note collapse="true" appearance="minimal" title="Board encoding in CJC-Lang"}
+
+```
+fn encode_board(board: Any, color: i64, castling: Any,
+                move_clock: i64, ep_file: i64) -> Tensor {
+    let features = [];
+    let piece_types = ["P","N","B","R","Q","K","p","n","b","r","q","k"];
+    let p = 0;
+    while p < 12 {
+        let sq = 0;
+        while sq < 64 {
+            if board[sq] == piece_types[p] {
+                features = array_push(features, 1.0);
+            } else {
+                features = array_push(features, 0.0);
+            }
+            sq = sq + 1;
+        }
+        p = p + 1;
+    }
+    // Castling rights
+    features = array_push(features, float(castling[0]));
+    features = array_push(features, float(castling[1]));
+    features = array_push(features, float(castling[2]));
+    features = array_push(features, float(castling[3]));
+    // Normalized move clock
+    features = array_push(features, float(move_clock) / 100.0);
+    // En passant
+    features = array_push(features, float(ep_file) / 8.0);
+    Tensor.from_vec(features, [1, 774])
+}
+```
+
+This is the CJC-Lang version. In production, `encode_state_fast` (a native builtin) replaces this with an O(774) buffer fill instead of O(38 x 774) COW array copies — same output, 30x fewer allocations.
+:::
+
+### Draw Detection
+
+The engine handles three draw conditions:
+
+1. **50-move rule** — a counter tracks half-moves since the last pawn push or capture
+2. **Insufficient material** — detects K vs K, K+B vs K, K+N vs K
+3. **Threefold repetition** — this one's interesting
+
+Threefold repetition detection uses **Zobrist hashing**: a 64-bit hash for each board position, computed by XOR-ing random numbers assigned to each (piece, square) combination. The hash updates incrementally with each move (XOR out the old position, XOR in the new one), making it O(1) per move instead of O(64) for a full board comparison.
+
+```
+fn zobrist_hash(board: Any, color: i64, castling: Any) -> i64 {
+    let h = 0;
+    let sq = 0;
+    while sq < 64 {
+        if board[sq] != "" {
+            let piece_idx = piece_to_index(board[sq]);
+            h = bitxor(h, ZOBRIST_TABLE[sq * 12 + piece_idx]);
+        }
+        sq = sq + 1;
+    }
+    if color == 1 { h = bitxor(h, ZOBRIST_SIDE); }
+    // ... castling rights hashed similarly
+    h
+}
+```
+
+The position history stores these hashes, and a repetition is detected by counting occurrences — no need to store or compare full board states.
+
+---
+
+## The RL Algorithm
+
+The demo uses **A2C (Advantage Actor-Critic)** with **GAE (Generalized Advantage Estimation)**. This is a real, modern RL algorithm — the same family used in many production systems.
+
+### Network Architecture
+
+```{mermaid}
+%%| fig-width: 8
+%%| fig-cap: "A2C network architecture. The 774-D board encoding flows through shared hidden layers, then splits into policy and value heads."
+flowchart LR
+    B["Board\nEncoding\n[1, 774]"] --> H1["Hidden 1\n774 → 128\nReLU"] --> H2["Hidden 2\n128 → 64\nReLU"]
+    H2 --> PF["Policy: From\n64 → 64\nSoftmax"]
+    H2 --> PT["Policy: To\n64 → 64\nSoftmax"]
+    H2 --> V["Value Head\n64 → 1\ntanh"]
+```
+
+The network has **45,873 trainable parameters** across these layers:
+
+| Layer | Shape | Parameters |
+|---|---|---|
+| Hidden 1 (weights + bias) | 774 x 128 + 128 | 99,200 |
+| Hidden 2 (weights + bias) | 128 x 64 + 64 | 8,256 |
+| Policy from-head (weights + bias) | 64 x 64 + 64 | 4,160 |
+| Policy to-head (weights + bias) | 64 x 64 + 64 | 4,160 |
+| Value head (weights + bias) | 64 x 1 + 1 | 65 |
+| **Total** | | **~45,873** |
+
+The policy uses **factored action heads**: instead of outputting probabilities over all possible moves (which would be thousands), it predicts a from-square distribution and a to-square distribution independently. The score for a move is the sum of the from-square log-probability and the to-square log-probability. This factorization keeps the output layer small (128 outputs instead of 4,096+).
+
+### Advantage Estimation (GAE)
+
+GAE computes advantages by looking at multi-step returns with exponential weighting:
+
+$$
+\hat{A}_t = \sum_{l=0}^{T-t} (\gamma \lambda)^l \delta_{t+l}
+$$
+
+where $\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)$ is the TD error.
+
+The hyperparameters: $\gamma = 0.99$ (discount factor), $\lambda = 0.95$ (GAE smoothing). These control the bias-variance tradeoff in advantage estimation — higher $\lambda$ gives lower bias but higher variance.
+
+### Training Loop
+
+Each training episode:
+
+1. **Rollout**: play a full game via self-play, recording states, actions, log-probabilities, rewards, and value estimates at each step
+2. **Compute returns and advantages**: walk backward through the trajectory using GAE
+3. **Policy loss**: $-\frac{1}{T} \sum_t \log \pi(a_t | s_t) \cdot \hat{A}_t$ — nudge the policy toward moves with positive advantage
+4. **Value loss**: $\frac{1}{T} \sum_t (V(s_t) - R_t)^2$ — improve value function predictions
+5. **Backward pass**: compute gradients through the entire network via autodiff
+6. **Adam update**: update all 45,873 parameters
+
+::: {.callout-note collapse="true" appearance="minimal" title="A2C update step in CJC-Lang"}
+
+```
+fn a2c_update_adam(params: Any, trajectory: Any, config: Any,
+                   adam_state: Any, step: i64) -> Any {
+    let advantages = compute_gae(trajectory, config);
+    advantages = whiten(advantages);
+
+    let policy_loss = 0.0;
+    let value_loss = 0.0;
+    let t = 0;
+    while t < len(trajectory) {
+        policy_loss = policy_loss - trajectory[t].log_prob * advantages[t];
+        let val_err = trajectory[t].value - trajectory[t].return_;
+        value_loss = value_loss + val_err * val_err;
+        t = t + 1;
+    }
+    policy_loss = policy_loss / float(len(trajectory));
+    value_loss = value_loss / float(len(trajectory));
+
+    let total_loss = policy_loss + 0.5 * value_loss;
+
+    // Backward pass through autodiff
+    grad_graph.zero_grad();
+    grad_graph.backward(total_loss);
+
+    // Adam optimizer update for each parameter tensor
+    let p = 0;
+    while p < len(params) {
+        let grad = grad_graph.grad(params[p].idx);
+        params[p] = adam_step(params[p], grad, adam_state[p], step,
+                              config.lr, 0.9, 0.999, 1e-8);
+        p = p + 1;
+    }
+    params
+}
+```
+
+:::
+
+Additional training features:
+
+- **Temperature annealing** (1.2 → 0.8): starts with high exploration, gradually becomes more greedy
+- **Advantage whitening**: normalizes advantages to zero mean and unit variance for stable gradients
+- **Resignation threshold**: the agent can resign when its value estimate drops below a threshold, saving compute on hopeless games
+- **Move-count penalty**: small penalty per ply (0.001) to discourage aimless play
+
+---
+
+## The Autodiff Engine
+
+This is where CJC-Lang's runtime does the heavy lifting. The RL algorithm above calls `grad_graph.backward(loss)` — but what happens inside that call?
+
+### GradGraph: Arena-Based Automatic Differentiation
+
+CJC-Lang's autodiff engine is a **reverse-mode automatic differentiation** system. It builds a directed acyclic graph (DAG) of operations during the forward pass, then traverses it backward to compute gradients.
+
+The original implementation (v2.0) used the standard Rust approach: `Vec<Rc<RefCell<GradNode>>>` — each node was a reference-counted, interior-mutable object. This works, but every `.borrow()` call has runtime overhead, and each node allocation hits the heap individually.
+
+In v2.4, the engine was redesigned to use **arena allocation**: flat arrays for operations, tensors, and gradients. This eliminated roughly 120 `.borrow()` calls per backward pass.
+
+```
+v2.0: Each node is a separate heap allocation
+  [Node 0] → [Node 1] → [Node 2] → ...  (Rc<RefCell<GradNode>> per node)
+
+v2.4+: Flat arena arrays — one contiguous block
+  ops:     [Op0, Op1, Op2, Op3, ...]      (Vec<GradOp>)
+  tensors: [T0,  T1,  T2,  T3,  ...]      (Vec<Tensor>)
+  grads:   [G0,  G1,  G2,  G3,  ...]      (Vec<Option<Tensor>>)
+```
+
+### Dead Node Elimination
+
+Not every node in the computation graph is reachable from the loss. In a multi-head architecture (policy + value), the backward pass from the policy loss doesn't need gradients for nodes only used by the value head (and vice versa during the value backward pass).
+
+Before traversing backward, the engine builds a reachability set from the loss node. Unreachable nodes are skipped entirely — typically **20-30%** of the graph for multi-head networks.
+
+### In-Place Gradient Accumulation (v2.5)
+
+The original gradient accumulation created a new tensor every time two gradients were added:
+
+```rust
+// Before: allocates a new tensor
+grads[idx] = Some(existing.add_unchecked(&incoming));
+```
+
+In v2.5, this was replaced with in-place mutation:
+
+```rust
+// After: mutates existing tensor
+existing.add_assign_unchecked(&incoming);
+```
+
+This uses `Buffer::borrow_data_mut()` to get a mutable reference to the underlying data and update it element-wise. The result: roughly half the tensor allocations per backward pass are eliminated. This single change was responsible for the v2.4 → v2.5 speedup (43.5 → 29.8 seconds per episode).
+
+### Fused MLP Layers (v2.5)
+
+A standard dense layer in the computation graph creates four separate nodes:
+
+1. Transpose the weight matrix
+2. Matrix multiply input by transposed weights
+3. Add bias
+4. Apply activation function
+
+The fused `GradOp::MlpLayer` collapses all four into a single graph node:
+
+```rust
+MlpLayer {
+    input: usize,    // index of input tensor
+    weight: usize,   // index of weight tensor
+    bias: usize,     // index of bias tensor
+    activation: Activation,  // ReLU, Tanh, etc.
+}
+```
+
+This reduces graph nodes by **3x per layer** and computes all three parameter gradients (d_input, d_weight, d_bias) in a single fused backward pass.
+
+---
+
+## Performance Engineering
+
+### The Profiling-Driven Approach
+
+Every optimization was driven by measurement, not intuition. CJC-Lang has built-in profiling builtins (`profile_zone_start`, `profile_zone_stop`, `profile_dump`) that I used to instrument the training loop.
+
+The first profile revealed the bottleneck distribution:
+
+| Function | % of Rollout Time |
+|---|---|
+| `score_moves` (forward pass per move) | **84.2%** |
+| `legal_moves` (move generation) | 7.7% |
+| `apply_move` (board update) | 0.1% |
+| Everything else | 8.0% |
+
+84% of time was spent evaluating the neural network for each legal move. The fix: `score_moves_batch`, a native Rust builtin that evaluates all legal moves in a single batched forward pass instead of looping through them one at a time in the interpreter.
+
+**Result: 7.7x rollout speedup.**
+
+### The Amdahl's Law Moment
+
+Here's where it got interesting. A 7.7x speedup on the rollout phase should have been transformative. But total episode time barely moved:
+
+```
+Before: rollout ~10.4s + backward ~25s = ~35s
+After:  rollout ~1.3s  + backward ~25s = ~26s
+Speedup: ~1.35x (not 7.7x)
+```
+
+Amdahl's Law in action. The rollout was only about 30% of total episode time. Making it 7.7x faster saved ~9 seconds, but the backward pass (which was untouched) still took 25 seconds. The bottleneck had shifted.
+
+This insight redirected the entire optimization strategy. Instead of making the interpreter faster, I redesigned the autodiff engine:
+
+| Version | Change | Episode Time | Speedup |
+|---|---|---|---|
+| v2.3 | Native rollout kernels | 82.2 s | baseline |
+| v2.4 | Arena GradGraph + dead node elimination | 43.5 s | 1.89x |
+| v2.5 | In-place gradients + fused MLP | 29.8 s | **2.76x** |
+
+### Native Hot-Path Kernels
+
+Three performance-critical functions were promoted from CJC-Lang code to native Rust builtins:
+
+**`adam_step`** — Element-wise Adam optimizer update. The CJC-Lang version was a scalar loop over every parameter; the native version operates directly on tensor buffers. **~9x faster.**
+
+**`encode_state_fast`** — Board-to-tensor encoding. The CJC-Lang version used `array_push` to build the 774-element feature vector, which triggered a copy-on-write clone at each push. The native version fills a pre-allocated buffer in a single pass. **O(n) vs O(38n).**
+
+**`score_moves_batch`** — Batched move scoring. Instead of calling the forward pass once per legal move (in the interpreter), this evaluates all moves in a single native call with one matrix multiplication. **7.7x rollout speedup.**
+
+All three builtins produce **bit-identical output** to their CJC-Lang counterparts — verified by parity tests.
+
+---
+
+## Training Results
+
+### Honest Numbers
+
+After 120 episodes of self-play training:
+
+- **Elo change: +13.9** — the first measurable learning signal in the v2.x series
+- **Win rate vs random: 50%** — not yet reliably beating a random opponent
+- **Win rate vs greedy: 50%** — ties with a material-greedy baseline
+- **Non-zero terminal rewards: 6/120 episodes** — most games are still drawn
+
+These are modest results. The agent is not strong. I report this honestly because the goal was never to compete with Stockfish or AlphaZero — it was to demonstrate that a from-scratch language can express, train, and evaluate a real RL agent.
+
+### What This Proves
+
+The demo exercises nearly every CJC-Lang feature simultaneously:
+
+| Language Feature | How It's Used |
+|---|---|
+| Tensors | Board encoding, weight matrices, gradients |
+| Autodiff (GradGraph) | Full A2C loss backward through policy + value |
+| Closures | Evaluation callbacks, training hooks |
+| Pattern matching | Piece type dispatch, move classification |
+| Structs | Board state, game config, training stats |
+| For/while loops | Rollout iteration, move generation |
+| If-expressions | Legal move filtering, terminal detection |
+| Arrays (COW) | Move lists, trajectory buffers |
+| Deterministic RNG | SplitMix64 seed threading |
+| File I/O | CSV training logs, PGN game records |
+| Vizor (SVG) | Training curve visualization |
+
+It's a single CJC-Lang program (~1,715 lines) that implements the chess engine, RL algorithm, optimizer, evaluation suite, Elo computation, PGN notation, checkpoint system, and training curve plotting.
+
+### The v1 to v2.5 Journey
+
+For context, here's how far the demo has come:
+
+| Dimension | v1 (March 2026) | v2.5 (April 2026) |
+|---|---|---|
+| Network | 1,072 params | 45,873 params (43x) |
+| Input | 66 features | 774 features (12x) |
+| Gradients | 95 lines of hand-rolled chain rule | Full automatic differentiation |
+| Optimizer | Manual SGD | Adam (native builtin) |
+| Chess rules | Basic (no castling) | Complete |
+| Algorithm | REINFORCE | A2C + GAE |
+| Training speed | N/A | 29.8 s/episode |
+| Learning signal | None | Elo +13.9 |
+| Determinism | Bit-identical | Still bit-identical |
+
+---
+
+## The Stack
+
+```
+CJC-Lang program (~1,715 LOC)
+    Chess engine + A2C + GAE + Adam + Elo + PGN + checkpoints
+        |
+CJC-Lang compiler + runtime (Rust, ~96K LOC)
+    Lexer → Parser → AST → Type Checker → HIR → MIR → Executor
+    Autodiff: arena-based GradGraph with fused MLP ops
+    451 builtins, all deterministic
+    21 crates, zero external dependencies
+```
+
+Every tensor operation, every gradient computation, every optimizer step runs in code I own. No framework sits between the algorithm and the math.
+
+Same seed = same game. Always.
+
+---
+
+## What's Next
+
+The agent's Elo +13.9 is a starting point, not a destination. The infrastructure is now solid — the bottleneck is no longer the language or the autodiff engine, it's the ML itself. Larger networks, longer training, curriculum learning, and MCTS are all expressible in CJC-Lang as it stands today.
+
+The deeper goal isn't chess strength. It's showing that a carefully designed language — one that takes reproducibility seriously, owns its entire stack, and grows to meet the demands of its hardest workload — can do real work.
+
+If you want to try CJC-Lang yourself: `cargo install cjc-lang`, then `cjcl run your_program.cjcl`.
+
+---
+
+*CJC-Lang is open source. The compiler, runtime, and all demos are available on GitHub.*

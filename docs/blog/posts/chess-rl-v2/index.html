@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.3.340">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Adam Ezzat">
+<meta name="dcterms.date" content="2026-04-11">
+<meta name="description" content="A deep technical walkthrough of building a chess-playing reinforcement learning agent entirely in CJC-Lang — a numerical programming language written in Rust — with no PyTorch, no NumPy, no Stockfish, and zero external dependencies.">
+
+<title>Adam Ezzat - Chess RL in CJC-Lang: Training a Chess Agent from Scratch with Zero Dependencies</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../../">
+<script src="../../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<script src="../../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-dark.min.css" rel="prefetch" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+<style>html{ scroll-behavior: smooth; }</style>
+<script src="../../../site_libs/quarto-diagram/mermaid.min.js"></script>
+<script src="../../../site_libs/quarto-diagram/mermaid-init.js"></script>
+<link href="../../../site_libs/quarto-diagram/mermaid.css" rel="stylesheet">
+
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../../index.html">
+    <span class="navbar-title">Adam Ezzat</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../../index.html" rel="" target="">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../about.html" rel="" target="">
+ <span class="menu-text">About</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../projects.html" rel="" target="">
+ <span class="menu-text">Projects</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../blog/index.html" rel="" target="">
+ <span class="menu-text">Blog</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/AdamEzzat1" rel="" target=""><i class="bi bi-github" role="img" aria-label="GitHub">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://linkedin.com/in/adamezzat" rel="" target=""><i class="bi bi-linkedin" role="img" aria-label="LinkedIn">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+            <div class="quarto-navbar-tools">
+  <a href="" class="quarto-color-scheme-toggle quarto-navigation-tool  px-1" onclick="window.quartoToggleColorScheme(); return false;" title="Toggle dark mode"><i class="bi"></i></a>
+</div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#the-live-demo" id="toc-the-live-demo" class="nav-link active" data-scroll-target="#the-live-demo">The Live Demo</a></li>
+  <li><a href="#what-is-cjc-lang" id="toc-what-is-cjc-lang" class="nav-link" data-scroll-target="#what-is-cjc-lang">What is CJC-Lang?</a></li>
+  <li><a href="#the-chess-engine" id="toc-the-chess-engine" class="nav-link" data-scroll-target="#the-chess-engine">The Chess Engine</a>
+  <ul class="collapse">
+  <li><a href="#move-generation" id="toc-move-generation" class="nav-link" data-scroll-target="#move-generation">Move Generation</a></li>
+  <li><a href="#board-representation" id="toc-board-representation" class="nav-link" data-scroll-target="#board-representation">Board Representation</a></li>
+  <li><a href="#draw-detection" id="toc-draw-detection" class="nav-link" data-scroll-target="#draw-detection">Draw Detection</a></li>
+  </ul></li>
+  <li><a href="#the-rl-algorithm" id="toc-the-rl-algorithm" class="nav-link" data-scroll-target="#the-rl-algorithm">The RL Algorithm</a>
+  <ul class="collapse">
+  <li><a href="#network-architecture" id="toc-network-architecture" class="nav-link" data-scroll-target="#network-architecture">Network Architecture</a></li>
+  <li><a href="#advantage-estimation-gae" id="toc-advantage-estimation-gae" class="nav-link" data-scroll-target="#advantage-estimation-gae">Advantage Estimation (GAE)</a></li>
+  <li><a href="#training-loop" id="toc-training-loop" class="nav-link" data-scroll-target="#training-loop">Training Loop</a></li>
+  </ul></li>
+  <li><a href="#the-autodiff-engine" id="toc-the-autodiff-engine" class="nav-link" data-scroll-target="#the-autodiff-engine">The Autodiff Engine</a>
+  <ul class="collapse">
+  <li><a href="#gradgraph-arena-based-automatic-differentiation" id="toc-gradgraph-arena-based-automatic-differentiation" class="nav-link" data-scroll-target="#gradgraph-arena-based-automatic-differentiation">GradGraph: Arena-Based Automatic Differentiation</a></li>
+  <li><a href="#dead-node-elimination" id="toc-dead-node-elimination" class="nav-link" data-scroll-target="#dead-node-elimination">Dead Node Elimination</a></li>
+  <li><a href="#in-place-gradient-accumulation-v2.5" id="toc-in-place-gradient-accumulation-v2.5" class="nav-link" data-scroll-target="#in-place-gradient-accumulation-v2.5">In-Place Gradient Accumulation (v2.5)</a></li>
+  <li><a href="#fused-mlp-layers-v2.5" id="toc-fused-mlp-layers-v2.5" class="nav-link" data-scroll-target="#fused-mlp-layers-v2.5">Fused MLP Layers (v2.5)</a></li>
+  </ul></li>
+  <li><a href="#performance-engineering" id="toc-performance-engineering" class="nav-link" data-scroll-target="#performance-engineering">Performance Engineering</a>
+  <ul class="collapse">
+  <li><a href="#the-profiling-driven-approach" id="toc-the-profiling-driven-approach" class="nav-link" data-scroll-target="#the-profiling-driven-approach">The Profiling-Driven Approach</a></li>
+  <li><a href="#the-amdahls-law-moment" id="toc-the-amdahls-law-moment" class="nav-link" data-scroll-target="#the-amdahls-law-moment">The Amdahl’s Law Moment</a></li>
+  <li><a href="#native-hot-path-kernels" id="toc-native-hot-path-kernels" class="nav-link" data-scroll-target="#native-hot-path-kernels">Native Hot-Path Kernels</a></li>
+  </ul></li>
+  <li><a href="#training-results" id="toc-training-results" class="nav-link" data-scroll-target="#training-results">Training Results</a>
+  <ul class="collapse">
+  <li><a href="#honest-numbers" id="toc-honest-numbers" class="nav-link" data-scroll-target="#honest-numbers">Honest Numbers</a></li>
+  <li><a href="#what-this-proves" id="toc-what-this-proves" class="nav-link" data-scroll-target="#what-this-proves">What This Proves</a></li>
+  <li><a href="#the-v1-to-v2.5-journey" id="toc-the-v1-to-v2.5-journey" class="nav-link" data-scroll-target="#the-v1-to-v2.5-journey">The v1 to v2.5 Journey</a></li>
+  </ul></li>
+  <li><a href="#the-stack" id="toc-the-stack" class="nav-link" data-scroll-target="#the-stack">The Stack</a></li>
+  <li><a href="#whats-next" id="toc-whats-next" class="nav-link" data-scroll-target="#whats-next">What’s Next</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Chess RL in CJC-Lang: Training a Chess Agent from Scratch with Zero Dependencies</h1>
+<p class="subtitle lead">A2C, autodiff, and a complete chess engine — 1,715 lines of CJC-Lang, compiled by a Rust toolchain I also built.</p>
+  <div class="quarto-categories">
+    <div class="quarto-category">CJC-Lang</div>
+    <div class="quarto-category">reinforcement-learning</div>
+    <div class="quarto-category">chess</div>
+    <div class="quarto-category">compilers</div>
+    <div class="quarto-category">scientific-computing</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    A deep technical walkthrough of building a chess-playing reinforcement learning agent entirely in CJC-Lang — a numerical programming language written in Rust — with no PyTorch, no NumPy, no Stockfish, and zero external dependencies.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Adam Ezzat </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">April 11, 2026</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+</header>
+
+<div class="reading-time">
+🕑 ~20 min read
+</div>
+<p>I built a chess-playing AI from scratch — in a programming language I also built from scratch. No PyTorch. No NumPy. No Stockfish. Zero external dependencies.</p>
+<p>This post is a technical walkthrough of how that works: the language design decisions that made it possible, the RL algorithm, the chess engine, the autodiff engine, the performance engineering, and what I learned along the way.</p>
+<hr>
+<section id="the-live-demo" class="level2">
+<h2 class="anchored" data-anchor-id="the-live-demo">The Live Demo</h2>
+<p>Before diving into the technical details, here’s the training visualization running live. This shows the agent playing self-play chess games, with real-time stats from the v2.5 training run:</p>
+<div id="demo-container" style="border-radius: 12px; overflow: hidden; margin: 2em 0; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
+<iframe src="demo.html" width="100%" height="720" style="border: none; border-radius: 12px;">
+</iframe>
+</div>
+<div class="callout callout-style-default callout-tip callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Tip
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>The board animates through sample self-play games. The stats, speed bars, and evolution list are all real numbers from the v2.5 training run.</p>
+</div>
+</div>
+<hr>
+</section>
+<section id="what-is-cjc-lang" class="level2">
+<h2 class="anchored" data-anchor-id="what-is-cjc-lang">What is CJC-Lang?</h2>
+<p>CJC-Lang (Computational Jacobian Core) is a numerical programming language I wrote in Rust — 21 crates, roughly 96,000 lines of code. It’s designed for ML pipelines, numerical systems, and scientific computing where reproducibility matters.</p>
+<p>Reproducibility is a first-class concern, not an afterthought. The language enforces it through specific engineering choices:</p>
+<ul>
+<li><strong>Kahan summation</strong> for all floating-point reductions — prevents accumulation error from corrupting results</li>
+<li><strong>Ordered data structures</strong> throughout (BTreeMap/BTreeSet, never HashMap) — no iteration-order non-determinism</li>
+<li><strong>Explicit seed threading</strong> via SplitMix64 — every source of randomness is traceable</li>
+<li><strong>No FMA instructions</strong> in SIMD paths — fused multiply-add can produce different results on different hardware</li>
+<li><strong>Two execution backends</strong> (AST interpreter + MIR register machine) that are required to produce identical results</li>
+</ul>
+<p>The result: same input, same output. Every time.</p>
+<p>CJC-Lang has built-in tensors, automatic differentiation, copy-on-write memory, pattern matching, closures, structs, for/while loops, if-expressions, file I/O, and SVG visualization. The compiler pipeline looks like this:</p>
+<div class="cell" data-fig-width="8">
+<div class="cell-output-display">
+<div>
+<div>
+<pre class="mermaid mermaid-js">flowchart LR
+    S["Source\n.cjcl"] --&gt; L["Lexer"] --&gt; P["Parser"] --&gt; A["AST"] --&gt; T["Type\nChecker"] --&gt; H["HIR"] --&gt; M["MIR"] --&gt; E["Executor"]
+</pre>
+</div>
+<p>CJC-Lang compiler pipeline. Source code flows through seven stages before execution.</p>
+</div>
+</div>
+</div>
+<p>The chess RL demo exercises nearly every one of these language features — it’s the most demanding program CJC-Lang runs.</p>
+<hr>
+</section>
+<section id="the-chess-engine" class="level2">
+<h2 class="anchored" data-anchor-id="the-chess-engine">The Chess Engine</h2>
+<p>The chess engine is written entirely in CJC-Lang. Not a wrapper around Stockfish. Not a simplified variant. A complete implementation.</p>
+<section id="move-generation" class="level3">
+<h3 class="anchored" data-anchor-id="move-generation">Move Generation</h3>
+<p>Legal move generation covers every piece type with every special rule:</p>
+<ul>
+<li><strong>Pawns</strong>: single push, double push from starting rank, diagonal capture, en passant capture, promotion to queen/rook/bishop/knight</li>
+<li><strong>Knights, bishops, rooks, queen</strong>: full movement patterns with board-boundary checking</li>
+<li><strong>King</strong>: standard moves plus castling (kingside and queenside, with path-clear and through-check validation)</li>
+</ul>
+</section>
+<section id="board-representation" class="level3">
+<h3 class="anchored" data-anchor-id="board-representation">Board Representation</h3>
+<p>The board is encoded as a 774-dimensional input vector for the neural network:</p>
+<pre><code>12 piece planes x 64 squares = 768 features
++ 4 castling rights (K, Q, k, q)
++ 1 normalized move clock (for 50-move rule)
++ 1 en passant file indicator
+= 774 total input features</code></pre>
+<p>Each piece plane is a binary 64-element vector indicating where that piece type exists on the board. This gives the network a spatially structured view of the position.</p>
+<div class="callout callout-style-simple callout-note no-icon callout-titled" title="Board encoding in CJC-Lang">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-2-contents" aria-controls="callout-2" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Board encoding in CJC-Lang
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-2" class="callout-2-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<pre><code>fn encode_board(board: Any, color: i64, castling: Any,
+                move_clock: i64, ep_file: i64) -&gt; Tensor {
+    let features = [];
+    let piece_types = ["P","N","B","R","Q","K","p","n","b","r","q","k"];
+    let p = 0;
+    while p &lt; 12 {
+        let sq = 0;
+        while sq &lt; 64 {
+            if board[sq] == piece_types[p] {
+                features = array_push(features, 1.0);
+            } else {
+                features = array_push(features, 0.0);
+            }
+            sq = sq + 1;
+        }
+        p = p + 1;
+    }
+    // Castling rights
+    features = array_push(features, float(castling[0]));
+    features = array_push(features, float(castling[1]));
+    features = array_push(features, float(castling[2]));
+    features = array_push(features, float(castling[3]));
+    // Normalized move clock
+    features = array_push(features, float(move_clock) / 100.0);
+    // En passant
+    features = array_push(features, float(ep_file) / 8.0);
+    Tensor.from_vec(features, [1, 774])
+}</code></pre>
+<p>This is the CJC-Lang version. In production, <code>encode_state_fast</code> (a native builtin) replaces this with an O(774) buffer fill instead of O(38 x 774) COW array copies — same output, 30x fewer allocations.</p>
+</div>
+</div>
+</div>
+</section>
+<section id="draw-detection" class="level3">
+<h3 class="anchored" data-anchor-id="draw-detection">Draw Detection</h3>
+<p>The engine handles three draw conditions:</p>
+<ol type="1">
+<li><strong>50-move rule</strong> — a counter tracks half-moves since the last pawn push or capture</li>
+<li><strong>Insufficient material</strong> — detects K vs K, K+B vs K, K+N vs K</li>
+<li><strong>Threefold repetition</strong> — this one’s interesting</li>
+</ol>
+<p>Threefold repetition detection uses <strong>Zobrist hashing</strong>: a 64-bit hash for each board position, computed by XOR-ing random numbers assigned to each (piece, square) combination. The hash updates incrementally with each move (XOR out the old position, XOR in the new one), making it O(1) per move instead of O(64) for a full board comparison.</p>
+<pre><code>fn zobrist_hash(board: Any, color: i64, castling: Any) -&gt; i64 {
+    let h = 0;
+    let sq = 0;
+    while sq &lt; 64 {
+        if board[sq] != "" {
+            let piece_idx = piece_to_index(board[sq]);
+            h = bitxor(h, ZOBRIST_TABLE[sq * 12 + piece_idx]);
+        }
+        sq = sq + 1;
+    }
+    if color == 1 { h = bitxor(h, ZOBRIST_SIDE); }
+    // ... castling rights hashed similarly
+    h
+}</code></pre>
+<p>The position history stores these hashes, and a repetition is detected by counting occurrences — no need to store or compare full board states.</p>
+<hr>
+</section>
+</section>
+<section id="the-rl-algorithm" class="level2">
+<h2 class="anchored" data-anchor-id="the-rl-algorithm">The RL Algorithm</h2>
+<p>The demo uses <strong>A2C (Advantage Actor-Critic)</strong> with <strong>GAE (Generalized Advantage Estimation)</strong>. This is a real, modern RL algorithm — the same family used in many production systems.</p>
+<section id="network-architecture" class="level3">
+<h3 class="anchored" data-anchor-id="network-architecture">Network Architecture</h3>
+<div class="cell" data-fig-width="8">
+<div class="cell-output-display">
+<div>
+<div>
+<pre class="mermaid mermaid-js">flowchart LR
+    B["Board\nEncoding\n[1, 774]"] --&gt; H1["Hidden 1\n774 → 128\nReLU"] --&gt; H2["Hidden 2\n128 → 64\nReLU"]
+    H2 --&gt; PF["Policy: From\n64 → 64\nSoftmax"]
+    H2 --&gt; PT["Policy: To\n64 → 64\nSoftmax"]
+    H2 --&gt; V["Value Head\n64 → 1\ntanh"]
+</pre>
+</div>
+<p>A2C network architecture. The 774-D board encoding flows through shared hidden layers, then splits into policy and value heads.</p>
+</div>
+</div>
+</div>
+<p>The network has <strong>45,873 trainable parameters</strong> across these layers:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Layer</th>
+<th>Shape</th>
+<th>Parameters</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Hidden 1 (weights + bias)</td>
+<td>774 x 128 + 128</td>
+<td>99,200</td>
+</tr>
+<tr class="even">
+<td>Hidden 2 (weights + bias)</td>
+<td>128 x 64 + 64</td>
+<td>8,256</td>
+</tr>
+<tr class="odd">
+<td>Policy from-head (weights + bias)</td>
+<td>64 x 64 + 64</td>
+<td>4,160</td>
+</tr>
+<tr class="even">
+<td>Policy to-head (weights + bias)</td>
+<td>64 x 64 + 64</td>
+<td>4,160</td>
+</tr>
+<tr class="odd">
+<td>Value head (weights + bias)</td>
+<td>64 x 1 + 1</td>
+<td>65</td>
+</tr>
+<tr class="even">
+<td><strong>Total</strong></td>
+<td></td>
+<td><strong>~45,873</strong></td>
+</tr>
+</tbody>
+</table>
+<p>The policy uses <strong>factored action heads</strong>: instead of outputting probabilities over all possible moves (which would be thousands), it predicts a from-square distribution and a to-square distribution independently. The score for a move is the sum of the from-square log-probability and the to-square log-probability. This factorization keeps the output layer small (128 outputs instead of 4,096+).</p>
+</section>
+<section id="advantage-estimation-gae" class="level3">
+<h3 class="anchored" data-anchor-id="advantage-estimation-gae">Advantage Estimation (GAE)</h3>
+<p>GAE computes advantages by looking at multi-step returns with exponential weighting:</p>
+<p><span class="math display">\[
+\hat{A}_t = \sum_{l=0}^{T-t} (\gamma \lambda)^l \delta_{t+l}
+\]</span></p>
+<p>where <span class="math inline">\(\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)\)</span> is the TD error.</p>
+<p>The hyperparameters: <span class="math inline">\(\gamma = 0.99\)</span> (discount factor), <span class="math inline">\(\lambda = 0.95\)</span> (GAE smoothing). These control the bias-variance tradeoff in advantage estimation — higher <span class="math inline">\(\lambda\)</span> gives lower bias but higher variance.</p>
+</section>
+<section id="training-loop" class="level3">
+<h3 class="anchored" data-anchor-id="training-loop">Training Loop</h3>
+<p>Each training episode:</p>
+<ol type="1">
+<li><strong>Rollout</strong>: play a full game via self-play, recording states, actions, log-probabilities, rewards, and value estimates at each step</li>
+<li><strong>Compute returns and advantages</strong>: walk backward through the trajectory using GAE</li>
+<li><strong>Policy loss</strong>: <span class="math inline">\(-\frac{1}{T} \sum_t \log \pi(a_t | s_t) \cdot \hat{A}_t\)</span> — nudge the policy toward moves with positive advantage</li>
+<li><strong>Value loss</strong>: <span class="math inline">\(\frac{1}{T} \sum_t (V(s_t) - R_t)^2\)</span> — improve value function predictions</li>
+<li><strong>Backward pass</strong>: compute gradients through the entire network via autodiff</li>
+<li><strong>Adam update</strong>: update all 45,873 parameters</li>
+</ol>
+<div class="callout callout-style-simple callout-note no-icon callout-titled" title="A2C update step in CJC-Lang">
+<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-3-contents" aria-controls="callout-3" aria-expanded="false" aria-label="Toggle callout">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+A2C update step in CJC-Lang
+</div>
+<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
+</div>
+<div id="callout-3" class="callout-3-contents callout-collapse collapse">
+<div class="callout-body-container callout-body">
+<pre><code>fn a2c_update_adam(params: Any, trajectory: Any, config: Any,
+                   adam_state: Any, step: i64) -&gt; Any {
+    let advantages = compute_gae(trajectory, config);
+    advantages = whiten(advantages);
+
+    let policy_loss = 0.0;
+    let value_loss = 0.0;
+    let t = 0;
+    while t &lt; len(trajectory) {
+        policy_loss = policy_loss - trajectory[t].log_prob * advantages[t];
+        let val_err = trajectory[t].value - trajectory[t].return_;
+        value_loss = value_loss + val_err * val_err;
+        t = t + 1;
+    }
+    policy_loss = policy_loss / float(len(trajectory));
+    value_loss = value_loss / float(len(trajectory));
+
+    let total_loss = policy_loss + 0.5 * value_loss;
+
+    // Backward pass through autodiff
+    grad_graph.zero_grad();
+    grad_graph.backward(total_loss);
+
+    // Adam optimizer update for each parameter tensor
+    let p = 0;
+    while p &lt; len(params) {
+        let grad = grad_graph.grad(params[p].idx);
+        params[p] = adam_step(params[p], grad, adam_state[p], step,
+                              config.lr, 0.9, 0.999, 1e-8);
+        p = p + 1;
+    }
+    params
+}</code></pre>
+</div>
+</div>
+</div>
+<p>Additional training features:</p>
+<ul>
+<li><strong>Temperature annealing</strong> (1.2 → 0.8): starts with high exploration, gradually becomes more greedy</li>
+<li><strong>Advantage whitening</strong>: normalizes advantages to zero mean and unit variance for stable gradients</li>
+<li><strong>Resignation threshold</strong>: the agent can resign when its value estimate drops below a threshold, saving compute on hopeless games</li>
+<li><strong>Move-count penalty</strong>: small penalty per ply (0.001) to discourage aimless play</li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="the-autodiff-engine" class="level2">
+<h2 class="anchored" data-anchor-id="the-autodiff-engine">The Autodiff Engine</h2>
+<p>This is where CJC-Lang’s runtime does the heavy lifting. The RL algorithm above calls <code>grad_graph.backward(loss)</code> — but what happens inside that call?</p>
+<section id="gradgraph-arena-based-automatic-differentiation" class="level3">
+<h3 class="anchored" data-anchor-id="gradgraph-arena-based-automatic-differentiation">GradGraph: Arena-Based Automatic Differentiation</h3>
+<p>CJC-Lang’s autodiff engine is a <strong>reverse-mode automatic differentiation</strong> system. It builds a directed acyclic graph (DAG) of operations during the forward pass, then traverses it backward to compute gradients.</p>
+<p>The original implementation (v2.0) used the standard Rust approach: <code>Vec&lt;Rc&lt;RefCell&lt;GradNode&gt;&gt;&gt;</code> — each node was a reference-counted, interior-mutable object. This works, but every <code>.borrow()</code> call has runtime overhead, and each node allocation hits the heap individually.</p>
+<p>In v2.4, the engine was redesigned to use <strong>arena allocation</strong>: flat arrays for operations, tensors, and gradients. This eliminated roughly 120 <code>.borrow()</code> calls per backward pass.</p>
+<pre><code>v2.0: Each node is a separate heap allocation
+  [Node 0] → [Node 1] → [Node 2] → ...  (Rc&lt;RefCell&lt;GradNode&gt;&gt; per node)
+
+v2.4+: Flat arena arrays — one contiguous block
+  ops:     [Op0, Op1, Op2, Op3, ...]      (Vec&lt;GradOp&gt;)
+  tensors: [T0,  T1,  T2,  T3,  ...]      (Vec&lt;Tensor&gt;)
+  grads:   [G0,  G1,  G2,  G3,  ...]      (Vec&lt;Option&lt;Tensor&gt;&gt;)</code></pre>
+</section>
+<section id="dead-node-elimination" class="level3">
+<h3 class="anchored" data-anchor-id="dead-node-elimination">Dead Node Elimination</h3>
+<p>Not every node in the computation graph is reachable from the loss. In a multi-head architecture (policy + value), the backward pass from the policy loss doesn’t need gradients for nodes only used by the value head (and vice versa during the value backward pass).</p>
+<p>Before traversing backward, the engine builds a reachability set from the loss node. Unreachable nodes are skipped entirely — typically <strong>20-30%</strong> of the graph for multi-head networks.</p>
+</section>
+<section id="in-place-gradient-accumulation-v2.5" class="level3">
+<h3 class="anchored" data-anchor-id="in-place-gradient-accumulation-v2.5">In-Place Gradient Accumulation (v2.5)</h3>
+<p>The original gradient accumulation created a new tensor every time two gradients were added:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Before: allocates a new tensor</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>grads[idx] <span class="op">=</span> <span class="cn">Some</span>(existing<span class="op">.</span>add_unchecked(<span class="op">&amp;</span>incoming))<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>In v2.5, this was replaced with in-place mutation:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co">// After: mutates existing tensor</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>existing<span class="op">.</span>add_assign_unchecked(<span class="op">&amp;</span>incoming)<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>This uses <code>Buffer::borrow_data_mut()</code> to get a mutable reference to the underlying data and update it element-wise. The result: roughly half the tensor allocations per backward pass are eliminated. This single change was responsible for the v2.4 → v2.5 speedup (43.5 → 29.8 seconds per episode).</p>
+</section>
+<section id="fused-mlp-layers-v2.5" class="level3">
+<h3 class="anchored" data-anchor-id="fused-mlp-layers-v2.5">Fused MLP Layers (v2.5)</h3>
+<p>A standard dense layer in the computation graph creates four separate nodes:</p>
+<ol type="1">
+<li>Transpose the weight matrix</li>
+<li>Matrix multiply input by transposed weights</li>
+<li>Add bias</li>
+<li>Apply activation function</li>
+</ol>
+<p>The fused <code>GradOp::MlpLayer</code> collapses all four into a single graph node:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>MlpLayer <span class="op">{</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    input<span class="op">:</span> <span class="dt">usize</span><span class="op">,</span>    <span class="co">// index of input tensor</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    weight<span class="op">:</span> <span class="dt">usize</span><span class="op">,</span>   <span class="co">// index of weight tensor</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    bias<span class="op">:</span> <span class="dt">usize</span><span class="op">,</span>     <span class="co">// index of bias tensor</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    activation<span class="op">:</span> Activation<span class="op">,</span>  <span class="co">// ReLU, Tanh, etc.</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>This reduces graph nodes by <strong>3x per layer</strong> and computes all three parameter gradients (d_input, d_weight, d_bias) in a single fused backward pass.</p>
+<hr>
+</section>
+</section>
+<section id="performance-engineering" class="level2">
+<h2 class="anchored" data-anchor-id="performance-engineering">Performance Engineering</h2>
+<section id="the-profiling-driven-approach" class="level3">
+<h3 class="anchored" data-anchor-id="the-profiling-driven-approach">The Profiling-Driven Approach</h3>
+<p>Every optimization was driven by measurement, not intuition. CJC-Lang has built-in profiling builtins (<code>profile_zone_start</code>, <code>profile_zone_stop</code>, <code>profile_dump</code>) that I used to instrument the training loop.</p>
+<p>The first profile revealed the bottleneck distribution:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Function</th>
+<th>% of Rollout Time</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>score_moves</code> (forward pass per move)</td>
+<td><strong>84.2%</strong></td>
+</tr>
+<tr class="even">
+<td><code>legal_moves</code> (move generation)</td>
+<td>7.7%</td>
+</tr>
+<tr class="odd">
+<td><code>apply_move</code> (board update)</td>
+<td>0.1%</td>
+</tr>
+<tr class="even">
+<td>Everything else</td>
+<td>8.0%</td>
+</tr>
+</tbody>
+</table>
+<p>84% of time was spent evaluating the neural network for each legal move. The fix: <code>score_moves_batch</code>, a native Rust builtin that evaluates all legal moves in a single batched forward pass instead of looping through them one at a time in the interpreter.</p>
+<p><strong>Result: 7.7x rollout speedup.</strong></p>
+</section>
+<section id="the-amdahls-law-moment" class="level3">
+<h3 class="anchored" data-anchor-id="the-amdahls-law-moment">The Amdahl’s Law Moment</h3>
+<p>Here’s where it got interesting. A 7.7x speedup on the rollout phase should have been transformative. But total episode time barely moved:</p>
+<pre><code>Before: rollout ~10.4s + backward ~25s = ~35s
+After:  rollout ~1.3s  + backward ~25s = ~26s
+Speedup: ~1.35x (not 7.7x)</code></pre>
+<p>Amdahl’s Law in action. The rollout was only about 30% of total episode time. Making it 7.7x faster saved ~9 seconds, but the backward pass (which was untouched) still took 25 seconds. The bottleneck had shifted.</p>
+<p>This insight redirected the entire optimization strategy. Instead of making the interpreter faster, I redesigned the autodiff engine:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Version</th>
+<th>Change</th>
+<th>Episode Time</th>
+<th>Speedup</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>v2.3</td>
+<td>Native rollout kernels</td>
+<td>82.2 s</td>
+<td>baseline</td>
+</tr>
+<tr class="even">
+<td>v2.4</td>
+<td>Arena GradGraph + dead node elimination</td>
+<td>43.5 s</td>
+<td>1.89x</td>
+</tr>
+<tr class="odd">
+<td>v2.5</td>
+<td>In-place gradients + fused MLP</td>
+<td>29.8 s</td>
+<td><strong>2.76x</strong></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="native-hot-path-kernels" class="level3">
+<h3 class="anchored" data-anchor-id="native-hot-path-kernels">Native Hot-Path Kernels</h3>
+<p>Three performance-critical functions were promoted from CJC-Lang code to native Rust builtins:</p>
+<p><strong><code>adam_step</code></strong> — Element-wise Adam optimizer update. The CJC-Lang version was a scalar loop over every parameter; the native version operates directly on tensor buffers. <strong>~9x faster.</strong></p>
+<p><strong><code>encode_state_fast</code></strong> — Board-to-tensor encoding. The CJC-Lang version used <code>array_push</code> to build the 774-element feature vector, which triggered a copy-on-write clone at each push. The native version fills a pre-allocated buffer in a single pass. <strong>O(n) vs O(38n).</strong></p>
+<p><strong><code>score_moves_batch</code></strong> — Batched move scoring. Instead of calling the forward pass once per legal move (in the interpreter), this evaluates all moves in a single native call with one matrix multiplication. <strong>7.7x rollout speedup.</strong></p>
+<p>All three builtins produce <strong>bit-identical output</strong> to their CJC-Lang counterparts — verified by parity tests.</p>
+<hr>
+</section>
+</section>
+<section id="training-results" class="level2">
+<h2 class="anchored" data-anchor-id="training-results">Training Results</h2>
+<section id="honest-numbers" class="level3">
+<h3 class="anchored" data-anchor-id="honest-numbers">Honest Numbers</h3>
+<p>After 120 episodes of self-play training:</p>
+<ul>
+<li><strong>Elo change: +13.9</strong> — the first measurable learning signal in the v2.x series</li>
+<li><strong>Win rate vs random: 50%</strong> — not yet reliably beating a random opponent</li>
+<li><strong>Win rate vs greedy: 50%</strong> — ties with a material-greedy baseline</li>
+<li><strong>Non-zero terminal rewards: 6/120 episodes</strong> — most games are still drawn</li>
+</ul>
+<p>These are modest results. The agent is not strong. I report this honestly because the goal was never to compete with Stockfish or AlphaZero — it was to demonstrate that a from-scratch language can express, train, and evaluate a real RL agent.</p>
+</section>
+<section id="what-this-proves" class="level3">
+<h3 class="anchored" data-anchor-id="what-this-proves">What This Proves</h3>
+<p>The demo exercises nearly every CJC-Lang feature simultaneously:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Language Feature</th>
+<th>How It’s Used</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Tensors</td>
+<td>Board encoding, weight matrices, gradients</td>
+</tr>
+<tr class="even">
+<td>Autodiff (GradGraph)</td>
+<td>Full A2C loss backward through policy + value</td>
+</tr>
+<tr class="odd">
+<td>Closures</td>
+<td>Evaluation callbacks, training hooks</td>
+</tr>
+<tr class="even">
+<td>Pattern matching</td>
+<td>Piece type dispatch, move classification</td>
+</tr>
+<tr class="odd">
+<td>Structs</td>
+<td>Board state, game config, training stats</td>
+</tr>
+<tr class="even">
+<td>For/while loops</td>
+<td>Rollout iteration, move generation</td>
+</tr>
+<tr class="odd">
+<td>If-expressions</td>
+<td>Legal move filtering, terminal detection</td>
+</tr>
+<tr class="even">
+<td>Arrays (COW)</td>
+<td>Move lists, trajectory buffers</td>
+</tr>
+<tr class="odd">
+<td>Deterministic RNG</td>
+<td>SplitMix64 seed threading</td>
+</tr>
+<tr class="even">
+<td>File I/O</td>
+<td>CSV training logs, PGN game records</td>
+</tr>
+<tr class="odd">
+<td>Vizor (SVG)</td>
+<td>Training curve visualization</td>
+</tr>
+</tbody>
+</table>
+<p>It’s a single CJC-Lang program (~1,715 lines) that implements the chess engine, RL algorithm, optimizer, evaluation suite, Elo computation, PGN notation, checkpoint system, and training curve plotting.</p>
+</section>
+<section id="the-v1-to-v2.5-journey" class="level3">
+<h3 class="anchored" data-anchor-id="the-v1-to-v2.5-journey">The v1 to v2.5 Journey</h3>
+<p>For context, here’s how far the demo has come:</p>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Dimension</th>
+<th>v1 (March 2026)</th>
+<th>v2.5 (April 2026)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Network</td>
+<td>1,072 params</td>
+<td>45,873 params (43x)</td>
+</tr>
+<tr class="even">
+<td>Input</td>
+<td>66 features</td>
+<td>774 features (12x)</td>
+</tr>
+<tr class="odd">
+<td>Gradients</td>
+<td>95 lines of hand-rolled chain rule</td>
+<td>Full automatic differentiation</td>
+</tr>
+<tr class="even">
+<td>Optimizer</td>
+<td>Manual SGD</td>
+<td>Adam (native builtin)</td>
+</tr>
+<tr class="odd">
+<td>Chess rules</td>
+<td>Basic (no castling)</td>
+<td>Complete</td>
+</tr>
+<tr class="even">
+<td>Algorithm</td>
+<td>REINFORCE</td>
+<td>A2C + GAE</td>
+</tr>
+<tr class="odd">
+<td>Training speed</td>
+<td>N/A</td>
+<td>29.8 s/episode</td>
+</tr>
+<tr class="even">
+<td>Learning signal</td>
+<td>None</td>
+<td>Elo +13.9</td>
+</tr>
+<tr class="odd">
+<td>Determinism</td>
+<td>Bit-identical</td>
+<td>Still bit-identical</td>
+</tr>
+</tbody>
+</table>
+<hr>
+</section>
+</section>
+<section id="the-stack" class="level2">
+<h2 class="anchored" data-anchor-id="the-stack">The Stack</h2>
+<pre><code>CJC-Lang program (~1,715 LOC)
+    Chess engine + A2C + GAE + Adam + Elo + PGN + checkpoints
+        |
+CJC-Lang compiler + runtime (Rust, ~96K LOC)
+    Lexer → Parser → AST → Type Checker → HIR → MIR → Executor
+    Autodiff: arena-based GradGraph with fused MLP ops
+    451 builtins, all deterministic
+    21 crates, zero external dependencies</code></pre>
+<p>Every tensor operation, every gradient computation, every optimizer step runs in code I own. No framework sits between the algorithm and the math.</p>
+<p>Same seed = same game. Always.</p>
+<hr>
+</section>
+<section id="whats-next" class="level2">
+<h2 class="anchored" data-anchor-id="whats-next">What’s Next</h2>
+<p>The agent’s Elo +13.9 is a starting point, not a destination. The infrastructure is now solid — the bottleneck is no longer the language or the autodiff engine, it’s the ML itself. Larger networks, longer training, curriculum learning, and MCTS are all expressible in CJC-Lang as it stands today.</p>
+<p>The deeper goal isn’t chess strength. It’s showing that a carefully designed language — one that takes reproducibility seriously, owns its entire stack, and grows to meet the demands of its hardest workload — can do real work.</p>
+<p>If you want to try CJC-Lang yourself: <code>cargo install cjc-lang</code>, then <code>cjcl run your_program.cjcl</code>.</p>
+<hr>
+<p><em>CJC-Lang is open source. The compiler, runtime, and all demos are available on GitHub.</em></p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const disableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'prefetch';
+    }
+  }
+  const enableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'stylesheet';
+    }
+  }
+  const manageTransitions = (selector, allowTransitions) => {
+    const els = window.document.querySelectorAll(selector);
+    for (let i=0; i < els.length; i++) {
+      const el = els[i];
+      if (allowTransitions) {
+        el.classList.remove('notransition');
+      } else {
+        el.classList.add('notransition');
+      }
+    }
+  }
+  const toggleColorMode = (alternate) => {
+    // Switch the stylesheets
+    const alternateStylesheets = window.document.querySelectorAll('link.quarto-color-scheme.quarto-color-alternate');
+    manageTransitions('#quarto-margin-sidebar .nav-link', false);
+    if (alternate) {
+      enableStylesheet(alternateStylesheets);
+      for (const sheetNode of alternateStylesheets) {
+        if (sheetNode.id === "quarto-bootstrap") {
+          toggleBodyColorMode(sheetNode);
+        }
+      }
+    } else {
+      disableStylesheet(alternateStylesheets);
+      toggleBodyColorPrimary();
+    }
+    manageTransitions('#quarto-margin-sidebar .nav-link', true);
+    // Switch the toggles
+    const toggles = window.document.querySelectorAll('.quarto-color-scheme-toggle');
+    for (let i=0; i < toggles.length; i++) {
+      const toggle = toggles[i];
+      if (toggle) {
+        if (alternate) {
+          toggle.classList.add("alternate");     
+        } else {
+          toggle.classList.remove("alternate");
+        }
+      }
+    }
+    // Hack to workaround the fact that safari doesn't
+    // properly recolor the scrollbar when toggling (#1455)
+    if (navigator.userAgent.indexOf('Safari') > 0 && navigator.userAgent.indexOf('Chrome') == -1) {
+      manageTransitions("body", false);
+      window.scrollTo(0, 1);
+      setTimeout(() => {
+        window.scrollTo(0, 0);
+        manageTransitions("body", true);
+      }, 40);  
+    }
+  }
+  const isFileUrl = () => { 
+    return window.location.protocol === 'file:';
+  }
+  const hasAlternateSentinel = () => {  
+    let styleSentinel = getColorSchemeSentinel();
+    if (styleSentinel !== null) {
+      return styleSentinel === "alternate";
+    } else {
+      return false;
+    }
+  }
+  const setStyleSentinel = (alternate) => {
+    const value = alternate ? "alternate" : "default";
+    if (!isFileUrl()) {
+      window.localStorage.setItem("quarto-color-scheme", value);
+    } else {
+      localAlternateSentinel = value;
+    }
+  }
+  const getColorSchemeSentinel = () => {
+    if (!isFileUrl()) {
+      const storageValue = window.localStorage.getItem("quarto-color-scheme");
+      return storageValue != null ? storageValue : localAlternateSentinel;
+    } else {
+      return localAlternateSentinel;
+    }
+  }
+  let localAlternateSentinel = 'default';
+  // Dark / light mode switch
+  window.quartoToggleColorScheme = () => {
+    // Read the current dark / light value 
+    let toAlternate = !hasAlternateSentinel();
+    toggleColorMode(toAlternate);
+    setStyleSentinel(toAlternate);
+  };
+  // Ensure there is a toggle, if there isn't float one in the top right
+  if (window.document.querySelector('.quarto-color-scheme-toggle') === null) {
+    const a = window.document.createElement('a');
+    a.classList.add('top-right');
+    a.classList.add('quarto-color-scheme-toggle');
+    a.href = "";
+    a.onclick = function() { try { window.quartoToggleColorScheme(); } catch {} return false; };
+    const i = window.document.createElement("i");
+    i.classList.add('bi');
+    a.appendChild(i);
+    window.document.body.appendChild(a);
+  }
+  // Switch to dark mode if need be
+  if (hasAlternateSentinel()) {
+    toggleColorMode(true);
+  } else {
+    toggleColorMode(false);
+  }
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+      &nbsp;
+    </div>   
+    <div class="nav-footer-center">© 2026 Adam Ezzat. Built with <a href="https://quarto.org/">Quarto</a>.</div>
+    <div class="nav-footer-right">
+      &nbsp;
+    </div>
+  </div>
+</footer>
+
+
+
+<script src="../../../site_libs/quarto-html/zenscroll-min.js"></script>
+</body></html>

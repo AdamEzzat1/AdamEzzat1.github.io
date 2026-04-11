@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CJC-Lang Chess RL v2.5</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;600;700;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0d1117;
+    color: #e0e0e0;
+    font-family: 'Inter', sans-serif;
+    overflow: hidden;
+  }
+
+  .container {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    grid-template-rows: auto 1fr auto;
+    gap: 12px;
+    padding: 14px 18px;
+    height: 100vh;
+    max-height: 720px;
+    overflow: hidden;
+  }
+
+  .header {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .header h1 {
+    font-size: 22px;
+    font-weight: 900;
+    background: linear-gradient(135deg, #6366f1, #a855f7, #ec4899);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    white-space: nowrap;
+  }
+  .header .subtitle {
+    font-size: 12px;
+    color: #6b7280;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .header .badge {
+    background: rgba(99, 102, 241, 0.15);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    color: #818cf8;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    white-space: nowrap;
+  }
+
+  .board-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .board-label {
+    font-size: 12px;
+    color: #9ca3af;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  .board-container {
+    width: 290px;
+    height: 290px;
+    display: grid;
+    grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(8, 1fr);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    border: 2px solid rgba(99, 102, 241, 0.2);
+  }
+  .cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    transition: background 0.3s;
+  }
+  .cell.light { background: #b8c5d6; }
+  .cell.dark { background: #6b8aad; }
+  .cell.from-highlight { background: rgba(168, 85, 247, 0.35) !important; }
+  .cell.to-highlight { background: rgba(52, 211, 153, 0.35) !important; }
+
+  .move-info {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: #9ca3af;
+    min-height: 18px;
+  }
+  .move-info .move-text { color: #a855f7; font-weight: 700; }
+  .move-info .eval-text { color: #34d399; }
+
+  .right-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+  .stat-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    padding: 8px 6px;
+    text-align: center;
+    overflow: hidden;
+  }
+  .stat-card .label {
+    font-size: 8px;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 2px;
+  }
+  .stat-card .value {
+    font-size: 16px;
+    font-weight: 900;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .stat-card .value.purple { color: #a855f7; }
+  .stat-card .value.green { color: #34d399; }
+  .stat-card .value.blue { color: #60a5fa; }
+  .stat-card .value.pink { color: #f472b6; }
+  .stat-card .value.orange { color: #fb923c; }
+  .stat-card .value.white { color: #e0e0e0; }
+  .stat-card .unit {
+    font-size: 8px;
+    color: #6b7280;
+    margin-top: 1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .speedup-section {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    padding: 10px;
+  }
+  .speedup-title {
+    font-size: 11px;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 600;
+    margin-bottom: 10px;
+  }
+  .bar-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .bar-label {
+    width: 40px;
+    font-size: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    color: #9ca3af;
+    text-align: right;
+  }
+  .bar-track {
+    flex: 1;
+    height: 22px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 1.5s ease-out;
+    display: flex;
+    align-items: center;
+    padding-left: 8px;
+    font-size: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    color: white;
+    font-weight: 700;
+  }
+  .bar-fill.v23 { background: linear-gradient(90deg, #6b7280, #9ca3af); }
+  .bar-fill.v24 { background: linear-gradient(90deg, #6366f1, #818cf8); }
+  .bar-fill.v25 { background: linear-gradient(90deg, #a855f7, #c084fc); }
+
+  .chart-section {
+    flex: 1;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .chart-title {
+    font-size: 11px;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 600;
+  }
+
+  .console-section {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: #6b7280;
+    max-height: 70px;
+    overflow: hidden;
+  }
+  .console-line { margin-bottom: 2px; }
+  .console-line .timestamp { color: #4b5563; }
+  .console-line .val { color: #34d399; }
+
+  .footer {
+    grid-column: 1 / -1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    padding-top: 10px;
+  }
+  .footer-left {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: #4b5563;
+  }
+  .footer-left span { color: #6366f1; }
+  .footer-right {
+    display: flex;
+    gap: 12px;
+    font-size: 10px;
+    color: #4b5563;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .footer-right .tag {
+    background: rgba(255,255,255,0.04);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <div>
+      <h1>CJC-Lang Chess RL v2.5</h1>
+      <div class="subtitle">Self-Play Training Demo</div>
+    </div>
+    <div style="text-align:right">
+      <div class="badge">Language built in Rust &bull; Demo in CJC-Lang &bull; 0 Deps</div>
+    </div>
+  </div>
+
+  <div class="board-section">
+    <div class="board-label">Self-Play &mdash; Episode <span id="episode-num">1</span></div>
+    <div class="board-container" id="board"></div>
+    <div class="move-info" id="move-info">Initializing...</div>
+    <div class="console-section" id="console"></div>
+  </div>
+
+  <div class="right-panel">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="label">Parameters</div>
+        <div class="value purple">45,873</div>
+        <div class="unit">trainable weights</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Features</div>
+        <div class="value green">774</div>
+        <div class="unit">input dimensions</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Episode Time</div>
+        <div class="value pink">29.80</div>
+        <div class="unit">seconds (2.76x)</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Elo Change</div>
+        <div class="value orange">+13.9</div>
+        <div class="unit">vs baseline</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Algorithm</div>
+        <div class="value blue" style="font-size:14px">A2C+GAE</div>
+        <div class="unit">+ Adam</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Ext. Deps</div>
+        <div class="value white">0</div>
+        <div class="unit">zero, always</div>
+      </div>
+    </div>
+
+    <div class="speedup-section">
+      <div class="speedup-title">Training Speed &mdash; Per Episode</div>
+      <div class="bar-row">
+        <div class="bar-label">v2.3</div>
+        <div class="bar-track"><div class="bar-fill v23" id="bar-v23" style="width:0%">82.2s</div></div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-label">v2.4</div>
+        <div class="bar-track"><div class="bar-fill v24" id="bar-v24" style="width:0%">43.5s</div></div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-label">v2.5</div>
+        <div class="bar-track"><div class="bar-fill v25" id="bar-v25" style="width:0%">29.8s</div></div>
+      </div>
+    </div>
+
+    <div class="chart-section">
+      <div class="chart-title">v1 &rarr; v2.5 Evolution</div>
+      <div id="features-list" style="font-size:11px; line-height:1.7; color:#9ca3af; flex:1; overflow:hidden;"></div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="footer-left">
+      <span>cjcl</span> &bull; Computational Jacobian Core &bull; 21 crates &bull; ~96K LOC
+    </div>
+    <div class="footer-right">
+      <div class="tag">Deterministic</div>
+      <div class="tag">Bit-Identical</div>
+      <div class="tag">seed=42</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const PIECES = {
+  'K':'\u2654','Q':'\u2655','R':'\u2656','B':'\u2657','N':'\u2658','P':'\u2659',
+  'k':'\u265A','q':'\u265B','r':'\u265C','b':'\u265D','n':'\u265E','p':'\u265F'
+};
+const INITIAL_BOARD = [
+  'r','n','b','q','k','b','n','r',
+  'p','p','p','p','p','p','p','p',
+  '','','','','','','','',
+  '','','','','','','','',
+  '','','','','','','','',
+  '','','','','','','','',
+  'P','P','P','P','P','P','P','P',
+  'R','N','B','Q','K','B','N','R'
+];
+const SAMPLE_MOVES = [
+  [52,36],[12,28],[62,45],[6,21],[61,47],[1,18],
+  [51,35],[11,27],[57,42],[5,26],[59,31],[3,39],
+  [50,34],[10,26],[49,41],[9,25],[63,62],[7,22],
+  [58,44],[2,11],[56,48],[0,7],[48,40],[21,36],
+  [47,36],[28,36],[45,36],[27,35],[42,35],[18,35],
+  [44,35],[26,35],[31,17],[39,46],[34,26],[25,34],
+  [41,33],[22,12],[40,32],[11,20],[36,28],[35,26],
+  [62,61],[7,6],[33,25],[12,5],[32,24],[20,29],
+];
+
+let board = [...INITIAL_BOARD];
+let moveIdx = 0, episode = 1, fromCell = -1, toCell = -1;
+
+function renderBoard() {
+  const c = document.getElementById('board');
+  c.innerHTML = '';
+  for (let r = 0; r < 8; r++) {
+    for (let col = 0; col < 8; col++) {
+      const idx = r * 8 + col;
+      const cell = document.createElement('div');
+      cell.className = 'cell ' + ((r + col) % 2 === 0 ? 'light' : 'dark');
+      if (idx === fromCell) cell.classList.add('from-highlight');
+      if (idx === toCell) cell.classList.add('to-highlight');
+      cell.textContent = board[idx] ? PIECES[board[idx]] || '' : '';
+      c.appendChild(cell);
+    }
+  }
+}
+
+function sqName(i) {
+  return 'abcdefgh'[i % 8] + (8 - Math.floor(i / 8));
+}
+
+function makeMove() {
+  if (moveIdx >= SAMPLE_MOVES.length) {
+    board = [...INITIAL_BOARD]; moveIdx = 0; episode++;
+    document.getElementById('episode-num').textContent = episode;
+    fromCell = -1; toCell = -1; renderBoard();
+    addLog('Episode ' + episode + ' starting... seed=' + (42 + episode));
+    return;
+  }
+  const [from, to] = SAMPLE_MOVES[moveIdx];
+  const captured = board[to];
+  board[to] = board[from]; board[from] = '';
+  fromCell = from; toCell = to; moveIdx++;
+  const ev = (Math.random() * 2 - 1).toFixed(3);
+  document.getElementById('move-info').innerHTML =
+    'Move ' + moveIdx + ': <span class="move-text">' + sqName(from) + sqName(to) + '</span>' +
+    (captured ? ' captures ' + PIECES[captured] : '') +
+    ' &nbsp; <span class="eval-text">eval: ' + ev + '</span>';
+  renderBoard();
+}
+
+const logLines = [];
+function addLog(text) {
+  const t = new Date().toLocaleTimeString('en-US',{hour12:false});
+  logLines.push({t, text}); if (logLines.length > 4) logLines.shift();
+  document.getElementById('console').innerHTML = logLines.map(l =>
+    '<div class="console-line"><span class="timestamp">['+l.t+']</span> <span class="val">'+l.text+'</span></div>'
+  ).join('');
+}
+
+function animateBars() {
+  setTimeout(() => document.getElementById('bar-v23').style.width = '100%', 500);
+  setTimeout(() => document.getElementById('bar-v24').style.width = '52.9%', 1000);
+  setTimeout(() => document.getElementById('bar-v25').style.width = '36.3%', 1500);
+}
+
+const features = [
+  {icon:'\u25B8',text:'Hand-rolled gradients \u2192 Full Autodiff',color:'#a855f7'},
+  {icon:'\u25B8',text:'1K \u2192 45K parameters (43\u00d7)',color:'#60a5fa'},
+  {icon:'\u25B8',text:'66 \u2192 774 input features (12\u00d7)',color:'#34d399'},
+  {icon:'\u25B8',text:'Basic chess \u2192 Full rules + Zobrist',color:'#fb923c'},
+  {icon:'\u25B8',text:'REINFORCE \u2192 A2C + GAE + Adam',color:'#f472b6'},
+  {icon:'\u25B8',text:'Arena GradGraph + Dead Node Elim',color:'#818cf8'},
+  {icon:'\u25B8',text:'Fused MLP layers (3\u00d7 fewer nodes)',color:'#a855f7'},
+  {icon:'\u25B8',text:'In-place gradient accumulation',color:'#34d399'},
+  {icon:'\u25B8',text:'82.2s \u2192 29.8s/ep (2.76\u00d7 faster)',color:'#ec4899'},
+  {icon:'\u25B8',text:'Deterministic: seed=42 \u2192 same game',color:'#fbbf24'},
+  {icon:'\u2713',text:'Zero external deps. Pure CJC-Lang.',color:'#34d399'},
+];
+let featIdx = 0;
+function addFeature() {
+  if (featIdx >= features.length) return;
+  const f = features[featIdx];
+  const el = document.getElementById('features-list');
+  const d = document.createElement('div');
+  d.style.cssText = 'opacity:0;transform:translateX(-10px);transition:all 0.4s ease-out';
+  d.innerHTML = '<span style="color:'+f.color+';font-weight:700">'+f.icon+'</span> '+f.text;
+  el.appendChild(d);
+  requestAnimationFrame(() => { d.style.opacity = '1'; d.style.transform = 'translateX(0)'; });
+  featIdx++;
+  el.scrollTop = el.scrollHeight;
+}
+
+const msgs = [
+  'GradGraph: arena-based, 0 Rc<RefCell> allocs',
+  'backward(): dead node elimination (skip 23%)',
+  'accumulate_grad(): in-place via add_assign',
+  'MlpLayer fused: matmul+bias+relu \u2192 1 node',
+  'Weight hash: 9.790915694115341 (deterministic)',
+  'adam_step: native Rust builtin (~9\u00d7 faster)',
+  'encode_state_fast: O(774) vs O(38\u00d7774)',
+  'Seed=42, SplitMix64, Kahan summation',
+];
+let msgIdx = 0;
+
+renderBoard();
+animateBars();
+addLog('CJC-Lang v2.5 chess RL demo');
+setInterval(makeMove, 800);
+setInterval(addFeature, 2000);
+setInterval(() => { addLog(msgs[msgIdx % msgs.length]); msgIdx++; }, 3500);
+</script>
+</body>
+</html>
