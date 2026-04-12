@@ -10,7 +10,393 @@
 <atom:link href="https://adamezzat1.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>Systems engineer building CJC-Lang — a deterministic scientific computing language</description>
 <generator>quarto-1.3.340</generator>
-<lastBuildDate>Sat, 11 Apr 2026 07:00:00 GMT</lastBuildDate>
+<lastBuildDate>Sun, 12 Apr 2026 07:00:00 GMT</lastBuildDate>
+<item>
+  <title>TidyView: A Database Engine in Disguise</title>
+  <dc:creator>Adam Ezzat</dc:creator>
+  <link>https://adamezzat1.github.io/blog/posts/tidyview-data-engine/index.html</link>
+  <description><![CDATA[ 
+
+
+
+<div class="reading-time">
+🕑 ~20 min read
+</div>
+<div class="stats-row">
+<div class="stat">
+<span class="number">3</span><span class="stat-label">layers</span>
+</div>
+<div class="stat">
+<span class="number">40+</span><span class="stat-label">operations</span>
+</div>
+<div class="stat">
+<span class="number">0</span><span class="stat-label">HashMaps</span>
+</div>
+<div class="stat">
+<span class="number">1 bit</span><span class="stat-label">per filtered row</span>
+</div>
+</div>
+<div class="callout callout-style-simple callout-tip no-icon callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+TL;DR
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>TidyView is CJC-Lang’s data manipulation system. It looks like R’s dplyr on the surface, but underneath it’s a database engine: columnar storage, lazy evaluation, bitmask filtering, predicate pushdown, and zone maps. The result is a data pipeline where every intermediate state is inspectable, the original data is never mutated, and the same input always produces the same output — down to the last bit.</p>
+</div>
+</div>
+<section id="the-problem" class="level2">
+<h2 class="anchored" data-anchor-id="the-problem">The Problem</h2>
+<p>When I started building <a href="../../../blog/posts/introducing-cjc/index.html">CJC-Lang</a>, the core promise was simple: <strong>same seed, same output, always.</strong> Every part of the language enforces this — ordered collections, Kahan summation, seeded RNG, no FMA in SIMD kernels.</p>
+<p>But then I needed to handle data. Filter a table. Group rows. Compute aggregates. Join two datasets.</p>
+<p>The obvious move was to reach for an existing DataFrame library. But when I looked at what’s available, I kept running into the same problems:</p>
+<p><strong>Hash-based grouping.</strong> Pandas and Polars use hash maps to group rows. Hash maps are fast, but their iteration order depends on a hash seed that varies between runs. Group your data twice on the same machine and the rows might come back in a different order. That breaks determinism.</p>
+<p><strong>Naive floating-point reduction.</strong> Call <code>sum()</code> on a million floats in Pandas. The result depends on the order of accumulation. Add the numbers in a different order and you get different rounding errors. Small differences, but they compound — and they mean “same data, different result” depending on implementation details.</p>
+<p><strong>Hidden parallelism.</strong> Polars uses Rayon for parallel execution. Great for speed, but thread scheduling is non-deterministic. The result of a parallel aggregation can vary between runs even with identical input.</p>
+<p><strong>Aliasing mutations.</strong> Pandas has an entire warning category (<code>SettingWithCopyWarning</code>) dedicated to the fact that modifying a filtered subset might or might not modify the original DataFrame. Whether it does depends on internal memory layout decisions that are invisible to the user.</p>
+<p>None of these are bugs. They’re design trade-offs made by libraries that prioritize speed over reproducibility. But they break CJC-Lang’s core contract. So I built something else.</p>
+</section>
+<section id="what-tidyview-is" class="level2">
+<h2 class="anchored" data-anchor-id="what-tidyview-is">What TidyView Is</h2>
+<p>TidyView is a three-layer data manipulation system:</p>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Layer</th>
+<th>Type</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Immutable view</strong></td>
+<td><code>TidyView</code></td>
+<td>Zero-copy lens: bitmask + projection over shared data</td>
+</tr>
+<tr class="even">
+<td><strong>Materialized frame</strong></td>
+<td><code>TidyFrame</code></td>
+<td>Copy-on-write buffer for mutations</td>
+</tr>
+<tr class="odd">
+<td><strong>Grouped view</strong></td>
+<td><code>GroupedTidyView</code></td>
+<td>Group index for aggregation</td>
+</tr>
+</tbody>
+</table>
+<p>The API surface is modeled on R’s dplyr — <code>filter</code>, <code>select</code>, <code>mutate</code>, <code>group_by</code>, <code>summarise</code>, <code>arrange</code>, <code>join</code>. If you’ve used the tidyverse, you already know the vocabulary.</p>
+<p>But the implementation borrows from a different tradition entirely: <strong>analytical databases.</strong></p>
+</section>
+<section id="the-database-connection" class="level2">
+<h2 class="anchored" data-anchor-id="the-database-connection">The Database Connection</h2>
+<p>I didn’t set out to build a database engine. But the constraints I was working under — determinism, auditability, memory safety — kept pushing me toward the same solutions that database engineers arrived at decades ago.</p>
+<section id="columnar-storage" class="level3">
+<h3 class="anchored" data-anchor-id="columnar-storage">Columnar Storage</h3>
+<p>Data is stored column-major:</p>
+<pre><code>// Internally:
+columns: [
+    ("name",    Str(["Alice", "Bob", "Carol", "Dave"])),
+    ("age",     Int([30, 25, 35, 28])),
+    ("revenue", Float([150.0, 200.0, 175.0, 225.0])),
+]</code></pre>
+<p>Each column is a contiguous typed buffer. When you compute <code>sum(revenue)</code>, the runtime scans a single <code>Vec&lt;f64&gt;</code> — no pointer chasing, no skipping over unrelated fields. This is the same storage model used by Apache Arrow, DuckDB, and Parquet.</p>
+<p>The alternative — row-major storage — would scatter each <code>revenue</code> value across a row struct alongside <code>name</code> and <code>age</code> data. For a table with 100 columns, computing a single-column aggregate would touch 100x more memory than necessary.</p>
+</section>
+<section id="bitmask-filtering" class="level3">
+<h3 class="anchored" data-anchor-id="bitmask-filtering">Bitmask Filtering</h3>
+<p>This is the design choice that makes everything else work. When you filter a TidyView, <strong>no data is copied.</strong> Instead, a bitmask records which rows passed the predicate:</p>
+<pre><code>// Original data: 4 rows
+base: ["Alice", "Bob", "Carol", "Dave"]  // ages: 30, 25, 35, 28
+
+// After filter(age &gt; 28):
+mask: [1, 0, 1, 1]  // Alice (30), Carol (35), Dave (28 fails, hypothetical: &gt; 28)</code></pre>
+<p>In practice the mask is packed into 64-bit words — one bit per row. A million-row filter costs 125 KB of bitmask memory. The original data stays exactly where it was, untouched.</p>
+<p>Chain three filters together? The bitmasks are ANDed. Still no data copied. Still 125 KB.</p>
+<pre><code>let sales: Any = read_csv("sales.csv");
+let df: Any = sales
+    |&gt; filter(col("region") == "West")
+    |&gt; filter(col("revenue") &gt; 1000.0)
+    |&gt; filter(col("year") == 2025);</code></pre>
+<p>Each <code>filter</code> call returns a new TidyView with a new bitmask. All three views share the same underlying data. The CSV is loaded once. This is the same technique used by bitmap indexes in Oracle and selection vectors in DuckDB.</p>
+</section>
+<section id="predicate-pushdown" class="level3">
+<h3 class="anchored" data-anchor-id="predicate-pushdown">Predicate Pushdown</h3>
+<p>TidyView has a lazy evaluation layer where operations build a logical plan tree before executing. The optimizer rewrites this tree using three classic database passes:</p>
+<p><strong>Pass 1 — Filter merging.</strong> Consecutive filters are combined into a single filter with an AND predicate.</p>
+<p><strong>Pass 2 — Predicate pushdown.</strong> Filters are pushed as close to the data source as possible.</p>
+<p><strong>Pass 3 — Redundant select elimination.</strong> Select nodes that project all columns are removed.</p>
+<p>Here’s why this matters. Suppose you write:</p>
+<pre><code>let result: Any = df
+    |&gt; mutate("bonus", col("salary") * 0.1)
+    |&gt; filter(col("department") == "Engineering");</code></pre>
+<p>Without optimization, this computes <code>bonus</code> for every row, then filters. With predicate pushdown, the optimizer recognizes that <code>department == "Engineering"</code> doesn’t depend on the <code>bonus</code> column, so it pushes the filter <em>below</em> the mutate. Now filtering happens first, and <code>bonus</code> is only computed for engineering rows.</p>
+<p>The pushdown rules follow standard relational algebra:</p>
+<ul>
+<li>Push past <code>select</code> — always safe</li>
+<li>Push past <code>arrange</code> — filtering doesn’t affect sort order</li>
+<li>Push past <code>mutate</code> — only if the predicate doesn’t reference a mutated column</li>
+<li>Push into <code>join</code> branches — if the predicate references only one side</li>
+<li>Never past <code>group_by</code> + <code>summarise</code> — aggregation changes row identity</li>
+<li>Never past <code>distinct</code> — uniqueness changes row identity</li>
+</ul>
+<p>These are the same rules taught in database systems textbooks. They apply here because TidyView’s operation set <em>is</em> relational algebra — just with tidyverse names.</p>
+</section>
+<section id="zone-maps" class="level3">
+<h3 class="anchored" data-anchor-id="zone-maps">Zone Maps</h3>
+<p>Each column tracks lightweight statistics:</p>
+<pre><code>// ColumnStats for the "revenue" column:
+min: 150.0
+max: 225.0
+sorted_ascending: false
+n_distinct: 4</code></pre>
+<p>When you write <code>filter(col("revenue") &gt; 500.0)</code>, the zone map says: max is 225, so no row can satisfy <code>&gt; 500</code>. The entire filter can be skipped.</p>
+<p>When a column is sorted, the system uses binary search instead of a linear scan — O(log N) instead of O(N).</p>
+<p>These are the same optimizations that Vertica, Redshift, and Parquet use at the storage layer. In TidyView they operate at the column level because the entire “database” fits in memory.</p>
+</section>
+</section>
+<section id="what-this-prevents" class="level2">
+<h2 class="anchored" data-anchor-id="what-this-prevents">What This Prevents</h2>
+<p>The architectural choices above aren’t just about performance. They prevent specific classes of bugs that plague traditional DataFrame workflows.</p>
+<section id="the-aliasing-problem" class="level3">
+<h3 class="anchored" data-anchor-id="the-aliasing-problem">The Aliasing Problem</h3>
+<p>In Pandas:</p>
+<div class="sourceCode" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1">df <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> pd.DataFrame({<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"x"</span>: [<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>, <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">2</span>, <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">3</span>], <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"y"</span>: [<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">4</span>, <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5</span>, <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">6</span>]})</span>
+<span id="cb6-2">subset <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> df[df.x <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>]</span>
+<span id="cb6-3">subset[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"z"</span>] <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">99</span>      <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Does this modify df? Maybe.</span></span></code></pre></div>
+<p>Whether <code>subset["z"] = 99</code> modifies the original <code>df</code> depends on whether Pandas chose to return a view or a copy when you wrote <code>df[df.x &gt; 1]</code>. This is the <code>SettingWithCopyWarning</code> — one of the most common sources of confusion in data science code.</p>
+<p>In TidyView, this problem doesn’t exist. The base data lives behind an <code>Rc</code> (reference-counted pointer) and is never modified. When you need to mutate, <code>TidyFrame</code> checks the reference count:</p>
+<ul>
+<li>If only one reference exists, mutate in place</li>
+<li>If multiple references exist, deep-clone first, then mutate the clone</li>
+</ul>
+<p>The check is deterministic — it’s a simple integer comparison, not a heuristic. The other views are never affected.</p>
+</section>
+<section id="the-order-dependent-mutation-problem" class="level3">
+<h3 class="anchored" data-anchor-id="the-order-dependent-mutation-problem">The Order-Dependent Mutation Problem</h3>
+<p>In Pandas:</p>
+<div class="sourceCode" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1">df <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> df.assign(a <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> df.x <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>, b <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> df.a <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">2</span>)</span></code></pre></div>
+<p>Does <code>df.a</code> in the second expression see the <em>newly computed</em> <code>a</code> or the <em>original</em> <code>a</code>? In Pandas, it sees the new one. The result depends on the order of the assignments. Swap <code>a</code> and <code>b</code> and you get different data.</p>
+<p>In TidyView, <code>mutate</code> uses <strong>snapshot semantics</strong>: all column references are validated against the column list frozen <em>before</em> any assignments execute. Every expression sees the data as it was when the <code>mutate</code> call started:</p>
+<pre><code>let result: Any = df
+    |&gt; mutate("a", col("x") + 1)
+    |&gt; mutate("b", col("a") * 2);
+// col("a") always reads the ORIGINAL "a" column
+// If "a" didn't exist before, this is an error — not a silent dependency</code></pre>
+<p>This is the same principle as SQL’s <code>UPDATE SET a = b, b = a</code> — the SET clause reads from a snapshot, so this correctly swaps the values rather than setting both to <code>b</code>.</p>
+</section>
+<section id="the-hidden-null-problem" class="level3">
+<h3 class="anchored" data-anchor-id="the-hidden-null-problem">The Hidden Null Problem</h3>
+<p>Pandas DataFrames can have <code>NaN</code> or <code>None</code> in any column at any time. You discover this at runtime, usually when an aggregation silently skips missing values and gives you a number that’s subtly wrong.</p>
+<p>In TidyView, the base <code>Column</code> type has <strong>no null representation</strong>:</p>
+<pre><code>// Column — always fully populated:
+Int(Vec&lt;i64&gt;)
+Float(Vec&lt;f64&gt;)
+Str(Vec&lt;String&gt;)
+Bool(Vec&lt;bool&gt;)</code></pre>
+<p>There’s no <code>Option</code> wrapper. No sentinel values. If you have a <code>TidyView</code>, its data is guaranteed null-free by type.</p>
+<p>Nulls exist, but they’re quarantined in a separate type called <code>NullCol</code>. You only encounter <code>NullCol</code> through operations that <em>can</em> introduce nulls — left joins (unmatched rows), <code>pivot_wider</code> (missing combinations), full joins. These operations return a <code>NullableFrame</code> instead of a <code>TidyFrame</code>, and the type boundary makes the null-possibility explicit.</p>
+<p>The question “does my data have nulls?” is answered by the type, not by scanning every cell.</p>
+</section>
+<section id="the-floating-point-drift-problem" class="level3">
+<h3 class="anchored" data-anchor-id="the-floating-point-drift-problem">The Floating-Point Drift Problem</h3>
+<div class="sourceCode" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Pandas</span></span>
+<span id="cb10-2">pd.Series([<span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1e16</span>, <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1.0</span>, <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-</span><span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1e16</span>]).<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">sum</span>()  <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># → 0.0 (wrong)</span></span></code></pre></div>
+<p>The mathematically correct answer is <code>1.0</code>. Pandas gives <code>0.0</code> because it uses naive left-to-right summation: <code>1e16 + 1.0</code> rounds to <code>1e16</code> (the <code>1.0</code> is lost to floating-point precision), then <code>1e16 - 1e16 = 0.0</code>.</p>
+<p>TidyView uses Kahan compensated summation for every floating-point reduction — <code>sum</code>, <code>mean</code>, <code>variance</code>, <code>sd</code>, all of them. Kahan summation tracks a correction term that captures the rounding error:</p>
+<pre><code>// Kahan summation:
+//   sum = 0, c = 0
+//   y = 1e16 - 0 = 1e16;    t = 0 + 1e16 = 1e16;    c = (1e16 - 1e16) - 1e16 = 0
+//   y = 1.0 - 0 = 1.0;      t = 1e16 + 1.0 = 1e16;   c = (1e16 - 1e16) - 1.0 = -1.0
+//   y = -1e16 - (-1.0);      ...compensates the lost 1.0
+//   Result: 1.0 (correct)</code></pre>
+<p>Same input, same result, every time. Not approximately correct — exactly correct within the limits of double precision.</p>
+</section>
+</section>
+<section id="how-to-audit-a-tidyview-pipeline" class="level2">
+<h2 class="anchored" data-anchor-id="how-to-audit-a-tidyview-pipeline">How to Audit a TidyView Pipeline</h2>
+<p>This is where the architecture pays off in practice. When something goes wrong in a data pipeline, the question is always: <em>where did the data go wrong?</em></p>
+<p>In TidyView, every intermediate step is inspectable because the original data is never modified. Here’s a concrete example:</p>
+<pre><code>// Load data
+let sales: Any = read_csv("quarterly_sales.csv");
+
+// Build pipeline
+let west: Any = filter(sales, col("region") == "West");
+let big: Any = filter(west, col("revenue") &gt; 1000.0);
+let grouped: Any = group_by(big, "product");
+let summary: Any = summarise(grouped, tidy_sum(col("revenue")));</code></pre>
+<p>Suppose <code>summary</code> shows unexpected numbers. You can audit backward:</p>
+<p><strong>Step 1: Check the grouped view.</strong> How many groups formed? What rows are in each group? The group index is inspectable — it stores the key values and the base-frame row indices for every group.</p>
+<p><strong>Step 2: Check the filtered view.</strong> How many rows survived both filters? The bitmask tells you exactly which base-frame rows are visible. You can compare the count against your expectation.</p>
+<p><strong>Step 3: Check the original data.</strong> It’s still there, unchanged, behind the shared reference. The CSV was loaded once, and no operation modified it. You can re-inspect it to see if the data itself was the problem (wrong CSV encoding, unexpected column types, etc.).</p>
+<p>In a traditional mutable DataFrame workflow, step 3 is impossible — the original data was overwritten by the first mutation. In TidyView, the original is always available because it was never touched.</p>
+<section id="the-bitmask-as-audit-trail" class="level3">
+<h3 class="anchored" data-anchor-id="the-bitmask-as-audit-trail">The Bitmask as Audit Trail</h3>
+<p>The bitmask isn’t just a performance optimization. It’s a record of what happened.</p>
+<p>After <code>filter(col("region") == "West")</code>, the bitmask contains a 1 for every row where region is “West” and a 0 for every row where it isn’t. You can:</p>
+<ul>
+<li>Count the 1s to see how many rows passed</li>
+<li>Iterate the set bits to see <em>which</em> rows passed (by base-frame index)</li>
+<li>AND two bitmasks to see which rows passed <em>both</em> filters</li>
+<li>Compare the mask against the original data to verify the filter logic</li>
+</ul>
+<p>This is fundamentally different from a system where <code>df = df[df.region == "West"]</code> discards the filtered-out rows. In that system, if the filter was wrong, the evidence is gone. In TidyView, the evidence is the bitmask, and the original data is still there to check against.</p>
+</section>
+<section id="error-messages-that-point-to-the-problem" class="level3">
+<h3 class="anchored" data-anchor-id="error-messages-that-point-to-the-problem">Error Messages That Point to the Problem</h3>
+<p>When something goes wrong, TidyView’s error types name the exact issue:</p>
+<pre><code>ColumnNotFound("revnue")       // Typo — you meant "revenue"
+DuplicateColumn("total")       // Two columns with the same name in select
+PredicateNotBool { got: "Int" } // filter predicate returned Int, not Bool
+TypeMismatch { expected: "Float", got: "Str" }  // arithmetic on a string column
+LengthMismatch { expected: 1000, got: 500 }     // broadcast size mismatch</code></pre>
+<p>Every error variant names the specific column, type, or value that caused the problem. You know what went wrong and where, not just that something failed.</p>
+</section>
+</section>
+<section id="why-not-just-use-polars" class="level2">
+<h2 class="anchored" data-anchor-id="why-not-just-use-polars">Why Not Just Use Polars?</h2>
+<p>Polars is a good library. It’s fast, it has a lazy API, and it uses Arrow-backed columnar storage. If I were building a Python application, I’d probably use it.</p>
+<p>But Polars makes different trade-offs than TidyView:</p>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>Polars</th>
+<th>TidyView</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Grouping</strong></td>
+<td>Hash-based (fast, non-deterministic order)</td>
+<td>BTreeMap (deterministic first-occurrence order)</td>
+</tr>
+<tr class="even">
+<td><strong>Summation</strong></td>
+<td>Naive (fast, platform-dependent rounding)</td>
+<td>Kahan compensated (deterministic, bit-identical)</td>
+</tr>
+<tr class="odd">
+<td><strong>Parallelism</strong></td>
+<td>Rayon (fast, non-deterministic scheduling)</td>
+<td>Single-threaded (deterministic, no scheduling variance)</td>
+</tr>
+<tr class="even">
+<td><strong>Null model</strong></td>
+<td>Nullable everywhere (Arrow validity bitmaps)</td>
+<td>Null-free by default, <code>NullCol</code> only where needed</td>
+</tr>
+<tr class="odd">
+<td><strong>Sampling</strong></td>
+<td>System RNG</td>
+<td>Seeded LCG-based Fisher-Yates</td>
+</tr>
+</tbody>
+</table>
+<p>None of Polars’ trade-offs are wrong. They’re optimizing for throughput. TidyView is optimizing for <strong>reproducibility</strong> — the guarantee that the same pipeline on the same data always produces the same result, bit for bit, on any machine.</p>
+<p>When your work requires an audit trail — when a regulator, a reviewer, or future-you needs to verify that a result is correct — that guarantee matters more than raw speed.</p>
+</section>
+<section id="the-one-sentence-summary" class="level2">
+<h2 class="anchored" data-anchor-id="the-one-sentence-summary">The One-Sentence Summary</h2>
+<p>TidyView is a database engine wearing a tidyverse costume, designed so that <strong>same data + same code = same result</strong> on every machine, every run, every time.</p>
+<p>It combines familiar dplyr verbs (<code>filter</code>, <code>select</code>, <code>mutate</code>, <code>group_by</code>, <code>summarise</code>) with database-engine internals (columnar storage, bitmask filtering, predicate pushdown, zone maps) to deliver data pipelines that are deterministic by construction, auditable by design, and memory-safe without runtime surprises.</p>
+<div class="callout callout-style-simple callout-note no-icon">
+<div class="callout-body d-flex">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-body-container">
+<p>CJC-Lang is open source and available on <a href="https://crates.io/crates/cjc-lang">crates.io</a>. The TidyView implementation lives in <code>crates/cjc-data/</code> — about 11,000 lines of Rust with zero external dependencies.</p>
+</div>
+</div>
+</div>
+
+
+</section>
+
+ ]]></description>
+  <category>CJC-Lang</category>
+  <category>data</category>
+  <category>databases</category>
+  <category>determinism</category>
+  <category>architecture</category>
+  <guid>https://adamezzat1.github.io/blog/posts/tidyview-data-engine/index.html</guid>
+  <pubDate>Sun, 12 Apr 2026 07:00:00 GMT</pubDate>
+</item>
 <item>
   <title>Chess RL in CJC-Lang: Training a Chess Agent from Scratch with Zero Dependencies</title>
   <dc:creator>Adam Ezzat</dc:creator>

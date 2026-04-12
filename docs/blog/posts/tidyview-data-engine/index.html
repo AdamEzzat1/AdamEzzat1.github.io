@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.3.340">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Adam Ezzat">
+<meta name="dcterms.date" content="2026-04-12">
+<meta name="description" content="TidyView is CJC-Lang’s data manipulation system. It uses a tidyverse-style API backed by database-engine internals — columnar storage, bitmask filtering, predicate pushdown, and zone maps — to deliver deterministic, auditable data pipelines with zero hidden mutations.">
+
+<title>Adam Ezzat - TidyView: A Database Engine in Disguise</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../../">
+<script src="../../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<script src="../../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-dark.min.css" rel="prefetch" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+<style>html{ scroll-behavior: smooth; }</style>
+
+
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../../index.html">
+    <span class="navbar-title">Adam Ezzat</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../../index.html" rel="" target="">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../about.html" rel="" target="">
+ <span class="menu-text">About</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../projects.html" rel="" target="">
+ <span class="menu-text">Projects</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../blog/index.html" rel="" target="">
+ <span class="menu-text">Blog</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/AdamEzzat1" rel="" target=""><i class="bi bi-github" role="img" aria-label="GitHub">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://linkedin.com/in/adamezzat" rel="" target=""><i class="bi bi-linkedin" role="img" aria-label="LinkedIn">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+            <div class="quarto-navbar-tools">
+  <a href="" class="quarto-color-scheme-toggle quarto-navigation-tool  px-1" onclick="window.quartoToggleColorScheme(); return false;" title="Toggle dark mode"><i class="bi"></i></a>
+</div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#the-problem" id="toc-the-problem" class="nav-link active" data-scroll-target="#the-problem">The Problem</a></li>
+  <li><a href="#what-tidyview-is" id="toc-what-tidyview-is" class="nav-link" data-scroll-target="#what-tidyview-is">What TidyView Is</a></li>
+  <li><a href="#the-database-connection" id="toc-the-database-connection" class="nav-link" data-scroll-target="#the-database-connection">The Database Connection</a>
+  <ul class="collapse">
+  <li><a href="#columnar-storage" id="toc-columnar-storage" class="nav-link" data-scroll-target="#columnar-storage">Columnar Storage</a></li>
+  <li><a href="#bitmask-filtering" id="toc-bitmask-filtering" class="nav-link" data-scroll-target="#bitmask-filtering">Bitmask Filtering</a></li>
+  <li><a href="#predicate-pushdown" id="toc-predicate-pushdown" class="nav-link" data-scroll-target="#predicate-pushdown">Predicate Pushdown</a></li>
+  <li><a href="#zone-maps" id="toc-zone-maps" class="nav-link" data-scroll-target="#zone-maps">Zone Maps</a></li>
+  </ul></li>
+  <li><a href="#what-this-prevents" id="toc-what-this-prevents" class="nav-link" data-scroll-target="#what-this-prevents">What This Prevents</a>
+  <ul class="collapse">
+  <li><a href="#the-aliasing-problem" id="toc-the-aliasing-problem" class="nav-link" data-scroll-target="#the-aliasing-problem">The Aliasing Problem</a></li>
+  <li><a href="#the-order-dependent-mutation-problem" id="toc-the-order-dependent-mutation-problem" class="nav-link" data-scroll-target="#the-order-dependent-mutation-problem">The Order-Dependent Mutation Problem</a></li>
+  <li><a href="#the-hidden-null-problem" id="toc-the-hidden-null-problem" class="nav-link" data-scroll-target="#the-hidden-null-problem">The Hidden Null Problem</a></li>
+  <li><a href="#the-floating-point-drift-problem" id="toc-the-floating-point-drift-problem" class="nav-link" data-scroll-target="#the-floating-point-drift-problem">The Floating-Point Drift Problem</a></li>
+  </ul></li>
+  <li><a href="#how-to-audit-a-tidyview-pipeline" id="toc-how-to-audit-a-tidyview-pipeline" class="nav-link" data-scroll-target="#how-to-audit-a-tidyview-pipeline">How to Audit a TidyView Pipeline</a>
+  <ul class="collapse">
+  <li><a href="#the-bitmask-as-audit-trail" id="toc-the-bitmask-as-audit-trail" class="nav-link" data-scroll-target="#the-bitmask-as-audit-trail">The Bitmask as Audit Trail</a></li>
+  <li><a href="#error-messages-that-point-to-the-problem" id="toc-error-messages-that-point-to-the-problem" class="nav-link" data-scroll-target="#error-messages-that-point-to-the-problem">Error Messages That Point to the Problem</a></li>
+  </ul></li>
+  <li><a href="#why-not-just-use-polars" id="toc-why-not-just-use-polars" class="nav-link" data-scroll-target="#why-not-just-use-polars">Why Not Just Use Polars?</a></li>
+  <li><a href="#the-one-sentence-summary" id="toc-the-one-sentence-summary" class="nav-link" data-scroll-target="#the-one-sentence-summary">The One-Sentence Summary</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">TidyView: A Database Engine in Disguise</h1>
+<p class="subtitle lead">How CJC-Lang handles data manipulation — and why I couldn’t just use Pandas.</p>
+  <div class="quarto-categories">
+    <div class="quarto-category">CJC-Lang</div>
+    <div class="quarto-category">data</div>
+    <div class="quarto-category">databases</div>
+    <div class="quarto-category">determinism</div>
+    <div class="quarto-category">architecture</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    TidyView is CJC-Lang’s data manipulation system. It uses a tidyverse-style API backed by database-engine internals — columnar storage, bitmask filtering, predicate pushdown, and zone maps — to deliver deterministic, auditable data pipelines with zero hidden mutations.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Adam Ezzat </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">April 12, 2026</p>
+    </div>
+  </div>
+  
+    <div>
+    <div class="quarto-title-meta-heading">Modified</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date-modified">April 12, 2026</p>
+    </div>
+  </div>
+    
+  </div>
+  
+
+</header>
+
+<div class="reading-time">
+🕑 ~20 min read
+</div>
+<div class="stats-row">
+<div class="stat">
+<span class="number">3</span><span class="stat-label">layers</span>
+</div>
+<div class="stat">
+<span class="number">40+</span><span class="stat-label">operations</span>
+</div>
+<div class="stat">
+<span class="number">0</span><span class="stat-label">HashMaps</span>
+</div>
+<div class="stat">
+<span class="number">1 bit</span><span class="stat-label">per filtered row</span>
+</div>
+</div>
+<div class="callout callout-style-simple callout-tip no-icon callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+TL;DR
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>TidyView is CJC-Lang’s data manipulation system. It looks like R’s dplyr on the surface, but underneath it’s a database engine: columnar storage, lazy evaluation, bitmask filtering, predicate pushdown, and zone maps. The result is a data pipeline where every intermediate state is inspectable, the original data is never mutated, and the same input always produces the same output — down to the last bit.</p>
+</div>
+</div>
+<section id="the-problem" class="level2">
+<h2 class="anchored" data-anchor-id="the-problem">The Problem</h2>
+<p>When I started building <a href="../../../blog/posts/introducing-cjc/index.html">CJC-Lang</a>, the core promise was simple: <strong>same seed, same output, always.</strong> Every part of the language enforces this — ordered collections, Kahan summation, seeded RNG, no FMA in SIMD kernels.</p>
+<p>But then I needed to handle data. Filter a table. Group rows. Compute aggregates. Join two datasets.</p>
+<p>The obvious move was to reach for an existing DataFrame library. But when I looked at what’s available, I kept running into the same problems:</p>
+<p><strong>Hash-based grouping.</strong> Pandas and Polars use hash maps to group rows. Hash maps are fast, but their iteration order depends on a hash seed that varies between runs. Group your data twice on the same machine and the rows might come back in a different order. That breaks determinism.</p>
+<p><strong>Naive floating-point reduction.</strong> Call <code>sum()</code> on a million floats in Pandas. The result depends on the order of accumulation. Add the numbers in a different order and you get different rounding errors. Small differences, but they compound — and they mean “same data, different result” depending on implementation details.</p>
+<p><strong>Hidden parallelism.</strong> Polars uses Rayon for parallel execution. Great for speed, but thread scheduling is non-deterministic. The result of a parallel aggregation can vary between runs even with identical input.</p>
+<p><strong>Aliasing mutations.</strong> Pandas has an entire warning category (<code>SettingWithCopyWarning</code>) dedicated to the fact that modifying a filtered subset might or might not modify the original DataFrame. Whether it does depends on internal memory layout decisions that are invisible to the user.</p>
+<p>None of these are bugs. They’re design trade-offs made by libraries that prioritize speed over reproducibility. But they break CJC-Lang’s core contract. So I built something else.</p>
+</section>
+<section id="what-tidyview-is" class="level2">
+<h2 class="anchored" data-anchor-id="what-tidyview-is">What TidyView Is</h2>
+<p>TidyView is a three-layer data manipulation system:</p>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Layer</th>
+<th>Type</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Immutable view</strong></td>
+<td><code>TidyView</code></td>
+<td>Zero-copy lens: bitmask + projection over shared data</td>
+</tr>
+<tr class="even">
+<td><strong>Materialized frame</strong></td>
+<td><code>TidyFrame</code></td>
+<td>Copy-on-write buffer for mutations</td>
+</tr>
+<tr class="odd">
+<td><strong>Grouped view</strong></td>
+<td><code>GroupedTidyView</code></td>
+<td>Group index for aggregation</td>
+</tr>
+</tbody>
+</table>
+<p>The API surface is modeled on R’s dplyr — <code>filter</code>, <code>select</code>, <code>mutate</code>, <code>group_by</code>, <code>summarise</code>, <code>arrange</code>, <code>join</code>. If you’ve used the tidyverse, you already know the vocabulary.</p>
+<p>But the implementation borrows from a different tradition entirely: <strong>analytical databases.</strong></p>
+</section>
+<section id="the-database-connection" class="level2">
+<h2 class="anchored" data-anchor-id="the-database-connection">The Database Connection</h2>
+<p>I didn’t set out to build a database engine. But the constraints I was working under — determinism, auditability, memory safety — kept pushing me toward the same solutions that database engineers arrived at decades ago.</p>
+<section id="columnar-storage" class="level3">
+<h3 class="anchored" data-anchor-id="columnar-storage">Columnar Storage</h3>
+<p>Data is stored column-major:</p>
+<pre><code>// Internally:
+columns: [
+    ("name",    Str(["Alice", "Bob", "Carol", "Dave"])),
+    ("age",     Int([30, 25, 35, 28])),
+    ("revenue", Float([150.0, 200.0, 175.0, 225.0])),
+]</code></pre>
+<p>Each column is a contiguous typed buffer. When you compute <code>sum(revenue)</code>, the runtime scans a single <code>Vec&lt;f64&gt;</code> — no pointer chasing, no skipping over unrelated fields. This is the same storage model used by Apache Arrow, DuckDB, and Parquet.</p>
+<p>The alternative — row-major storage — would scatter each <code>revenue</code> value across a row struct alongside <code>name</code> and <code>age</code> data. For a table with 100 columns, computing a single-column aggregate would touch 100x more memory than necessary.</p>
+</section>
+<section id="bitmask-filtering" class="level3">
+<h3 class="anchored" data-anchor-id="bitmask-filtering">Bitmask Filtering</h3>
+<p>This is the design choice that makes everything else work. When you filter a TidyView, <strong>no data is copied.</strong> Instead, a bitmask records which rows passed the predicate:</p>
+<pre><code>// Original data: 4 rows
+base: ["Alice", "Bob", "Carol", "Dave"]  // ages: 30, 25, 35, 28
+
+// After filter(age &gt; 28):
+mask: [1, 0, 1, 1]  // Alice (30), Carol (35), Dave (28 fails, hypothetical: &gt; 28)</code></pre>
+<p>In practice the mask is packed into 64-bit words — one bit per row. A million-row filter costs 125 KB of bitmask memory. The original data stays exactly where it was, untouched.</p>
+<p>Chain three filters together? The bitmasks are ANDed. Still no data copied. Still 125 KB.</p>
+<pre><code>let sales: Any = read_csv("sales.csv");
+let df: Any = sales
+    |&gt; filter(col("region") == "West")
+    |&gt; filter(col("revenue") &gt; 1000.0)
+    |&gt; filter(col("year") == 2025);</code></pre>
+<p>Each <code>filter</code> call returns a new TidyView with a new bitmask. All three views share the same underlying data. The CSV is loaded once. This is the same technique used by bitmap indexes in Oracle and selection vectors in DuckDB.</p>
+</section>
+<section id="predicate-pushdown" class="level3">
+<h3 class="anchored" data-anchor-id="predicate-pushdown">Predicate Pushdown</h3>
+<p>TidyView has a lazy evaluation layer where operations build a logical plan tree before executing. The optimizer rewrites this tree using three classic database passes:</p>
+<p><strong>Pass 1 — Filter merging.</strong> Consecutive filters are combined into a single filter with an AND predicate.</p>
+<p><strong>Pass 2 — Predicate pushdown.</strong> Filters are pushed as close to the data source as possible.</p>
+<p><strong>Pass 3 — Redundant select elimination.</strong> Select nodes that project all columns are removed.</p>
+<p>Here’s why this matters. Suppose you write:</p>
+<pre><code>let result: Any = df
+    |&gt; mutate("bonus", col("salary") * 0.1)
+    |&gt; filter(col("department") == "Engineering");</code></pre>
+<p>Without optimization, this computes <code>bonus</code> for every row, then filters. With predicate pushdown, the optimizer recognizes that <code>department == "Engineering"</code> doesn’t depend on the <code>bonus</code> column, so it pushes the filter <em>below</em> the mutate. Now filtering happens first, and <code>bonus</code> is only computed for engineering rows.</p>
+<p>The pushdown rules follow standard relational algebra:</p>
+<ul>
+<li>Push past <code>select</code> — always safe</li>
+<li>Push past <code>arrange</code> — filtering doesn’t affect sort order</li>
+<li>Push past <code>mutate</code> — only if the predicate doesn’t reference a mutated column</li>
+<li>Push into <code>join</code> branches — if the predicate references only one side</li>
+<li>Never past <code>group_by</code> + <code>summarise</code> — aggregation changes row identity</li>
+<li>Never past <code>distinct</code> — uniqueness changes row identity</li>
+</ul>
+<p>These are the same rules taught in database systems textbooks. They apply here because TidyView’s operation set <em>is</em> relational algebra — just with tidyverse names.</p>
+</section>
+<section id="zone-maps" class="level3">
+<h3 class="anchored" data-anchor-id="zone-maps">Zone Maps</h3>
+<p>Each column tracks lightweight statistics:</p>
+<pre><code>// ColumnStats for the "revenue" column:
+min: 150.0
+max: 225.0
+sorted_ascending: false
+n_distinct: 4</code></pre>
+<p>When you write <code>filter(col("revenue") &gt; 500.0)</code>, the zone map says: max is 225, so no row can satisfy <code>&gt; 500</code>. The entire filter can be skipped.</p>
+<p>When a column is sorted, the system uses binary search instead of a linear scan — O(log N) instead of O(N).</p>
+<p>These are the same optimizations that Vertica, Redshift, and Parquet use at the storage layer. In TidyView they operate at the column level because the entire “database” fits in memory.</p>
+</section>
+</section>
+<section id="what-this-prevents" class="level2">
+<h2 class="anchored" data-anchor-id="what-this-prevents">What This Prevents</h2>
+<p>The architectural choices above aren’t just about performance. They prevent specific classes of bugs that plague traditional DataFrame workflows.</p>
+<section id="the-aliasing-problem" class="level3">
+<h3 class="anchored" data-anchor-id="the-aliasing-problem">The Aliasing Problem</h3>
+<p>In Pandas:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> pd.DataFrame({<span class="st">"x"</span>: [<span class="dv">1</span>, <span class="dv">2</span>, <span class="dv">3</span>], <span class="st">"y"</span>: [<span class="dv">4</span>, <span class="dv">5</span>, <span class="dv">6</span>]})</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>subset <span class="op">=</span> df[df.x <span class="op">&gt;</span> <span class="dv">1</span>]</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>subset[<span class="st">"z"</span>] <span class="op">=</span> <span class="dv">99</span>      <span class="co"># Does this modify df? Maybe.</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Whether <code>subset["z"] = 99</code> modifies the original <code>df</code> depends on whether Pandas chose to return a view or a copy when you wrote <code>df[df.x &gt; 1]</code>. This is the <code>SettingWithCopyWarning</code> — one of the most common sources of confusion in data science code.</p>
+<p>In TidyView, this problem doesn’t exist. The base data lives behind an <code>Rc</code> (reference-counted pointer) and is never modified. When you need to mutate, <code>TidyFrame</code> checks the reference count:</p>
+<ul>
+<li>If only one reference exists, mutate in place</li>
+<li>If multiple references exist, deep-clone first, then mutate the clone</li>
+</ul>
+<p>The check is deterministic — it’s a simple integer comparison, not a heuristic. The other views are never affected.</p>
+</section>
+<section id="the-order-dependent-mutation-problem" class="level3">
+<h3 class="anchored" data-anchor-id="the-order-dependent-mutation-problem">The Order-Dependent Mutation Problem</h3>
+<p>In Pandas:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> df.assign(a <span class="op">=</span> df.x <span class="op">+</span> <span class="dv">1</span>, b <span class="op">=</span> df.a <span class="op">*</span> <span class="dv">2</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Does <code>df.a</code> in the second expression see the <em>newly computed</em> <code>a</code> or the <em>original</em> <code>a</code>? In Pandas, it sees the new one. The result depends on the order of the assignments. Swap <code>a</code> and <code>b</code> and you get different data.</p>
+<p>In TidyView, <code>mutate</code> uses <strong>snapshot semantics</strong>: all column references are validated against the column list frozen <em>before</em> any assignments execute. Every expression sees the data as it was when the <code>mutate</code> call started:</p>
+<pre><code>let result: Any = df
+    |&gt; mutate("a", col("x") + 1)
+    |&gt; mutate("b", col("a") * 2);
+// col("a") always reads the ORIGINAL "a" column
+// If "a" didn't exist before, this is an error — not a silent dependency</code></pre>
+<p>This is the same principle as SQL’s <code>UPDATE SET a = b, b = a</code> — the SET clause reads from a snapshot, so this correctly swaps the values rather than setting both to <code>b</code>.</p>
+</section>
+<section id="the-hidden-null-problem" class="level3">
+<h3 class="anchored" data-anchor-id="the-hidden-null-problem">The Hidden Null Problem</h3>
+<p>Pandas DataFrames can have <code>NaN</code> or <code>None</code> in any column at any time. You discover this at runtime, usually when an aggregation silently skips missing values and gives you a number that’s subtly wrong.</p>
+<p>In TidyView, the base <code>Column</code> type has <strong>no null representation</strong>:</p>
+<pre><code>// Column — always fully populated:
+Int(Vec&lt;i64&gt;)
+Float(Vec&lt;f64&gt;)
+Str(Vec&lt;String&gt;)
+Bool(Vec&lt;bool&gt;)</code></pre>
+<p>There’s no <code>Option</code> wrapper. No sentinel values. If you have a <code>TidyView</code>, its data is guaranteed null-free by type.</p>
+<p>Nulls exist, but they’re quarantined in a separate type called <code>NullCol</code>. You only encounter <code>NullCol</code> through operations that <em>can</em> introduce nulls — left joins (unmatched rows), <code>pivot_wider</code> (missing combinations), full joins. These operations return a <code>NullableFrame</code> instead of a <code>TidyFrame</code>, and the type boundary makes the null-possibility explicit.</p>
+<p>The question “does my data have nulls?” is answered by the type, not by scanning every cell.</p>
+</section>
+<section id="the-floating-point-drift-problem" class="level3">
+<h3 class="anchored" data-anchor-id="the-floating-point-drift-problem">The Floating-Point Drift Problem</h3>
+<div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Pandas</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>pd.Series([<span class="fl">1e16</span>, <span class="fl">1.0</span>, <span class="op">-</span><span class="fl">1e16</span>]).<span class="bu">sum</span>()  <span class="co"># → 0.0 (wrong)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The mathematically correct answer is <code>1.0</code>. Pandas gives <code>0.0</code> because it uses naive left-to-right summation: <code>1e16 + 1.0</code> rounds to <code>1e16</code> (the <code>1.0</code> is lost to floating-point precision), then <code>1e16 - 1e16 = 0.0</code>.</p>
+<p>TidyView uses Kahan compensated summation for every floating-point reduction — <code>sum</code>, <code>mean</code>, <code>variance</code>, <code>sd</code>, all of them. Kahan summation tracks a correction term that captures the rounding error:</p>
+<pre><code>// Kahan summation:
+//   sum = 0, c = 0
+//   y = 1e16 - 0 = 1e16;    t = 0 + 1e16 = 1e16;    c = (1e16 - 1e16) - 1e16 = 0
+//   y = 1.0 - 0 = 1.0;      t = 1e16 + 1.0 = 1e16;   c = (1e16 - 1e16) - 1.0 = -1.0
+//   y = -1e16 - (-1.0);      ...compensates the lost 1.0
+//   Result: 1.0 (correct)</code></pre>
+<p>Same input, same result, every time. Not approximately correct — exactly correct within the limits of double precision.</p>
+</section>
+</section>
+<section id="how-to-audit-a-tidyview-pipeline" class="level2">
+<h2 class="anchored" data-anchor-id="how-to-audit-a-tidyview-pipeline">How to Audit a TidyView Pipeline</h2>
+<p>This is where the architecture pays off in practice. When something goes wrong in a data pipeline, the question is always: <em>where did the data go wrong?</em></p>
+<p>In TidyView, every intermediate step is inspectable because the original data is never modified. Here’s a concrete example:</p>
+<pre><code>// Load data
+let sales: Any = read_csv("quarterly_sales.csv");
+
+// Build pipeline
+let west: Any = filter(sales, col("region") == "West");
+let big: Any = filter(west, col("revenue") &gt; 1000.0);
+let grouped: Any = group_by(big, "product");
+let summary: Any = summarise(grouped, tidy_sum(col("revenue")));</code></pre>
+<p>Suppose <code>summary</code> shows unexpected numbers. You can audit backward:</p>
+<p><strong>Step 1: Check the grouped view.</strong> How many groups formed? What rows are in each group? The group index is inspectable — it stores the key values and the base-frame row indices for every group.</p>
+<p><strong>Step 2: Check the filtered view.</strong> How many rows survived both filters? The bitmask tells you exactly which base-frame rows are visible. You can compare the count against your expectation.</p>
+<p><strong>Step 3: Check the original data.</strong> It’s still there, unchanged, behind the shared reference. The CSV was loaded once, and no operation modified it. You can re-inspect it to see if the data itself was the problem (wrong CSV encoding, unexpected column types, etc.).</p>
+<p>In a traditional mutable DataFrame workflow, step 3 is impossible — the original data was overwritten by the first mutation. In TidyView, the original is always available because it was never touched.</p>
+<section id="the-bitmask-as-audit-trail" class="level3">
+<h3 class="anchored" data-anchor-id="the-bitmask-as-audit-trail">The Bitmask as Audit Trail</h3>
+<p>The bitmask isn’t just a performance optimization. It’s a record of what happened.</p>
+<p>After <code>filter(col("region") == "West")</code>, the bitmask contains a 1 for every row where region is “West” and a 0 for every row where it isn’t. You can:</p>
+<ul>
+<li>Count the 1s to see how many rows passed</li>
+<li>Iterate the set bits to see <em>which</em> rows passed (by base-frame index)</li>
+<li>AND two bitmasks to see which rows passed <em>both</em> filters</li>
+<li>Compare the mask against the original data to verify the filter logic</li>
+</ul>
+<p>This is fundamentally different from a system where <code>df = df[df.region == "West"]</code> discards the filtered-out rows. In that system, if the filter was wrong, the evidence is gone. In TidyView, the evidence is the bitmask, and the original data is still there to check against.</p>
+</section>
+<section id="error-messages-that-point-to-the-problem" class="level3">
+<h3 class="anchored" data-anchor-id="error-messages-that-point-to-the-problem">Error Messages That Point to the Problem</h3>
+<p>When something goes wrong, TidyView’s error types name the exact issue:</p>
+<pre><code>ColumnNotFound("revnue")       // Typo — you meant "revenue"
+DuplicateColumn("total")       // Two columns with the same name in select
+PredicateNotBool { got: "Int" } // filter predicate returned Int, not Bool
+TypeMismatch { expected: "Float", got: "Str" }  // arithmetic on a string column
+LengthMismatch { expected: 1000, got: 500 }     // broadcast size mismatch</code></pre>
+<p>Every error variant names the specific column, type, or value that caused the problem. You know what went wrong and where, not just that something failed.</p>
+</section>
+</section>
+<section id="why-not-just-use-polars" class="level2">
+<h2 class="anchored" data-anchor-id="why-not-just-use-polars">Why Not Just Use Polars?</h2>
+<p>Polars is a good library. It’s fast, it has a lazy API, and it uses Arrow-backed columnar storage. If I were building a Python application, I’d probably use it.</p>
+<p>But Polars makes different trade-offs than TidyView:</p>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>Polars</th>
+<th>TidyView</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Grouping</strong></td>
+<td>Hash-based (fast, non-deterministic order)</td>
+<td>BTreeMap (deterministic first-occurrence order)</td>
+</tr>
+<tr class="even">
+<td><strong>Summation</strong></td>
+<td>Naive (fast, platform-dependent rounding)</td>
+<td>Kahan compensated (deterministic, bit-identical)</td>
+</tr>
+<tr class="odd">
+<td><strong>Parallelism</strong></td>
+<td>Rayon (fast, non-deterministic scheduling)</td>
+<td>Single-threaded (deterministic, no scheduling variance)</td>
+</tr>
+<tr class="even">
+<td><strong>Null model</strong></td>
+<td>Nullable everywhere (Arrow validity bitmaps)</td>
+<td>Null-free by default, <code>NullCol</code> only where needed</td>
+</tr>
+<tr class="odd">
+<td><strong>Sampling</strong></td>
+<td>System RNG</td>
+<td>Seeded LCG-based Fisher-Yates</td>
+</tr>
+</tbody>
+</table>
+<p>None of Polars’ trade-offs are wrong. They’re optimizing for throughput. TidyView is optimizing for <strong>reproducibility</strong> — the guarantee that the same pipeline on the same data always produces the same result, bit for bit, on any machine.</p>
+<p>When your work requires an audit trail — when a regulator, a reviewer, or future-you needs to verify that a result is correct — that guarantee matters more than raw speed.</p>
+</section>
+<section id="the-one-sentence-summary" class="level2">
+<h2 class="anchored" data-anchor-id="the-one-sentence-summary">The One-Sentence Summary</h2>
+<p>TidyView is a database engine wearing a tidyverse costume, designed so that <strong>same data + same code = same result</strong> on every machine, every run, every time.</p>
+<p>It combines familiar dplyr verbs (<code>filter</code>, <code>select</code>, <code>mutate</code>, <code>group_by</code>, <code>summarise</code>) with database-engine internals (columnar storage, bitmask filtering, predicate pushdown, zone maps) to deliver data pipelines that are deterministic by construction, auditable by design, and memory-safe without runtime surprises.</p>
+<div class="callout callout-style-simple callout-note no-icon">
+<div class="callout-body d-flex">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-body-container">
+<p>CJC-Lang is open source and available on <a href="https://crates.io/crates/cjc-lang">crates.io</a>. The TidyView implementation lives in <code>crates/cjc-data/</code> — about 11,000 lines of Rust with zero external dependencies.</p>
+</div>
+</div>
+</div>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const disableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'prefetch';
+    }
+  }
+  const enableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'stylesheet';
+    }
+  }
+  const manageTransitions = (selector, allowTransitions) => {
+    const els = window.document.querySelectorAll(selector);
+    for (let i=0; i < els.length; i++) {
+      const el = els[i];
+      if (allowTransitions) {
+        el.classList.remove('notransition');
+      } else {
+        el.classList.add('notransition');
+      }
+    }
+  }
+  const toggleColorMode = (alternate) => {
+    // Switch the stylesheets
+    const alternateStylesheets = window.document.querySelectorAll('link.quarto-color-scheme.quarto-color-alternate');
+    manageTransitions('#quarto-margin-sidebar .nav-link', false);
+    if (alternate) {
+      enableStylesheet(alternateStylesheets);
+      for (const sheetNode of alternateStylesheets) {
+        if (sheetNode.id === "quarto-bootstrap") {
+          toggleBodyColorMode(sheetNode);
+        }
+      }
+    } else {
+      disableStylesheet(alternateStylesheets);
+      toggleBodyColorPrimary();
+    }
+    manageTransitions('#quarto-margin-sidebar .nav-link', true);
+    // Switch the toggles
+    const toggles = window.document.querySelectorAll('.quarto-color-scheme-toggle');
+    for (let i=0; i < toggles.length; i++) {
+      const toggle = toggles[i];
+      if (toggle) {
+        if (alternate) {
+          toggle.classList.add("alternate");     
+        } else {
+          toggle.classList.remove("alternate");
+        }
+      }
+    }
+    // Hack to workaround the fact that safari doesn't
+    // properly recolor the scrollbar when toggling (#1455)
+    if (navigator.userAgent.indexOf('Safari') > 0 && navigator.userAgent.indexOf('Chrome') == -1) {
+      manageTransitions("body", false);
+      window.scrollTo(0, 1);
+      setTimeout(() => {
+        window.scrollTo(0, 0);
+        manageTransitions("body", true);
+      }, 40);  
+    }
+  }
+  const isFileUrl = () => { 
+    return window.location.protocol === 'file:';
+  }
+  const hasAlternateSentinel = () => {  
+    let styleSentinel = getColorSchemeSentinel();
+    if (styleSentinel !== null) {
+      return styleSentinel === "alternate";
+    } else {
+      return false;
+    }
+  }
+  const setStyleSentinel = (alternate) => {
+    const value = alternate ? "alternate" : "default";
+    if (!isFileUrl()) {
+      window.localStorage.setItem("quarto-color-scheme", value);
+    } else {
+      localAlternateSentinel = value;
+    }
+  }
+  const getColorSchemeSentinel = () => {
+    if (!isFileUrl()) {
+      const storageValue = window.localStorage.getItem("quarto-color-scheme");
+      return storageValue != null ? storageValue : localAlternateSentinel;
+    } else {
+      return localAlternateSentinel;
+    }
+  }
+  let localAlternateSentinel = 'default';
+  // Dark / light mode switch
+  window.quartoToggleColorScheme = () => {
+    // Read the current dark / light value 
+    let toAlternate = !hasAlternateSentinel();
+    toggleColorMode(toAlternate);
+    setStyleSentinel(toAlternate);
+  };
+  // Ensure there is a toggle, if there isn't float one in the top right
+  if (window.document.querySelector('.quarto-color-scheme-toggle') === null) {
+    const a = window.document.createElement('a');
+    a.classList.add('top-right');
+    a.classList.add('quarto-color-scheme-toggle');
+    a.href = "";
+    a.onclick = function() { try { window.quartoToggleColorScheme(); } catch {} return false; };
+    const i = window.document.createElement("i");
+    i.classList.add('bi');
+    a.appendChild(i);
+    window.document.body.appendChild(a);
+  }
+  // Switch to dark mode if need be
+  if (hasAlternateSentinel()) {
+    toggleColorMode(true);
+  } else {
+    toggleColorMode(false);
+  }
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+      &nbsp;
+    </div>   
+    <div class="nav-footer-center">© 2026 Adam Ezzat. Built with <a href="https://quarto.org/">Quarto</a>.</div>
+    <div class="nav-footer-right">
+      &nbsp;
+    </div>
+  </div>
+</footer>
+
+
+
+<script src="../../../site_libs/quarto-html/zenscroll-min.js"></script>
+</body></html>

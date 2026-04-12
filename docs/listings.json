@@ -2,6 +2,7 @@
   {
     "listing": "/blog/index.html",
     "items": [
+      "/blog/posts/tidyview-data-engine/index.html",
       "/blog/posts/chess-rl-v2/index.html",
       "/blog/posts/cjc-v0.1.1-syntax-guide/index.html",
       "/blog/posts/cjc-v0.1-released/index.html",
