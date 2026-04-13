@@ -10,7 +10,1805 @@
 <atom:link href="https://adamezzat1.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>Systems engineer building CJC-Lang — a deterministic scientific computing language</description>
 <generator>quarto-1.3.340</generator>
-<lastBuildDate>Sun, 12 Apr 2026 07:00:00 GMT</lastBuildDate>
+<lastBuildDate>Mon, 13 Apr 2026 07:00:00 GMT</lastBuildDate>
+<item>
+  <title>The cjcl CLI: 31 Commands for Deterministic Computing</title>
+  <dc:creator>Adam Ezzat</dc:creator>
+  <link>https://adamezzat1.github.io/blog/posts/cjcl-cli-reference/index.html</link>
+  <description><![CDATA[ 
+
+
+
+<div class="reading-time">
+🕑 ~20 min read
+</div>
+<div class="stats-row">
+<div class="stat">
+<span class="number">31</span><span class="stat-label">commands</span>
+</div>
+<div class="stat">
+<span class="number">4</span><span class="stat-label">categories</span>
+</div>
+<div class="stat">
+<span class="number">0</span><span class="stat-label">external deps</span>
+</div>
+<div class="stat">
+<span class="number">42</span><span class="stat-label">default seed</span>
+</div>
+</div>
+<div class="callout callout-style-simple callout-tip no-icon callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+TL;DR
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><code>cjcl</code> is a single binary with 31 commands. Install with <code>cargo install cjc-lang</code>, then <code>cjcl run your_file.cjcl</code>. Every command produces deterministic output — same input, same flags, same result, every time.</p>
+</div>
+</div>
+<section id="what-is-cjcl" class="level2">
+<h2 class="anchored" data-anchor-id="what-is-cjcl">What Is cjcl?</h2>
+<p><code>cjcl</code> is the CLI frontend for <a href="../../../blog/posts/introducing-cjc/index.html">CJC-Lang</a>, a deterministic numerical programming language. One binary, zero external dependencies, 31 commands that span compilation, data engineering, profiling, and reproducibility verification.</p>
+<div class="sourceCode" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cargo</span> install cjc-lang</span>
+<span id="cb1-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--version</span>   <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># CJC-Lang v0.1.4</span></span></code></pre></div>
+<p>Every command that produces output supports three output modes: <code>--color</code> (default, human-readable), <code>--plain</code> (no ANSI escapes, pipe-friendly), and <code>--json</code> (machine-readable). Most commands that execute code accept <code>--seed &lt;N&gt;</code> for deterministic RNG seeding (default: 42).</p>
+</section>
+<section id="quick-reference" class="level2">
+<h2 class="anchored" data-anchor-id="quick-reference">Quick Reference</h2>
+<table class="table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Category</th>
+<th>Commands</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Core Compiler</strong></td>
+<td><code>lex</code>, <code>parse</code>, <code>check</code>, <code>run</code>, <code>eval</code>, <code>repl</code></td>
+</tr>
+<tr class="even">
+<td><strong>Data &amp; Pipeline</strong></td>
+<td><code>view</code>, <code>proof</code>, <code>flow</code>, <code>patch</code>, <code>seek</code>, <code>drift</code>, <code>forge</code></td>
+</tr>
+<tr class="odd">
+<td><strong>Inspection &amp; Diagnostics</strong></td>
+<td><code>inspect</code>, <code>schema</code>, <code>trace</code>, <code>mem</code>, <code>bench</code>, <code>pack</code>, <code>doctor</code></td>
+</tr>
+<tr class="even">
+<td><strong>Compiler Visibility</strong></td>
+<td><code>emit</code>, <code>explain</code>, <code>gc</code>, <code>nogc</code>, <code>audit</code>, <code>precision</code>, <code>lock</code>, <code>parity</code>, <code>test</code>, <code>ci</code></td>
+</tr>
+</tbody>
+</table>
+<hr>
+</section>
+<section id="core-compiler-commands" class="level2">
+<h2 class="anchored" data-anchor-id="core-compiler-commands">Core Compiler Commands</h2>
+<p>These six commands are the foundation — tokenize, parse, type-check, run, evaluate, and interact.</p>
+<section id="lex" class="level3">
+<h3 class="anchored" data-anchor-id="lex">lex</h3>
+<p>Tokenize a source file and print the token stream.</p>
+<div class="sourceCode" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> lex program.cjcl</span></code></pre></div>
+<p>Output shows each token’s span, kind, and text. Useful for debugging parser issues or understanding how CJC-Lang sees your source code.</p>
+</section>
+<section id="parse" class="level3">
+<h3 class="anchored" data-anchor-id="parse">parse</h3>
+<p>Parse a source file and pretty-print the AST.</p>
+<div class="sourceCode" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb3-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> parse program.cjcl</span></code></pre></div>
+<p>Shows the full abstract syntax tree after parsing. Use this when you suspect a precedence or grouping issue — the AST reveals exactly how the parser interpreted your expressions.</p>
+</section>
+<section id="check" class="level3">
+<h3 class="anchored" data-anchor-id="check">check</h3>
+<p>Type-check a source file without running it.</p>
+<div class="sourceCode" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> check program.cjcl</span></code></pre></div>
+<p>Runs the full compilation pipeline (lex, parse, type-check) and reports errors and warnings. Exit code 0 means the program is well-typed.</p>
+<p>When used with validation flags, <code>check</code> becomes an output validator:</p>
+<div class="sourceCode" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> check output.csv <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--against</span> expected.csv <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--tolerance</span> 1e-6</span>
+<span id="cb5-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> check output.csv <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--against</span> expected.csv <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--schema-only</span></span>
+<span id="cb5-3"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> check output.txt <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--expect</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Hello, world!"</span></span></code></pre></div>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>--against &lt;file&gt;</code></td>
+<td>Compare file against a reference</td>
+</tr>
+<tr class="even">
+<td><code>--tolerance &lt;N&gt;</code></td>
+<td>Numeric tolerance for comparison (default: 0.0)</td>
+</tr>
+<tr class="odd">
+<td><code>--schema-only</code></td>
+<td>Compare only column structure, not values</td>
+</tr>
+<tr class="even">
+<td><code>--expect &lt;string&gt;</code></td>
+<td>Check file contents match a literal string</td>
+</tr>
+</tbody>
+</table>
+<p><strong>When to use it:</strong> Run <code>cjcl check</code> before committing to catch type errors early. Use the validation mode in CI to verify pipeline outputs haven’t drifted.</p>
+</section>
+<section id="run" class="level3">
+<h3 class="anchored" data-anchor-id="run">run</h3>
+<p>Execute a CJC-Lang program.</p>
+<div class="sourceCode" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb6-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> run program.cjcl</span>
+<span id="cb6-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> run program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--seed</span> 123</span>
+<span id="cb6-3"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> run program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--mir-opt</span></span>
+<span id="cb6-4"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> run program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--multi-file</span></span></code></pre></div>
+<p>This is the command you’ll use most. By default it uses the AST tree-walk interpreter. Add <code>--mir-opt</code> to use the MIR register-machine executor with optimizations (control flow simplification + dead code elimination).</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>--seed &lt;N&gt;</code></td>
+<td>RNG seed (default: 42)</td>
+</tr>
+<tr class="even">
+<td><code>--mir-opt</code></td>
+<td>MIR executor with optimizations</td>
+</tr>
+<tr class="odd">
+<td><code>--mir-mono</code></td>
+<td>MIR executor with monomorphization</td>
+</tr>
+<tr class="even">
+<td><code>--multi-file</code></td>
+<td>Enable multi-file module resolution</td>
+</tr>
+<tr class="odd">
+<td><code>--time</code></td>
+<td>Print execution time to stderr</td>
+</tr>
+<tr class="even">
+<td><code>--format json</code></td>
+<td>Wrap output in <code>{"ok":true,"output":[...]}</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Exit codes:</strong> 0 = success, 1 = runtime error, 2 = parse error, 3 = type error, 4 = parity failure.</p>
+<p><strong>When to use it:</strong> This is your daily driver. Use <code>--mir-opt</code> for performance-sensitive code, <code>--multi-file</code> for projects split across modules.</p>
+</section>
+<section id="eval" class="level3">
+<h3 class="anchored" data-anchor-id="eval">eval</h3>
+<p>Evaluate a single expression without creating a file.</p>
+<div class="sourceCode" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb7-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> eval <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"42 + 8"</span>           <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># → 50</span></span>
+<span id="cb7-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> eval <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"sqrt(2.0)"</span>        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># → 1.4142135623730951</span></span>
+<span id="cb7-3"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> eval <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"42 + 8"</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--format</span> json  <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># → {"ok":true,"output":["50"]}</span></span></code></pre></div>
+<p>The expression is wrapped in <code>fn main() { print(&lt;expr&gt;); }</code> and executed. Supports <code>--seed</code> and <code>--format</code>.</p>
+<p><strong>When to use it:</strong> Quick calculations, testing builtins, scripting one-liners.</p>
+</section>
+<section id="repl" class="level3">
+<h3 class="anchored" data-anchor-id="repl">repl</h3>
+<p>Start an interactive read-eval-print loop.</p>
+<div class="sourceCode" id="cb8" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb8-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> repl</span>
+<span id="cb8-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> repl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--seed</span> 123</span></code></pre></div>
+<p>The REPL preserves variable bindings across lines and supports meta-commands:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Command</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>:help</code></td>
+<td>Show all meta-commands</td>
+</tr>
+<tr class="even">
+<td><code>:type &lt;expr&gt;</code></td>
+<td>Show inferred type</td>
+</tr>
+<tr class="odd">
+<td><code>:ast &lt;expr&gt;</code></td>
+<td>Pretty-print the AST</td>
+</tr>
+<tr class="even">
+<td><code>:mir &lt;expr&gt;</code></td>
+<td>Show MIR representation</td>
+</tr>
+<tr class="odd">
+<td><code>:env</code></td>
+<td>Show current variable bindings</td>
+</tr>
+<tr class="even">
+<td><code>:time &lt;expr&gt;</code></td>
+<td>Time expression execution</td>
+</tr>
+<tr class="odd">
+<td><code>:describe &lt;expr&gt;</code></td>
+<td>Statistical summary of a numeric array</td>
+</tr>
+<tr class="even">
+<td><code>:save &lt;file&gt;</code></td>
+<td>Save session history</td>
+</tr>
+<tr class="odd">
+<td><code>:load &lt;file&gt;</code></td>
+<td>Load and execute a file</td>
+</tr>
+<tr class="even">
+<td><code>:reset</code></td>
+<td>Clear all bindings</td>
+</tr>
+<tr class="odd">
+<td><code>:seed</code></td>
+<td>Show current RNG seed</td>
+</tr>
+<tr class="even">
+<td><code>:quit</code></td>
+<td>Exit</td>
+</tr>
+</tbody>
+</table>
+<p><strong>When to use it:</strong> Exploratory data analysis, testing ideas, learning the language.</p>
+<hr>
+</section>
+</section>
+<section id="data-pipeline-commands" class="level2">
+<h2 class="anchored" data-anchor-id="data-pipeline-commands">Data &amp; Pipeline Commands</h2>
+<p>Seven commands for working with data files, verifying reproducibility, and building deterministic pipelines.</p>
+<section id="view" class="level3">
+<h3 class="anchored" data-anchor-id="view">view</h3>
+<p>Deterministic directory listing with type-aware annotations.</p>
+<div class="sourceCode" id="cb9" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb9-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> view</span>
+<span id="cb9-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> view ./data/ <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--recursive</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--hash</span></span></code></pre></div>
+<p>Lists files sorted lexicographically with color-coded types: <code>.cjcl</code> files show effect annotations (<code>#[nogc]</code>, <code>@pure</code>, <code>@timed</code>), <code>.snap</code> files show content hashes, data files (<code>.csv</code>, <code>.json</code>) are highlighted. Output is deterministic — same directory, same listing, every time.</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>-r, --recursive</code></td>
+<td>Recurse into subdirectories</td>
+</tr>
+<tr class="even">
+<td><code>--hash</code></td>
+<td>Show SHA-256 hashes</td>
+</tr>
+<tr class="odd">
+<td><code>--no-effects</code></td>
+<td>Hide effect annotations</td>
+</tr>
+<tr class="even">
+<td><code>--no-size</code></td>
+<td>Hide file sizes</td>
+</tr>
+</tbody>
+</table>
+<p><strong>When to use it:</strong> Quickly inventory a project’s data files and verify effect annotations.</p>
+</section>
+<section id="proof" class="level3">
+<h3 class="anchored" data-anchor-id="proof">proof</h3>
+<p>Verify that a program produces identical output across multiple runs.</p>
+<div class="sourceCode" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb10-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> proof program.cjcl</span>
+<span id="cb10-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> proof program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--runs</span> 10 <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--seeds</span> 42,123,999</span>
+<span id="cb10-3"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> proof program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--executor</span> both <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--hash-output</span></span></code></pre></div>
+<p>Runs the program N times (default: 3) and checks that stdout, exit status, and GC behavior are identical. With <code>--seeds</code>, tests multiple seeds. With <code>--executor both</code>, verifies both the AST interpreter and MIR executor.</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>-n, --runs &lt;N&gt;</code></td>
+<td>Number of iterations (default: 3)</td>
+</tr>
+<tr class="even">
+<td><code>--seed &lt;N&gt;</code></td>
+<td>Single seed to test (default: 42)</td>
+</tr>
+<tr class="odd">
+<td><code>--seeds &lt;N,M,...&gt;</code></td>
+<td>Test multiple seeds</td>
+</tr>
+<tr class="even">
+<td><code>--executor eval\|mir\|both</code></td>
+<td>Which executor(s) to use</td>
+</tr>
+<tr class="odd">
+<td><code>--fail-fast</code></td>
+<td>Stop on first divergence</td>
+</tr>
+<tr class="even">
+<td><code>--hash-output</code></td>
+<td>Show SHA-256 of stdout per run</td>
+</tr>
+<tr class="odd">
+<td><code>--save-report &lt;file&gt;</code></td>
+<td>Save report as JSON</td>
+</tr>
+</tbody>
+</table>
+<p><strong>When to use it:</strong> Before publishing results. Before merging a PR that touches numerical code. In CI as a gate.</p>
+</section>
+<section id="flow" class="level3">
+<h3 class="anchored" data-anchor-id="flow">flow</h3>
+<p>Streaming computation over CSV/TSV/JSONL data with O(ncols) memory.</p>
+<div class="sourceCode" id="cb11" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb11-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> flow sales.csv <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--op</span> sum,mean,min,max</span>
+<span id="cb11-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> flow sales.csv <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--op</span> mean <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--columns</span> revenue,cost <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--sort-by</span> mean</span>
+<span id="cb11-3"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> flow <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--tsv</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span> data.tsv <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--top</span> 5 <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--json</span></span></code></pre></div>
+<p>Processes data in a single pass without loading the entire file into memory. Uses Kahan summation for numeric stability and Welford’s online algorithm for variance/stddev.</p>
+<table class="table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>--op &lt;ops&gt;</code></td>
+<td>Operations: <code>sum</code>, <code>mean</code>, <code>min</code>, <code>max</code>, <code>count</code>, <code>var</code>, <code>std</code></td>
+</tr>
+<tr class="even">
+<td><code>-c, --columns &lt;cols&gt;</code></td>
+<td>Only process named columns</td>
+</tr>
+<tr class="odd">
+<td><code>--sort-by &lt;metric&gt;</code></td>
+<td>Sort output by a metric</td>
+</tr>
+<tr class="even">
+<td><code>--top &lt;N&gt;</code></td>
+<td>Show only top N columns</td>
+</tr>
+<tr class="odd">
+<td><code>--verify</code></td>
+<td>Run twice, confirm identical output</td>
+</tr>
+<tr class="even">
+<td><code>--tsv</code></td>
+<td>Tab-delimited input</td>
+</tr>
+<tr class="odd">
+<td><code>-d, --delimiter &lt;c&gt;</code></td>
+<td>Custom delimiter</td>
+</tr>
+</tbody>
+</table>
+<p><strong>When to use it:</strong> Quick summary statistics on large CSVs without loading into a DataFrame. Verifying that a pipeline’s output statistics match expectations.</p>
+</section>
+<section id="patch" class="level3">
+<h3 class="anchored" data-anchor-id="patch">patch</h3>
+<p>Type-aware data transformation for CSV/TSV/JSONL files.</p>
+<div class="sourceCode" id="cb12" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb12-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> patch data.csv <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--nan-fill</span> 0.0</span>
+<span id="cb12-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> patch data.csv <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--impute</span> salary <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--drop</span> temp_col <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--rename</span> old_name new_name</span>
+<span id="cb12-3"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> patch data.csv <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--replace</span> status <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"NA"</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"unknown"</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--plan</span></span></code></pre></div>
+<p>Streams the file and applies transformations: NaN replacement, mean imputation, column dropping, renaming, value replacement. With <code>--plan</code>, shows the transformation sequence without executing. With <code>--dry-run</code>, previews changes.</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>--nan-fill &lt;value&gt;</code></td>
+<td>Replace NaN/NA/null with a value</td>
+</tr>
+<tr class="even">
+<td><code>--impute &lt;column&gt;</code></td>
+<td>Mean imputation for a column</td>
+</tr>
+<tr class="odd">
+<td><code>--drop &lt;column&gt;</code></td>
+<td>Drop a column</td>
+</tr>
+<tr class="even">
+<td><code>--rename &lt;from&gt; &lt;to&gt;</code></td>
+<td>Rename a column</td>
+</tr>
+<tr class="odd">
+<td><code>--replace &lt;col&gt; &lt;from&gt; &lt;to&gt;</code></td>
+<td>Replace exact values</td>
+</tr>
+<tr class="even">
+<td><code>--fill-empty &lt;col&gt; &lt;value&gt;</code></td>
+<td>Fill empty cells</td>
+</tr>
+<tr class="odd">
+<td><code>--plan</code></td>
+<td>Show transformation plan</td>
+</tr>
+<tr class="even">
+<td><code>--dry-run</code></td>
+<td>Preview without writing</td>
+</tr>
+<tr class="odd">
+<td><code>--in-place</code></td>
+<td>Modify file directly</td>
+</tr>
+<tr class="even">
+<td><code>-o, --output &lt;file&gt;</code></td>
+<td>Output file (default: stdout)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>When to use it:</strong> Quick data cleaning before feeding into a CJC-Lang pipeline. Fixing nulls and renaming columns without writing a script.</p>
+</section>
+<section id="seek" class="level3">
+<h3 class="anchored" data-anchor-id="seek">seek</h3>
+<p>Deterministic file discovery with content search.</p>
+<div class="sourceCode" id="cb13" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb13-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> seek . <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"*.cjcl"</span></span>
+<span id="cb13-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> seek ./data <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--type</span> csv <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--contains</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"revenue"</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--hash</span></span>
+<span id="cb13-3"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> seek . <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--min-size</span> 1MB <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--sort</span> size <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--manifest</span></span></code></pre></div>
+<p>Recursively finds files matching patterns with stable, sorted output. With <code>--contains</code>, searches file contents. With <code>--manifest</code>, outputs <code>&lt;hash&gt; &lt;size&gt; &lt;path&gt;</code> per line — useful for reproducibility manifests.</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>-t, --type &lt;type&gt;</code></td>
+<td>Filter by extension (cjcl, csv, snap, etc.)</td>
+</tr>
+<tr class="even">
+<td><code>--contains &lt;pattern&gt;</code></td>
+<td>Content search</td>
+</tr>
+<tr class="odd">
+<td><code>--min-size &lt;size&gt;</code></td>
+<td>Minimum file size (supports KB/MB)</td>
+</tr>
+<tr class="even">
+<td><code>--max-size &lt;size&gt;</code></td>
+<td>Maximum file size</td>
+</tr>
+<tr class="odd">
+<td><code>--max-depth &lt;N&gt;</code></td>
+<td>Recursion depth limit</td>
+</tr>
+<tr class="even">
+<td><code>--hash</code></td>
+<td>Show SHA-256 per file</td>
+</tr>
+<tr class="odd">
+<td><code>--manifest</code></td>
+<td>Output hash, size, path per line</td>
+</tr>
+<tr class="even">
+<td><code>--sort name\|size\|modified</code></td>
+<td>Sort mode</td>
+</tr>
+<tr class="odd">
+<td><code>--first &lt;N&gt;</code></td>
+<td>Limit results</td>
+</tr>
+<tr class="even">
+<td><code>--ignore-build-artifacts</code></td>
+<td>Skip target/, node_modules/, etc.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>When to use it:</strong> Building reproducibility manifests. Finding all data files in a project. Content search across a codebase.</p>
+</section>
+<section id="drift" class="level3">
+<h3 class="anchored" data-anchor-id="drift">drift</h3>
+<p>Compare two files with mathematical precision.</p>
+<div class="sourceCode" id="cb14" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb14-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> drift output_v1.csv output_v2.csv <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--tolerance</span> 1e-6</span>
+<span id="cb14-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> drift model_a.csv model_b.csv <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--stats-only</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--json</span></span>
+<span id="cb14-3"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> drift old.txt new.txt <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--text</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--fail-on-diff</span></span></code></pre></div>
+<p>Supports text (line-by-line), numeric (element-wise), CSV (cell-by-cell), and JSONL diff modes. Reports max deviation, mean deviation, Frobenius norm, and per-cell differences.</p>
+<table class="table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>--tolerance &lt;N&gt;</code></td>
+<td>Numeric tolerance (default: 0.0)</td>
+</tr>
+<tr class="even">
+<td><code>--text, --numeric, --csv, --jsonl</code></td>
+<td>Diff mode (auto-detected from extension)</td>
+</tr>
+<tr class="odd">
+<td><code>--max-diffs &lt;N&gt;</code></td>
+<td>Maximum differences to show (default: 50)</td>
+</tr>
+<tr class="even">
+<td><code>--fail-on-diff</code></td>
+<td>Exit 1 if any differences found</td>
+</tr>
+<tr class="odd">
+<td><code>--fail-on-schema-diff</code></td>
+<td>Exit 1 if column names differ</td>
+</tr>
+<tr class="even">
+<td><code>--summary-only</code></td>
+<td>Only show summary metrics</td>
+</tr>
+<tr class="odd">
+<td><code>--stats-only</code></td>
+<td>Only show statistical metrics</td>
+</tr>
+<tr class="even">
+<td><code>--report &lt;file&gt;</code></td>
+<td>Write full diff report to JSON</td>
+</tr>
+</tbody>
+</table>
+<p><strong>When to use it:</strong> Comparing model outputs between versions. Verifying that a code change didn’t alter numerical results. Regression testing in CI.</p>
+</section>
+<section id="forge" class="level3">
+<h3 class="anchored" data-anchor-id="forge">forge</h3>
+<p>Content-addressable pipeline runner.</p>
+<div class="sourceCode" id="cb15" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb15-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> forge run pipeline.cjcl</span>
+<span id="cb15-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> forge verify pipeline.cjcl abc123def</span>
+<span id="cb15-3"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> forge list</span>
+<span id="cb15-4"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> forge show abc123</span>
+<span id="cb15-5"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> forge clean</span></code></pre></div>
+<p>Executes a program, captures its output, and stores the result as a SHA-256 content-addressable artifact. With <code>verify</code>, checks that the current output matches an expected hash. Artifacts are stored in <code>.cjc-forge/</code>.</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Subcommand</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>run &lt;file&gt;</code></td>
+<td>Execute and store artifact</td>
+</tr>
+<tr class="even">
+<td><code>verify &lt;file&gt; &lt;hash&gt;</code></td>
+<td>Verify output matches hash</td>
+</tr>
+<tr class="odd">
+<td><code>list</code></td>
+<td>List cached artifacts</td>
+</tr>
+<tr class="even">
+<td><code>show &lt;hash-prefix&gt;</code></td>
+<td>Show artifact details</td>
+</tr>
+<tr class="odd">
+<td><code>clean</code></td>
+<td>Remove all cached artifacts</td>
+</tr>
+</tbody>
+</table>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>--seed &lt;N&gt;</code></td>
+<td>RNG seed (default: 42)</td>
+</tr>
+<tr class="even">
+<td><code>--cache-dir &lt;path&gt;</code></td>
+<td>Cache directory (default: <code>.cjc-forge/</code>)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>When to use it:</strong> Pinning pipeline outputs for reproducibility. Verifying that a computation produces the exact same output on a different machine.</p>
+<hr>
+</section>
+</section>
+<section id="inspection-diagnostics" class="level2">
+<h2 class="anchored" data-anchor-id="inspection-diagnostics">Inspection &amp; Diagnostics</h2>
+<p>Seven commands for understanding what your code does, how fast it runs, and whether your project is healthy.</p>
+<section id="inspect" class="level3">
+<h3 class="anchored" data-anchor-id="inspect">inspect</h3>
+<p>Deep inspection of structured files without execution.</p>
+<div class="sourceCode" id="cb16" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb16-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> inspect data.csv</span>
+<span id="cb16-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> inspect model.snap <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--deep</span></span>
+<span id="cb16-3"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> inspect results.csv <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--compare</span> expected.csv</span>
+<span id="cb16-4"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> inspect data.parquet <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--schema-only</span></span></code></pre></div>
+<p>Inspects <code>.snap</code>, CSV/TSV, JSONL, <code>.cjcl</code>, Parquet, Arrow, SQLite, and model files. Reports structure, shape, column types, null counts, and basic statistics. With <code>--deep</code>, computes variance, standard deviation, and unique value counts.</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>--deep</code></td>
+<td>Compute variance, unique values</td>
+</tr>
+<tr class="even">
+<td><code>--preview &lt;N&gt;</code></td>
+<td>Max preview lines (default: 5)</td>
+</tr>
+<tr class="odd">
+<td><code>--header-only</code></td>
+<td>Show header/schema only</td>
+</tr>
+<tr class="even">
+<td><code>--compare &lt;file&gt;</code></td>
+<td>Compare schemas/hashes with another file</td>
+</tr>
+<tr class="odd">
+<td><code>--hash</code></td>
+<td>Show SHA-256 hash</td>
+</tr>
+<tr class="even">
+<td><code>--manifest</code></td>
+<td>Output manifest format</td>
+</tr>
+</tbody>
+</table>
+<p><strong>When to use it:</strong> Understanding unfamiliar datasets. Verifying schema before piping into a pipeline. Quick sanity checks on model checkpoints.</p>
+</section>
+<section id="schema" class="level3">
+<h3 class="anchored" data-anchor-id="schema">schema</h3>
+<p>Infer and validate data schemas.</p>
+<div class="sourceCode" id="cb17" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb17-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> schema data.csv</span>
+<span id="cb17-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> schema data.csv <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--full</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--save</span> schema.json</span>
+<span id="cb17-3"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> schema data.csv <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--check</span> schema.json</span>
+<span id="cb17-4"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> schema data.csv <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--diff</span> old_schema.json</span></code></pre></div>
+<p>Infers column types (null, bool, int, float, string, mixed), null counts, and unique value counts from CSV/TSV/JSONL/Parquet/Arrow/SQLite data. With <code>--save</code>, persists the schema. With <code>--check</code>, validates data against a saved schema. With <code>--diff</code>, shows schema drift.</p>
+<table class="table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>--full</code></td>
+<td>Show type distributions and sample values</td>
+</tr>
+<tr class="even">
+<td><code>--save &lt;file&gt;</code></td>
+<td>Save schema to JSON</td>
+</tr>
+<tr class="odd">
+<td><code>--check &lt;file&gt;</code></td>
+<td>Validate against saved schema (exit 1 on mismatch)</td>
+</tr>
+<tr class="even">
+<td><code>--diff &lt;file&gt;</code></td>
+<td>Compare current vs saved schema</td>
+</tr>
+<tr class="odd">
+<td><code>--sample &lt;N&gt;</code></td>
+<td>Limit to first N rows</td>
+</tr>
+<tr class="even">
+<td><code>--strict</code></td>
+<td>Treat warnings as errors</td>
+</tr>
+</tbody>
+</table>
+<p><strong>When to use it:</strong> Detecting schema drift between pipeline runs. Validating incoming data before processing. Documenting dataset structure.</p>
+</section>
+<section id="trace" class="level3">
+<h3 class="anchored" data-anchor-id="trace">trace</h3>
+<p>Execution tracing across four phases: parse, static analysis, execution, and reporting.</p>
+<div class="sourceCode" id="cb18" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb18-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> trace program.cjcl</span>
+<span id="cb18-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> trace program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--ast</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--verbose</span></span></code></pre></div>
+<p>Reports parse time, execution time, AST structure (function/struct/statement counts), effect annotations, and runtime behavior (output lines, GC collections).</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>--ast</code></td>
+<td>Show AST details</td>
+</tr>
+<tr class="even">
+<td><code>--no-output</code></td>
+<td>Suppress program output</td>
+</tr>
+<tr class="odd">
+<td><code>-v, --verbose</code></td>
+<td>Show function list</td>
+</tr>
+</tbody>
+</table>
+<p><strong>When to use it:</strong> Understanding the structure of a program. Getting a quick overview of parse and execution cost.</p>
+</section>
+<section id="mem" class="level3">
+<h3 class="anchored" data-anchor-id="mem">mem</h3>
+<p>Runtime memory profiling.</p>
+<div class="sourceCode" id="cb19" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb19-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> mem program.cjcl</span>
+<span id="cb19-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> mem program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--runs</span> 5 <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--timeline</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--compare</span> eval<span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">|</span><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">mir</span></span></code></pre></div>
+<p>Executes a program and reports GC collection counts, heap object counts, output size, and execution time. With <code>--runs</code>, aggregates statistics across multiple executions. With <code>--compare</code>, runs both executors and shows side-by-side GC behavior.</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>-n, --runs &lt;N&gt;</code></td>
+<td>Number of runs (default: 1)</td>
+</tr>
+<tr class="even">
+<td><code>--nogc</code></td>
+<td>Run NoGC verification first</td>
+</tr>
+<tr class="odd">
+<td><code>--eval</code> / <code>--mir</code></td>
+<td>Choose executor</td>
+</tr>
+<tr class="even">
+<td><code>--peak-only</code></td>
+<td>Only report peak metrics</td>
+</tr>
+<tr class="odd">
+<td><code>--timeline</code></td>
+<td>Show GC collections per run</td>
+</tr>
+<tr class="even">
+<td><code>--compare eval\|mir</code></td>
+<td>Compare executor GC behavior</td>
+</tr>
+<tr class="odd">
+<td><code>--fail-on-gc</code></td>
+<td>Exit 1 if any GC collections occurred</td>
+</tr>
+<tr class="even">
+<td><code>--save-report &lt;file&gt;</code></td>
+<td>Save report as JSON</td>
+</tr>
+</tbody>
+</table>
+<p><strong>When to use it:</strong> Identifying GC pressure. Verifying that a <code>#[nogc]</code> function truly avoids allocations. Comparing memory behavior between executors.</p>
+</section>
+<section id="bench" class="level3">
+<h3 class="anchored" data-anchor-id="bench">bench</h3>
+<p>Performance benchmarking with statistical rigor.</p>
+<div class="sourceCode" id="cb20" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb20-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> bench program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--runs</span> 20 <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--warmup</span> 5</span>
+<span id="cb20-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> bench program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--compare</span> eval<span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">|</span><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">mir</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--markdown</span></span>
+<span id="cb20-3"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> bench program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--baseline</span> baseline.json <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--fail-if-slower-than</span> 10</span></code></pre></div>
+<p>Runs the program N times with warmup iterations and reports mean, median, min, max, stddev, coefficient of variation, P95, and throughput.</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>-n, --runs &lt;N&gt;</code></td>
+<td>Measured runs (default: 10)</td>
+</tr>
+<tr class="even">
+<td><code>--warmup &lt;N&gt;</code></td>
+<td>Warmup runs (default: 1)</td>
+</tr>
+<tr class="odd">
+<td><code>--mir</code> / <code>--eval</code></td>
+<td>Choose executor</td>
+</tr>
+<tr class="even">
+<td><code>--compare eval\|mir</code></td>
+<td>Side-by-side executor comparison</td>
+</tr>
+<tr class="odd">
+<td><code>--baseline &lt;file&gt;</code></td>
+<td>Load baseline for comparison</td>
+</tr>
+<tr class="even">
+<td><code>--save-baseline &lt;file&gt;</code></td>
+<td>Save results as baseline</td>
+</tr>
+<tr class="odd">
+<td><code>--fail-if-slower-than &lt;N&gt;</code></td>
+<td>Exit 1 if &gt;N% slower than baseline</td>
+</tr>
+<tr class="even">
+<td><code>--csv</code> / <code>--markdown</code></td>
+<td>Output as CSV or Markdown table</td>
+</tr>
+<tr class="odd">
+<td><code>-v, --verbose</code></td>
+<td>Show per-run times</td>
+</tr>
+</tbody>
+</table>
+<p><strong>When to use it:</strong> Measuring performance before and after a change. Comparing executor backends. Setting up CI performance gates.</p>
+</section>
+<section id="pack" class="level3">
+<h3 class="anchored" data-anchor-id="pack">pack</h3>
+<p>Bundle a program and its dependencies into a reproducible package.</p>
+<div class="sourceCode" id="cb21" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb21-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> pack pipeline.cjcl</span>
+<span id="cb21-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> pack pipeline.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--include</span> extra_data.csv <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--verify</span></span>
+<span id="cb21-3"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> pack <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--list</span> pipeline.pack</span>
+<span id="cb21-4"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> pack <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--repro-check</span> pipeline.pack</span></code></pre></div>
+<p>Auto-discovers dependencies by scanning source for string literals matching packable extensions (<code>.snap</code>, <code>.csv</code>, <code>.tsv</code>, <code>.json</code>, <code>.lock</code>, <code>.toml</code>). Creates a directory with a MANIFEST containing per-file SHA-256 hashes.</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>-o, --output &lt;dir&gt;</code></td>
+<td>Output directory</td>
+</tr>
+<tr class="even">
+<td><code>--include &lt;file&gt;</code></td>
+<td>Additional file to include (repeatable)</td>
+</tr>
+<tr class="odd">
+<td><code>--verify</code></td>
+<td>Verify manifest after packing</td>
+</tr>
+<tr class="even">
+<td><code>--dry-run</code></td>
+<td>Preview without writing</td>
+</tr>
+<tr class="odd">
+<td><code>--list &lt;dir.pack&gt;</code></td>
+<td>List package contents</td>
+</tr>
+<tr class="even">
+<td><code>--repro-check &lt;dir&gt;</code></td>
+<td>Re-hash and verify against manifest</td>
+</tr>
+<tr class="odd">
+<td><code>--manifest-only</code></td>
+<td>Output MANIFEST only</td>
+</tr>
+</tbody>
+</table>
+<p><strong>When to use it:</strong> Sharing reproducible computations. Archiving pipeline artifacts. Verifying that a package hasn’t been tampered with.</p>
+</section>
+<section id="doctor" class="level3">
+<h3 class="anchored" data-anchor-id="doctor">doctor</h3>
+<p>Project-wide diagnostics.</p>
+<div class="sourceCode" id="cb22" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb22-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> doctor</span>
+<span id="cb22-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> doctor ./my_project <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--fix</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--dry-run</span></span>
+<span id="cb22-3"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> doctor <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--strict</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--report</span> findings.json</span></code></pre></div>
+<p>Scans a directory for: parse errors, type errors, corrupt <code>.snap</code> files, ragged CSV rows, nondeterministic patterns (<code>HashMap</code>, <code>HashSet</code>, <code>rand()</code>, <code>time()</code>), large files, malformed JSONL, and invalid Parquet files.</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>--fix</code></td>
+<td>Attempt automatic fixes</td>
+</tr>
+<tr class="even">
+<td><code>--dry-run</code></td>
+<td>Preview fixes without applying</td>
+</tr>
+<tr class="odd">
+<td><code>--strict</code></td>
+<td>Exit 1 on warnings</td>
+</tr>
+<tr class="even">
+<td><code>--category &lt;type&gt;</code></td>
+<td>Filter by finding category</td>
+</tr>
+<tr class="odd">
+<td><code>--report &lt;file&gt;</code></td>
+<td>Save findings to JSON</td>
+</tr>
+<tr class="even">
+<td><code>--summary-only</code></td>
+<td>Only show summary counts</td>
+</tr>
+<tr class="odd">
+<td><code>--fail-on &lt;level&gt;</code></td>
+<td>Exit 1 at severity threshold</td>
+</tr>
+</tbody>
+</table>
+<p><strong>When to use it:</strong> Pre-commit health check. CI gate for project hygiene. Onboarding — run <code>doctor</code> to understand a new project’s state.</p>
+<hr>
+</section>
+</section>
+<section id="compiler-visibility-analysis" class="level2">
+<h2 class="anchored" data-anchor-id="compiler-visibility-analysis">Compiler Visibility &amp; Analysis</h2>
+<p>Ten commands that expose the compiler’s internals — intermediate representations, memory verification, numerical analysis, and dual-executor parity.</p>
+<section id="emit" class="level3">
+<h3 class="anchored" data-anchor-id="emit">emit</h3>
+<p>Dump intermediate representations at any pipeline stage.</p>
+<div class="sourceCode" id="cb23" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb23-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> emit program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--stage</span> ast</span>
+<span id="cb23-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> emit program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--stage</span> hir</span>
+<span id="cb23-3"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> emit program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--stage</span> mir</span>
+<span id="cb23-4"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> emit program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--stage</span> mir <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--opt</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--diff</span></span></code></pre></div>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>-s, --stage ast\|hir\|mir</code></td>
+<td>Pipeline stage (default: <code>mir</code>)</td>
+</tr>
+<tr class="even">
+<td><code>--opt</code></td>
+<td>Show optimized MIR</td>
+</tr>
+<tr class="odd">
+<td><code>--diff</code></td>
+<td>Show both unoptimized and optimized MIR</td>
+</tr>
+</tbody>
+</table>
+<p><strong>When to use it:</strong> Understanding what the compiler does to your code. Debugging unexpected behavior by inspecting the IR. Verifying that optimizations preserve semantics.</p>
+</section>
+<section id="explain" class="level3">
+<h3 class="anchored" data-anchor-id="explain">explain</h3>
+<p>Show the desugared form of a program after HIR lowering.</p>
+<div class="sourceCode" id="cb24" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb24-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> explain program.cjcl</span>
+<span id="cb24-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> explain program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--verbose</span></span></code></pre></div>
+<p>Shows function signatures, effect annotations, struct definitions, and a summary table. With <code>--verbose</code>, shows full HIR bodies. Useful for understanding what syntactic sugar (for-loops, match expressions, closures) compiles down to.</p>
+</section>
+<section id="gc" class="level3">
+<h3 class="anchored" data-anchor-id="gc">gc</h3>
+<p>Dedicated GC analysis with allocation timeline.</p>
+<div class="sourceCode" id="cb25" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb25-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> gc program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--runs</span> 5 <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--verbose</span></span></code></pre></div>
+<p>Executes the program multiple times and reports GC pause count, collections per run, heap object peaks, COW copies, and execution time. Shows whether GC behavior is stable across runs.</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>-n, --runs &lt;N&gt;</code></td>
+<td>Number of runs (default: 3)</td>
+</tr>
+<tr class="even">
+<td><code>-v, --verbose</code></td>
+<td>Show allocation timeline</td>
+</tr>
+</tbody>
+</table>
+<p><strong>When to use it:</strong> Identifying allocation hotspots. Verifying GC stability for determinism.</p>
+</section>
+<section id="nogc" class="level3">
+<h3 class="anchored" data-anchor-id="nogc">nogc</h3>
+<p>Static verification that <code>#[nogc]</code> functions don’t allocate.</p>
+<div class="sourceCode" id="cb26" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb26-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> nogc program.cjcl</span>
+<span id="cb26-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> nogc program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--verbose</span></span></code></pre></div>
+<p>Lists all functions with their <code>#[nogc]</code> annotation status and runs the NoGC verifier. Reports per-function PASS/FAIL with violation details. Exit code 1 if any violations found.</p>
+<p><strong>When to use it:</strong> Verifying that performance-critical functions avoid GC. Required for functions that will run in the NoGC execution mode.</p>
+</section>
+<section id="audit" class="level3">
+<h3 class="anchored" data-anchor-id="audit">audit</h3>
+<p>Static analysis for floating-point anti-patterns.</p>
+<div class="sourceCode" id="cb27" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb27-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> audit program.cjcl</span>
+<span id="cb27-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> audit program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--strict</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--category</span> summation</span>
+<span id="cb27-3"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> audit program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--baseline</span> baseline.json <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--report</span> findings.json</span></code></pre></div>
+<p>Detects: naive summation in loops (suggests <code>kahan_sum()</code>), float equality comparisons (suggests <code>approx_eq()</code>), unguarded division, and potential catastrophic cancellation. No execution required — purely static analysis.</p>
+<table class="table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>--strict</code></td>
+<td>Treat INFO as warnings, warnings as errors</td>
+</tr>
+<tr class="even">
+<td><code>--category &lt;type&gt;</code></td>
+<td>Filter: <code>summation</code>, <code>float-eq</code>, <code>division</code>, <code>cancellation</code></td>
+</tr>
+<tr class="odd">
+<td><code>--baseline &lt;file&gt;</code></td>
+<td>Only report new findings</td>
+</tr>
+<tr class="even">
+<td><code>--report &lt;file&gt;</code></td>
+<td>Save findings as JSON</td>
+</tr>
+<tr class="odd">
+<td><code>--suggest-only</code></td>
+<td>Only show suggestions</td>
+</tr>
+</tbody>
+</table>
+<p><strong>When to use it:</strong> Code review for numerical code. CI gate for floating-point hygiene. Onboarding — audit unfamiliar numerical code before trusting its output.</p>
+</section>
+<section id="precision" class="level3">
+<h3 class="anchored" data-anchor-id="precision">precision</h3>
+<p>Analyze whether f64 precision matters for your output.</p>
+<div class="sourceCode" id="cb28" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb28-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> precision program.cjcl</span>
+<span id="cb28-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> precision program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--epsilon</span> 1e-10 <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--fail-on-instability</span></span></code></pre></div>
+<p>Executes the program, extracts numeric values from output, compares f64 against f32-truncated values, and reports relative error per value. Verdict: STABLE (within epsilon) or SENSITIVE (exceeds epsilon).</p>
+<table class="table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>--epsilon &lt;N&gt;</code></td>
+<td>Comparison threshold (default: ~1.19e-7, f32 epsilon)</td>
+</tr>
+<tr class="even">
+<td><code>--fail-on-instability</code></td>
+<td>Exit 1 if any value exceeds epsilon</td>
+</tr>
+<tr class="odd">
+<td><code>--summary-only</code></td>
+<td>Only show pass/fail</td>
+</tr>
+<tr class="even">
+<td><code>--report &lt;file&gt;</code></td>
+<td>Save report as JSON</td>
+</tr>
+</tbody>
+</table>
+<p><strong>When to use it:</strong> Deciding whether f32 is sufficient for a workload. Identifying precision-sensitive computations. CI gate for numerical stability.</p>
+</section>
+<section id="lock" class="level3">
+<h3 class="anchored" data-anchor-id="lock">lock</h3>
+<p>Generate and verify deterministic lockfiles.</p>
+<div class="sourceCode" id="cb29" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb29-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> lock program.cjcl</span>
+<span id="cb29-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> lock program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--verify</span></span>
+<span id="cb29-3"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> lock program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--show</span></span>
+<span id="cb29-4"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> lock program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--diff</span></span>
+<span id="cb29-5"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> lock program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--executor</span> mir <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--update</span></span></code></pre></div>
+<p>Creates a lockfile containing: source SHA-256 hash, seed, executor version, platform, and expected output SHA-256 hash. With <code>--verify</code>, checks that the current execution matches the recorded lockfile.</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>--verify</code></td>
+<td>Verify current run against lockfile</td>
+</tr>
+<tr class="even">
+<td><code>--update</code></td>
+<td>Regenerate lockfile</td>
+</tr>
+<tr class="odd">
+<td><code>--show</code></td>
+<td>Display lockfile contents</td>
+</tr>
+<tr class="even">
+<td><code>--diff</code></td>
+<td>Show field-by-field differences</td>
+</tr>
+<tr class="odd">
+<td><code>--executor eval\|mir</code></td>
+<td>Which executor (default: eval)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>When to use it:</strong> Pinning expected output for CI. Detecting when a code or platform change alters results. Cross-platform reproducibility verification.</p>
+</section>
+<section id="parity" class="level3">
+<h3 class="anchored" data-anchor-id="parity">parity</h3>
+<p>Verify that both executors produce identical results.</p>
+<div class="sourceCode" id="cb30" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb30-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> parity program.cjcl</span>
+<span id="cb30-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> parity program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--verbose</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--explain-mismatch</span></span>
+<span id="cb30-3"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> parity program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--function</span> my_function <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--save-report</span> parity.json</span></code></pre></div>
+<p>Runs both the AST interpreter (v1) and MIR executor (v2) with the same seed and compares stdout, exit status, return value, and GC collections.</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>-v, --verbose</code></td>
+<td>Show output from both executors</td>
+</tr>
+<tr class="even">
+<td><code>--explain-mismatch</code></td>
+<td>Show first divergent line with context</td>
+</tr>
+<tr class="odd">
+<td><code>--function &lt;name&gt;</code></td>
+<td>Only test a specific function</td>
+</tr>
+<tr class="even">
+<td><code>--save-report &lt;file&gt;</code></td>
+<td>Save report as JSON</td>
+</tr>
+</tbody>
+</table>
+<p><strong>When to use it:</strong> After implementing a new language feature. Before shipping a compiler change. CI gate for executor equivalence.</p>
+</section>
+<section id="test" class="level3">
+<h3 class="anchored" data-anchor-id="test">test</h3>
+<p>Native test runner for CJC-Lang test functions.</p>
+<div class="sourceCode" id="cb31" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb31-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> test program.cjcl</span>
+<span id="cb31-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> test program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--filter</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"matrix"</span></span>
+<span id="cb31-3"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> test program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--verbose</span></span></code></pre></div>
+<p>Discovers functions whose name starts with <code>test_</code> (or decorated with <code>@test</code>), runs them in alphabetical order with a fresh interpreter per test, and reports pass/fail with timing.</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>--filter &lt;pattern&gt;</code></td>
+<td>Only run matching tests</td>
+</tr>
+<tr class="even">
+<td><code>-v, --verbose</code></td>
+<td>Show test output and errors</td>
+</tr>
+</tbody>
+</table>
+<p><strong>When to use it:</strong> Running tests written in CJC-Lang itself. Quick smoke tests without a Rust test harness.</p>
+</section>
+<section id="ci" class="level3">
+<h3 class="anchored" data-anchor-id="ci">ci</h3>
+<p>Full CI diagnostic suite — runs five checks in sequence.</p>
+<div class="sourceCode" id="cb32" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb32-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> ci</span>
+<span id="cb32-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> ci ./my_project <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--strict</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--json</span></span></code></pre></div>
+<p>Orchestrates: <code>doctor</code> (parse/type errors) → <code>proof</code> (determinism) → <code>parity</code> (dual-executor) → <code>test</code> (test functions) → <code>nogc</code> (static verification). Reports per-step pass/fail.</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>--seed &lt;N&gt;</code></td>
+<td>Base RNG seed (default: 42)</td>
+</tr>
+<tr class="even">
+<td><code>--strict</code></td>
+<td>Exit 1 on warnings</td>
+</tr>
+</tbody>
+</table>
+<p><strong>When to use it:</strong> One command in your CI pipeline that checks everything. The nuclear option for project health.</p>
+<hr>
+</section>
+</section>
+<section id="putting-it-together" class="level2">
+<h2 class="anchored" data-anchor-id="putting-it-together">Putting It Together</h2>
+<p>The real power of the CLI is in composition. Here are four workflows I use regularly:</p>
+<section id="i-just-wrote-new-code" class="level3">
+<h3 class="anchored" data-anchor-id="i-just-wrote-new-code">“I just wrote new code”</h3>
+<div class="sourceCode" id="cb33" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb33-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> check program.cjcl          <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Type errors?</span></span>
+<span id="cb33-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> run program.cjcl             <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Does it work?</span></span>
+<span id="cb33-3"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> parity program.cjcl          <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Same result on both executors?</span></span></code></pre></div>
+</section>
+<section id="my-pipeline-is-slow" class="level3">
+<h3 class="anchored" data-anchor-id="my-pipeline-is-slow">“My pipeline is slow”</h3>
+<div class="sourceCode" id="cb34" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb34-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> trace program.cjcl           <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Where does time go?</span></span>
+<span id="cb34-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> mem program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--timeline</span>  <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># GC pressure?</span></span>
+<span id="cb34-3"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> bench program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--runs</span> 20 <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--compare</span> eval<span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">|</span><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">mir</span>  <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Which executor is faster?</span></span></code></pre></div>
+</section>
+<section id="im-shipping-a-reproducible-artifact" class="level3">
+<h3 class="anchored" data-anchor-id="im-shipping-a-reproducible-artifact">“I’m shipping a reproducible artifact”</h3>
+<div class="sourceCode" id="cb35" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb35-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> lock program.cjcl            <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Pin expected output</span></span>
+<span id="cb35-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> pack program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--verify</span>   <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Bundle with manifest</span></span>
+<span id="cb35-3"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> proof program.cjcl <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--runs</span> 10 <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--seeds</span> 42,123,999  <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Determinism across seeds</span></span></code></pre></div>
+</section>
+<section id="the-numbers-dont-look-right" class="level3">
+<h3 class="anchored" data-anchor-id="the-numbers-dont-look-right">“The numbers don’t look right”</h3>
+<div class="sourceCode" id="cb36" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb36-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> audit program.cjcl           <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Float anti-patterns?</span></span>
+<span id="cb36-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> precision program.cjcl       <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># f64 vs f32 sensitivity?</span></span>
+<span id="cb36-3"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> drift output_v1.csv output_v2.csv <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--tolerance</span> 1e-6  <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># What changed?</span></span></code></pre></div>
+<hr>
+</section>
+</section>
+<section id="global-flags" class="level2">
+<h2 class="anchored" data-anchor-id="global-flags">Global Flags</h2>
+<p>These flags work with any command:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Flag</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>--seed &lt;N&gt;</code></td>
+<td>RNG seed (default: 42)</td>
+</tr>
+<tr class="even">
+<td><code>--reproducible</code></td>
+<td>Enable reproducibility mode</td>
+</tr>
+<tr class="odd">
+<td><code>--time</code></td>
+<td>Print execution time to stderr</td>
+</tr>
+<tr class="even">
+<td><code>--color</code> / <code>--no-color</code></td>
+<td>Control ANSI color output</td>
+</tr>
+<tr class="odd">
+<td><code>--diagnostic-format rich\|short</code></td>
+<td>Error display format</td>
+</tr>
+<tr class="even">
+<td><code>--help, -h</code></td>
+<td>Print help</td>
+</tr>
+<tr class="odd">
+<td><code>--version, -V</code></td>
+<td>Print version</td>
+</tr>
+</tbody>
+</table>
+<div class="callout callout-style-simple callout-note no-icon">
+<div class="callout-body d-flex">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-body-container">
+<p>CJC-Lang is open source and available on <a href="https://crates.io/crates/cjc-lang">crates.io</a>. All 31 commands are included in the single <code>cjcl</code> binary. Run <code>cjcl &lt;command&gt; --help</code> for command-specific help.</p>
+</div>
+</div>
+</div>
+
+
+</section>
+
+ ]]></description>
+  <category>CJC-Lang</category>
+  <category>CLI</category>
+  <category>reference</category>
+  <category>tools</category>
+  <category>data-engineering</category>
+  <guid>https://adamezzat1.github.io/blog/posts/cjcl-cli-reference/index.html</guid>
+  <pubDate>Mon, 13 Apr 2026 07:00:00 GMT</pubDate>
+</item>
 <item>
   <title>TidyView: A Database Engine in Disguise</title>
   <dc:creator>Adam Ezzat</dc:creator>
