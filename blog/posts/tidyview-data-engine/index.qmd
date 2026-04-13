@@ -8,7 +8,7 @@ categories: [CJC-Lang, data, databases, determinism, architecture, benchmarks]
 description: "TidyView is CJC-Lang's data manipulation system. It uses a tidyverse-style API backed by database-engine internals — columnar storage, bitmask filtering, predicate pushdown, and zone maps — to deliver deterministic, auditable data pipelines with zero hidden mutations. Includes worked examples, audit walkthroughs, and a 38-test benchmark suite proving every architectural claim."
 ---
 
-<div class="reading-time">&#128337; ~35 min read</div>
+<div class="reading-time">&#128337; ~30 min read</div>
 
 <div class="stats-row">
 <div class="stat"><span class="number">3</span><span class="stat-label">layers</span></div>
@@ -30,11 +30,11 @@ But then I needed to handle data. Filter a table. Group rows. Compute aggregates
 
 The obvious move was to reach for an existing DataFrame library. But when I looked at what's available, I kept running into the same problems:
 
-**Hash-based grouping.** Pandas and Polars use hash maps to group rows. Hash maps are fast, but their iteration order depends on a hash seed that varies between runs. Group your data twice on the same machine and the rows might come back in a different order. That breaks determinism.
+**Hash-based grouping.** Most DataFrame libraries — including Pandas and Polars — use hash maps to group rows. Hash maps are fast, but their iteration order may depend on internal hash seeds or execution strategy. Depending on the configuration, grouping the same data twice can produce rows in a different order. That makes bit-identical reproducibility difficult to guarantee.
 
-**Naive floating-point reduction.** Call `sum()` on a million floats in Pandas. The result depends on the order of accumulation. Add the numbers in a different order and you get different rounding errors. Small differences, but they compound — and they mean "same data, different result" depending on implementation details.
+**Floating-point reduction order.** Call `sum()` on a million floats in Pandas. The result depends on the order of accumulation. Add the numbers in a different order and you get different rounding errors. Small differences, but they compound — and they mean "same data, different result" depending on implementation details. (Polars and other libraries may use more sophisticated reduction strategies, but the result can still vary across execution modes or platforms.)
 
-**Hidden parallelism.** Polars uses Rayon for parallel execution. Great for speed, but thread scheduling is non-deterministic. The result of a parallel aggregation can vary between runs even with identical input.
+**Parallel scheduling.** Libraries that use thread pools for parallel execution (Polars uses Rayon, for example) gain significant throughput. But thread scheduling is inherently non-deterministic, which means parallel aggregation can introduce ordering variation between runs — even with identical input. Whether this matters depends on the workload, but for bit-identical reproducibility it's a concern.
 
 **Aliasing mutations.** Pandas has an entire warning category (`SettingWithCopyWarning`) dedicated to the fact that modifying a filtered subset might or might not modify the original DataFrame. Whether it does depends on internal memory layout decisions that are invisible to the user.
 
@@ -53,6 +53,31 @@ TidyView is a three-layer data manipulation system:
 The API surface is modeled on R's dplyr — `filter`, `select`, `mutate`, `group_by`, `summarise`, `arrange`, `join`. If you've used the tidyverse, you already know the vocabulary.
 
 But the implementation borrows from a different tradition entirely: **analytical databases.**
+
+### How Data Flows Through a TidyView Pipeline
+
+```{mermaid}
+%%| fig-width: 7
+flowchart TD
+    A["CSV / Data Source"] --> B["Base DataFrame<br/><i>immutable, Rc-shared</i>"]
+    B --> C["TidyView<br/><i>zero-copy lens</i>"]
+    C --> D["filter( )<br/><i>bitmask A — no data copied</i>"]
+    D --> E["filter( )<br/><i>bitmask B — AND with A</i>"]
+    E --> F["group_by( )<br/><i>BTreeMap index over visible rows</i>"]
+    F --> G["summarise( )<br/><i>Kahan reduction per group</i>"]
+    G --> H["Materialized Result<br/><i>TidyFrame — new data</i>"]
+
+    style A fill:#f9f9f9,stroke:#333
+    style B fill:#e8f4fd,stroke:#2196F3,stroke-width:2px
+    style C fill:#e8f4fd,stroke:#2196F3
+    style D fill:#fff3e0,stroke:#FF9800
+    style E fill:#fff3e0,stroke:#FF9800
+    style F fill:#f3e5f5,stroke:#9C27B0
+    style G fill:#f3e5f5,stroke:#9C27B0
+    style H fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+```
+
+Every step from the base DataFrame through the filters shares the same underlying data. New memory is only allocated for bitmasks (orange) and the final materialized result (green). The original data (blue) is never modified.
 
 ## The Database Connection
 
@@ -241,41 +266,9 @@ Same input, same result, every time. Not approximately correct — exactly corre
 
 This is where the architecture pays off in practice. When something goes wrong in a data pipeline, the question is always: *where did the data go wrong?*
 
-In TidyView, every intermediate step is inspectable because the original data is never modified. Here's a concrete example:
+In TidyView, every intermediate step is inspectable because the original data is never modified. Every `filter` produces a bitmask you can inspect — count the set bits, iterate them to see which rows survived, AND two masks to see which rows passed both filters. Every `group_by` produces a group index with key values and row indices. And the original data stays intact behind a shared reference, so you can always go back and check it.
 
-```
-// Load data
-let sales: Any = read_csv("quarterly_sales.csv");
-
-// Build pipeline
-let west: Any = filter(sales, col("region") == "West");
-let big: Any = filter(west, col("revenue") > 1000.0);
-let grouped: Any = group_by(big, "product");
-let summary: Any = summarise(grouped, tidy_sum(col("revenue")));
-```
-
-Suppose `summary` shows unexpected numbers. You can audit backward:
-
-**Step 1: Check the grouped view.** How many groups formed? What rows are in each group? The group index is inspectable — it stores the key values and the base-frame row indices for every group.
-
-**Step 2: Check the filtered view.** How many rows survived both filters? The bitmask tells you exactly which base-frame rows are visible. You can compare the count against your expectation.
-
-**Step 3: Check the original data.** It's still there, unchanged, behind the shared reference. The CSV was loaded once, and no operation modified it. You can re-inspect it to see if the data itself was the problem (wrong CSV encoding, unexpected column types, etc.).
-
-In a traditional mutable DataFrame workflow, step 3 is impossible — the original data was overwritten by the first mutation. In TidyView, the original is always available because it was never touched.
-
-### The Bitmask as Audit Trail
-
-The bitmask isn't just a performance optimization. It's a record of what happened.
-
-After `filter(col("region") == "West")`, the bitmask contains a 1 for every row where region is "West" and a 0 for every row where it isn't. You can:
-
-- Count the 1s to see how many rows passed
-- Iterate the set bits to see *which* rows passed (by base-frame index)
-- AND two bitmasks to see which rows passed *both* filters
-- Compare the mask against the original data to verify the filter logic
-
-This is fundamentally different from a system where `df = df[df.region == "West"]` discards the filtered-out rows. In that system, if the filter was wrong, the evidence is gone. In TidyView, the evidence is the bitmask, and the original data is still there to check against.
+This is fundamentally different from a system where `df = df[df.region == "West"]` discards the filtered-out rows. In that system, if the filter was wrong, the evidence is gone. In TidyView, the evidence is the bitmask, and the original data is still there to check against. (A full worked example with concrete row indices is in the [Auditing a Pipeline](#auditing-a-pipeline-a-worked-example) section below.)
 
 ### Error Messages That Point to the Problem
 
@@ -303,15 +296,15 @@ But Polars makes different trade-offs than TidyView:
 
 | | Polars | TidyView |
 |---|---|---|
-| **Grouping** | Hash-based (fast, non-deterministic order) | BTreeMap (deterministic first-occurrence order) |
-| **Summation** | Naive (fast, platform-dependent rounding) | Kahan compensated (deterministic, bit-identical) |
-| **Parallelism** | Rayon (fast, non-deterministic scheduling) | Single-threaded (deterministic, no scheduling variance) |
+| **Grouping** | Hash-based (fast; order may vary by execution mode) | BTreeMap (deterministic first-occurrence order) |
+| **Summation** | Optimized reduction (fast; may vary across platforms) | Kahan compensated (deterministic, bit-identical) |
+| **Parallelism** | Rayon thread pool (high throughput) | Single-threaded (deterministic, no scheduling variance) |
 | **Null model** | Nullable everywhere (Arrow validity bitmaps) | Null-free by default, `NullCol` only where needed |
 | **Sampling** | System RNG | Seeded LCG-based Fisher-Yates |
 
-None of Polars' trade-offs are wrong. They're optimizing for throughput. TidyView is optimizing for **reproducibility** — the guarantee that the same pipeline on the same data always produces the same result, bit for bit, on any machine.
+None of Polars' trade-offs are wrong — and Polars is significantly faster for most workloads. It's a production-grade library optimized for throughput. TidyView is optimizing for a different property: **reproducibility** — the guarantee that the same pipeline on the same data always produces the same result, bit for bit, on any machine. TidyView will be slower than Polars on almost any benchmark. That's the expected cost of determinism.
 
-When your work requires an audit trail — when a regulator, a reviewer, or future-you needs to verify that a result is correct — that guarantee matters more than raw speed.
+When your work requires an audit trail — when a regulator, a reviewer, or future-you needs to verify that a result is correct — that guarantee can matter more than raw speed.
 
 ## TidyView in Practice
 
@@ -345,7 +338,7 @@ let result = view
 print(result.nrows());   // → 2 (Eng and Sales groups)
 ```
 
-This is a three-step pipeline: filter rows where salary exceeds 85, group surviving rows by department, then compute count and mean per group. The filter produces a bitmask. The group-by reads through that bitmask to build its index. The summarise collapses each group into one row. At no point is the original CSV data modified.
+This is a three-step pipeline: filter rows where salary exceeds 85, group surviving rows by department, then compute count and mean per group. The filter produces a bitmask; the group-by reads through it to build its index; the summarise collapses each group into one row.
 
 ### Adding Computed Columns
 
@@ -416,9 +409,7 @@ Widget revenue: row 0 (150) + row 4 (300) = 450. Gadget revenue: row 1 (200) + r
 
 ### Step 4: Is the original data intact?
 
-Yes. `view.nrows()` still returns 8. The CSV data behind the `Rc<DataFrame>` was never touched. You can re-filter, re-group, or inspect any column at any time.
-
-This is the audit trail that immutable views give you for free. Every filter is a bitmask you can inspect. Every group is an index you can enumerate. Every aggregation reads from the original data through those indices. If the final number is wrong, you can trace backward through the chain and find exactly where your understanding diverged from reality.
+Yes. `view.nrows()` still returns 8. You can re-filter, re-group, or inspect any column at any time. If the final number is wrong, you trace backward through bitmasks and group indices until you find where your understanding diverged from reality.
 
 ### Catching Mistakes at Compile Time
 
@@ -457,6 +448,10 @@ The filter predicate must evaluate to Bool. Arithmetic on a string column, or a 
 ## Benchmark Results
 
 The claims above — bitmask filtering is cheap, chained filters don't copy data, determinism holds across runs — are testable. I wrote a 38-test benchmark suite that measures TidyView's performance and verifies its architectural guarantees. Here are the results, run on my machine in release mode.
+
+::: {.callout-note appearance="minimal"}
+**A note on context.** These benchmarks measure TidyView against itself — lazy vs. eager, scaling behavior, determinism proofs. They are *not* comparative benchmarks against Polars, DuckDB, or Pandas. TidyView is single-threaded and prioritizes determinism over throughput; it will be slower than production-optimized libraries on raw performance. The goal here is to verify that TidyView's architectural claims hold, not to claim speed parity with tools that make different trade-offs.
+:::
 
 ### A. Filter Microbenchmarks
 
@@ -578,7 +573,7 @@ Going from 4 groups to 50,000 groups increases time by about 4.7×. The BTreeMap
 | Sort stability (equal keys preserve insertion order) | **Stable** |
 | Group order (first-occurrence across 5 runs) | **Deterministic** |
 
-**What this proves:** The determinism guarantee isn't aspirational — it's measured. Ten runs of the same pipeline produce identical floating-point results down to the last bit. Kahan summation ensures that `sum`, `mean`, `sd`, and `median` all return the same value regardless of how many times you run the pipeline. The sort is stable (equal elements preserve their original order), and groups always appear in first-occurrence order. These properties hold because TidyView uses BTreeMap (not HashMap), Kahan summation (not naive accumulation), and stable sort (not quicksort).
+**What this proves:** The determinism guarantee isn't aspirational — it's measured. Ten runs of the same pipeline produce identical floating-point results down to the last bit. The sort is stable (equal elements preserve their original order), and groups always appear in first-occurrence order.
 
 ### I. Memory Budget
 
@@ -603,7 +598,7 @@ These are not performance benchmarks — they're correctness proofs that verify 
 | **Deterministic sampling** | `slice_sample(100, seed=42)` selects the same 100 rows across 5 runs. |
 | **Projection inspection** | `select(["b", "d"])` on a 4-column table sets projection indices to [1, 3]. Original table still reports 4 columns. |
 
-**What this proves:** Every intermediate state in a TidyView pipeline is inspectable. Bitmasks tell you which rows survived. Group indices tell you which rows belong to each group. Projection maps tell you which columns are visible. The original data is always intact. And the type system prevents the most common data pipeline mistakes — typos in column names, order-dependent mutations, aliasing bugs — before they produce wrong numbers.
+**What this proves:** Every architectural claim made earlier in this post — bitmask traceability, group ordering, snapshot semantics, copy-on-write isolation, deterministic sampling — is verified by a concrete test with concrete numbers.
 
 ## The One-Sentence Summary
 

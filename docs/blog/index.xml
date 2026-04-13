@@ -20,7 +20,7 @@
 
 
 <div class="reading-time">
-🕑 ~35 min read
+🕑 ~30 min read
 </div>
 <div class="stats-row">
 <div class="stat">
@@ -54,9 +54,9 @@ TL;DR
 <p>When I started building <a href="../../../blog/posts/introducing-cjc/index.html">CJC-Lang</a>, the core promise was simple: <strong>same seed, same output, always.</strong> Every part of the language enforces this — ordered collections, Kahan summation, seeded RNG, no FMA in SIMD kernels.</p>
 <p>But then I needed to handle data. Filter a table. Group rows. Compute aggregates. Join two datasets.</p>
 <p>The obvious move was to reach for an existing DataFrame library. But when I looked at what’s available, I kept running into the same problems:</p>
-<p><strong>Hash-based grouping.</strong> Pandas and Polars use hash maps to group rows. Hash maps are fast, but their iteration order depends on a hash seed that varies between runs. Group your data twice on the same machine and the rows might come back in a different order. That breaks determinism.</p>
-<p><strong>Naive floating-point reduction.</strong> Call <code>sum()</code> on a million floats in Pandas. The result depends on the order of accumulation. Add the numbers in a different order and you get different rounding errors. Small differences, but they compound — and they mean “same data, different result” depending on implementation details.</p>
-<p><strong>Hidden parallelism.</strong> Polars uses Rayon for parallel execution. Great for speed, but thread scheduling is non-deterministic. The result of a parallel aggregation can vary between runs even with identical input.</p>
+<p><strong>Hash-based grouping.</strong> Most DataFrame libraries — including Pandas and Polars — use hash maps to group rows. Hash maps are fast, but their iteration order may depend on internal hash seeds or execution strategy. Depending on the configuration, grouping the same data twice can produce rows in a different order. That makes bit-identical reproducibility difficult to guarantee.</p>
+<p><strong>Floating-point reduction order.</strong> Call <code>sum()</code> on a million floats in Pandas. The result depends on the order of accumulation. Add the numbers in a different order and you get different rounding errors. Small differences, but they compound — and they mean “same data, different result” depending on implementation details. (Polars and other libraries may use more sophisticated reduction strategies, but the result can still vary across execution modes or platforms.)</p>
+<p><strong>Parallel scheduling.</strong> Libraries that use thread pools for parallel execution (Polars uses Rayon, for example) gain significant throughput. But thread scheduling is inherently non-deterministic, which means parallel aggregation can introduce ordering variation between runs — even with identical input. Whether this matters depends on the workload, but for bit-identical reproducibility it’s a concern.</p>
 <p><strong>Aliasing mutations.</strong> Pandas has an entire warning category (<code>SettingWithCopyWarning</code>) dedicated to the fact that modifying a filtered subset might or might not modify the original DataFrame. Whether it does depends on internal memory layout decisions that are invisible to the user.</p>
 <p>None of these are bugs. They’re design trade-offs made by libraries that prioritize speed over reproducibility. But they break CJC-Lang’s core contract. So I built something else.</p>
 </section>
@@ -96,6 +96,37 @@ TL;DR
 </table>
 <p>The API surface is modeled on R’s dplyr — <code>filter</code>, <code>select</code>, <code>mutate</code>, <code>group_by</code>, <code>summarise</code>, <code>arrange</code>, <code>join</code>. If you’ve used the tidyverse, you already know the vocabulary.</p>
 <p>But the implementation borrows from a different tradition entirely: <strong>analytical databases.</strong></p>
+<section id="how-data-flows-through-a-tidyview-pipeline" class="level3">
+<h3 class="anchored" data-anchor-id="how-data-flows-through-a-tidyview-pipeline">How Data Flows Through a TidyView Pipeline</h3>
+<div class="cell" data-fig-width="7">
+<div class="cell-output-display">
+<div>
+<div>
+
+<pre class="mermaid mermaid-js">flowchart TD
+    A["CSV / Data Source"] --&gt; B["Base DataFrame&lt;br/&gt;&lt;i&gt;immutable, Rc-shared&lt;/i&gt;"]
+    B --&gt; C["TidyView&lt;br/&gt;&lt;i&gt;zero-copy lens&lt;/i&gt;"]
+    C --&gt; D["filter( )&lt;br/&gt;&lt;i&gt;bitmask A — no data copied&lt;/i&gt;"]
+    D --&gt; E["filter( )&lt;br/&gt;&lt;i&gt;bitmask B — AND with A&lt;/i&gt;"]
+    E --&gt; F["group_by( )&lt;br/&gt;&lt;i&gt;BTreeMap index over visible rows&lt;/i&gt;"]
+    F --&gt; G["summarise( )&lt;br/&gt;&lt;i&gt;Kahan reduction per group&lt;/i&gt;"]
+    G --&gt; H["Materialized Result&lt;br/&gt;&lt;i&gt;TidyFrame — new data&lt;/i&gt;"]
+
+    style A fill:#f9f9f9,stroke:#333
+    style B fill:#e8f4fd,stroke:#2196F3,stroke-width:2px
+    style C fill:#e8f4fd,stroke:#2196F3
+    style D fill:#fff3e0,stroke:#FF9800
+    style E fill:#fff3e0,stroke:#FF9800
+    style F fill:#f3e5f5,stroke:#9C27B0
+    style G fill:#f3e5f5,stroke:#9C27B0
+    style H fill:#e8f5e9,stroke:#4CAF50,stroke-width:2px
+</pre>
+</div>
+</div>
+</div>
+</div>
+<p>Every step from the base DataFrame through the filters shares the same underlying data. New memory is only allocated for bitmasks (orange) and the final materialized result (green). The original data (blue) is never modified.</p>
+</section>
 </section>
 <section id="the-database-connection" class="level2">
 <h2 class="anchored" data-anchor-id="the-database-connection">The Database Connection</h2>
@@ -285,32 +316,8 @@ font-style: inherit;"># → 0.0 (wrong)</span></span></code></pre></div>
 <section id="how-to-audit-a-tidyview-pipeline" class="level2">
 <h2 class="anchored" data-anchor-id="how-to-audit-a-tidyview-pipeline">How to Audit a TidyView Pipeline</h2>
 <p>This is where the architecture pays off in practice. When something goes wrong in a data pipeline, the question is always: <em>where did the data go wrong?</em></p>
-<p>In TidyView, every intermediate step is inspectable because the original data is never modified. Here’s a concrete example:</p>
-<pre><code>// Load data
-let sales: Any = read_csv("quarterly_sales.csv");
-
-// Build pipeline
-let west: Any = filter(sales, col("region") == "West");
-let big: Any = filter(west, col("revenue") &gt; 1000.0);
-let grouped: Any = group_by(big, "product");
-let summary: Any = summarise(grouped, tidy_sum(col("revenue")));</code></pre>
-<p>Suppose <code>summary</code> shows unexpected numbers. You can audit backward:</p>
-<p><strong>Step 1: Check the grouped view.</strong> How many groups formed? What rows are in each group? The group index is inspectable — it stores the key values and the base-frame row indices for every group.</p>
-<p><strong>Step 2: Check the filtered view.</strong> How many rows survived both filters? The bitmask tells you exactly which base-frame rows are visible. You can compare the count against your expectation.</p>
-<p><strong>Step 3: Check the original data.</strong> It’s still there, unchanged, behind the shared reference. The CSV was loaded once, and no operation modified it. You can re-inspect it to see if the data itself was the problem (wrong CSV encoding, unexpected column types, etc.).</p>
-<p>In a traditional mutable DataFrame workflow, step 3 is impossible — the original data was overwritten by the first mutation. In TidyView, the original is always available because it was never touched.</p>
-<section id="the-bitmask-as-audit-trail" class="level3">
-<h3 class="anchored" data-anchor-id="the-bitmask-as-audit-trail">The Bitmask as Audit Trail</h3>
-<p>The bitmask isn’t just a performance optimization. It’s a record of what happened.</p>
-<p>After <code>filter(col("region") == "West")</code>, the bitmask contains a 1 for every row where region is “West” and a 0 for every row where it isn’t. You can:</p>
-<ul>
-<li>Count the 1s to see how many rows passed</li>
-<li>Iterate the set bits to see <em>which</em> rows passed (by base-frame index)</li>
-<li>AND two bitmasks to see which rows passed <em>both</em> filters</li>
-<li>Compare the mask against the original data to verify the filter logic</li>
-</ul>
-<p>This is fundamentally different from a system where <code>df = df[df.region == "West"]</code> discards the filtered-out rows. In that system, if the filter was wrong, the evidence is gone. In TidyView, the evidence is the bitmask, and the original data is still there to check against.</p>
-</section>
+<p>In TidyView, every intermediate step is inspectable because the original data is never modified. Every <code>filter</code> produces a bitmask you can inspect — count the set bits, iterate them to see which rows survived, AND two masks to see which rows passed both filters. Every <code>group_by</code> produces a group index with key values and row indices. And the original data stays intact behind a shared reference, so you can always go back and check it.</p>
+<p>This is fundamentally different from a system where <code>df = df[df.region == "West"]</code> discards the filtered-out rows. In that system, if the filter was wrong, the evidence is gone. In TidyView, the evidence is the bitmask, and the original data is still there to check against. (A full worked example with concrete row indices is in the Auditing a Pipeline section below.)</p>
 <section id="error-messages-that-point-to-the-problem" class="level3">
 <h3 class="anchored" data-anchor-id="error-messages-that-point-to-the-problem">Error Messages That Point to the Problem</h3>
 <p>When something goes wrong, TidyView’s error types name the exact issue:</p>
@@ -345,17 +352,17 @@ CapacityExceeded { limit: 65535, got: 70000 }   // too many distinct levels for 
 <tbody>
 <tr class="odd">
 <td><strong>Grouping</strong></td>
-<td>Hash-based (fast, non-deterministic order)</td>
+<td>Hash-based (fast; order may vary by execution mode)</td>
 <td>BTreeMap (deterministic first-occurrence order)</td>
 </tr>
 <tr class="even">
 <td><strong>Summation</strong></td>
-<td>Naive (fast, platform-dependent rounding)</td>
+<td>Optimized reduction (fast; may vary across platforms)</td>
 <td>Kahan compensated (deterministic, bit-identical)</td>
 </tr>
 <tr class="odd">
 <td><strong>Parallelism</strong></td>
-<td>Rayon (fast, non-deterministic scheduling)</td>
+<td>Rayon thread pool (high throughput)</td>
 <td>Single-threaded (deterministic, no scheduling variance)</td>
 </tr>
 <tr class="even">
@@ -370,8 +377,8 @@ CapacityExceeded { limit: 65535, got: 70000 }   // too many distinct levels for 
 </tr>
 </tbody>
 </table>
-<p>None of Polars’ trade-offs are wrong. They’re optimizing for throughput. TidyView is optimizing for <strong>reproducibility</strong> — the guarantee that the same pipeline on the same data always produces the same result, bit for bit, on any machine.</p>
-<p>When your work requires an audit trail — when a regulator, a reviewer, or future-you needs to verify that a result is correct — that guarantee matters more than raw speed.</p>
+<p>None of Polars’ trade-offs are wrong — and Polars is significantly faster for most workloads. It’s a production-grade library optimized for throughput. TidyView is optimizing for a different property: <strong>reproducibility</strong> — the guarantee that the same pipeline on the same data always produces the same result, bit for bit, on any machine. TidyView will be slower than Polars on almost any benchmark. That’s the expected cost of determinism.</p>
+<p>When your work requires an audit trail — when a regulator, a reviewer, or future-you needs to verify that a result is correct — that guarantee can matter more than raw speed.</p>
 </section>
 <section id="tidyview-in-practice" class="level2">
 <h2 class="anchored" data-anchor-id="tidyview-in-practice">TidyView in Practice</h2>
@@ -398,7 +405,7 @@ let result = view
     .group_by(["dept"])
     .summarise("n", tidy_count(), "avg", tidy_mean("salary"));
 print(result.nrows());   // → 2 (Eng and Sales groups)</code></pre>
-<p>This is a three-step pipeline: filter rows where salary exceeds 85, group surviving rows by department, then compute count and mean per group. The filter produces a bitmask. The group-by reads through that bitmask to build its index. The summarise collapses each group into one row. At no point is the original CSV data modified.</p>
+<p>This is a three-step pipeline: filter rows where salary exceeds 85, group surviving rows by department, then compute count and mean per group. The filter produces a bitmask; the group-by reads through it to build its index; the summarise collapses each group into one row.</p>
 </section>
 <section id="adding-computed-columns" class="level3">
 <h3 class="anchored" data-anchor-id="adding-computed-columns">Adding Computed Columns</h3>
@@ -455,8 +462,7 @@ let summary = grouped.summarise("total_rev", tidy_sum("revenue"));</code></pre>
 </section>
 <section id="step-4-is-the-original-data-intact" class="level3">
 <h3 class="anchored" data-anchor-id="step-4-is-the-original-data-intact">Step 4: Is the original data intact?</h3>
-<p>Yes. <code>view.nrows()</code> still returns 8. The CSV data behind the <code>Rc&lt;DataFrame&gt;</code> was never touched. You can re-filter, re-group, or inspect any column at any time.</p>
-<p>This is the audit trail that immutable views give you for free. Every filter is a bitmask you can inspect. Every group is an index you can enumerate. Every aggregation reads from the original data through those indices. If the final number is wrong, you can trace backward through the chain and find exactly where your understanding diverged from reality.</p>
+<p>Yes. <code>view.nrows()</code> still returns 8. You can re-filter, re-group, or inspect any column at any time. If the final number is wrong, you trace backward through bitmasks and group indices until you find where your understanding diverged from reality.</p>
 </section>
 <section id="catching-mistakes-at-compile-time" class="level3">
 <h3 class="anchored" data-anchor-id="catching-mistakes-at-compile-time">Catching Mistakes at Compile Time</h3>
@@ -481,6 +487,16 @@ let summary = grouped.summarise("total_rev", tidy_sum("revenue"));</code></pre>
 <section id="benchmark-results" class="level2">
 <h2 class="anchored" data-anchor-id="benchmark-results">Benchmark Results</h2>
 <p>The claims above — bitmask filtering is cheap, chained filters don’t copy data, determinism holds across runs — are testable. I wrote a 38-test benchmark suite that measures TidyView’s performance and verifies its architectural guarantees. Here are the results, run on my machine in release mode.</p>
+<div class="callout callout-style-simple callout-note no-icon">
+<div class="callout-body d-flex">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-body-container">
+<p><strong>A note on context.</strong> These benchmarks measure TidyView against itself — lazy vs.&nbsp;eager, scaling behavior, determinism proofs. They are <em>not</em> comparative benchmarks against Polars, DuckDB, or Pandas. TidyView is single-threaded and prioritizes determinism over throughput; it will be slower than production-optimized libraries on raw performance. The goal here is to verify that TidyView’s architectural claims hold, not to claim speed parity with tools that make different trade-offs.</p>
+</div>
+</div>
+</div>
 <section id="a.-filter-microbenchmarks" class="level3">
 <h3 class="anchored" data-anchor-id="a.-filter-microbenchmarks">A. Filter Microbenchmarks</h3>
 <table class="table">
@@ -814,7 +830,7 @@ let summary = grouped.summarise("total_rev", tidy_sum("revenue"));</code></pre>
 </tr>
 </tbody>
 </table>
-<p><strong>What this proves:</strong> The determinism guarantee isn’t aspirational — it’s measured. Ten runs of the same pipeline produce identical floating-point results down to the last bit. Kahan summation ensures that <code>sum</code>, <code>mean</code>, <code>sd</code>, and <code>median</code> all return the same value regardless of how many times you run the pipeline. The sort is stable (equal elements preserve their original order), and groups always appear in first-occurrence order. These properties hold because TidyView uses BTreeMap (not HashMap), Kahan summation (not naive accumulation), and stable sort (not quicksort).</p>
+<p><strong>What this proves:</strong> The determinism guarantee isn’t aspirational — it’s measured. Ten runs of the same pipeline produce identical floating-point results down to the last bit. The sort is stable (equal elements preserve their original order), and groups always appear in first-occurrence order.</p>
 </section>
 <section id="i.-memory-budget" class="level3">
 <h3 class="anchored" data-anchor-id="i.-memory-budget">I. Memory Budget</h3>
@@ -887,7 +903,7 @@ let summary = grouped.summarise("total_rev", tidy_sum("revenue"));</code></pre>
 </tr>
 </tbody>
 </table>
-<p><strong>What this proves:</strong> Every intermediate state in a TidyView pipeline is inspectable. Bitmasks tell you which rows survived. Group indices tell you which rows belong to each group. Projection maps tell you which columns are visible. The original data is always intact. And the type system prevents the most common data pipeline mistakes — typos in column names, order-dependent mutations, aliasing bugs — before they produce wrong numbers.</p>
+<p><strong>What this proves:</strong> Every architectural claim made earlier in this post — bitmask traceability, group ordering, snapshot semantics, copy-on-write isolation, deterministic sampling — is verified by a concrete test with concrete numbers.</p>
 </section>
 </section>
 <section id="the-one-sentence-summary" class="level2">
