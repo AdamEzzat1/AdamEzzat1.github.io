@@ -1949,8 +1949,8 @@ base: ["Alice", "Bob", "Carol", "Dave"]  // ages: 30, 25, 35, 28
 
 // After filter(age &gt; 28):
 mask: [1, 0, 1, 1]  // Alice (30), Carol (35), Dave (28 fails, hypothetical: &gt; 28)</code></pre>
-<p>In practice the mask is packed into 64-bit words — one bit per row. A million-row filter costs 125 KB of bitmask memory. The original data stays exactly where it was, untouched.</p>
-<p>Chain three filters together? The bitmasks are ANDed. Still no data copied. Still 125 KB.</p>
+<p>In practice the mask is packed into 64-bit words — one bit per row. A million-row filter costs 122 KB of bitmask memory. The original data stays exactly where it was, untouched.</p>
+<p>Chain three filters together? The bitmasks are ANDed. Still no data copied. Still 122 KB.</p>
 <pre><code>let sales: Any = read_csv("sales.csv");
 let df: Any = sales
     |&gt; filter(col("region") == "West")
@@ -2111,11 +2111,185 @@ font-style: inherit;"># → 0.0 (wrong)</span></span></code></pre></div>
 <p>Same input, same result, every time. Not approximately correct — exactly correct within the limits of double precision.</p>
 </section>
 </section>
+<section id="tidyview-in-practice" class="level2">
+<h2 class="anchored" data-anchor-id="tidyview-in-practice">TidyView in Practice</h2>
+<p>The architecture above is interesting in the abstract, but what does it actually look like when you write code? Here’s a walkthrough of real CJC-Lang programs using TidyView, showing how operations chain together and how you can audit every step.</p>
+<section id="loading-and-filtering" class="level3">
+<h3 class="anchored" data-anchor-id="loading-and-filtering">Loading and Filtering</h3>
+<pre><code>let csv = "name,age,city\nAlice,30,NYC\nBob,25,LA\nCharlie,35,NYC\nDiana,28,LA\n";
+let df = Csv.parse(csv);
+let view = df.view();
+
+// filter: age &gt; 28 (keeps Alice=30, Charlie=35)
+let older = view.filter(dexpr_binop("&gt;", col("age"), 28));
+print(older.nrows());   // → 2</code></pre>
+<p><code>Csv.parse()</code> returns a DataFrame. <code>.view()</code> wraps it in a TidyView — a zero-copy lens over the data. The <code>filter</code> call doesn’t copy any rows. It creates a new bitmask: <code>[1, 0, 1, 0]</code>. The original four rows are still sitting in the same memory, untouched.</p>
+</section>
+<section id="chaining-operations" class="level3">
+<h3 class="anchored" data-anchor-id="chaining-operations">Chaining Operations</h3>
+<p>TidyView operations return new views or frames, so they chain naturally. Each step narrows, reshapes, or aggregates the data — and every intermediate result is a value you can bind to a variable and inspect later.</p>
+<pre><code>let csv = "dept,name,salary\nEng,Alice,100\nEng,Bob,120\nSales,Carol,80\nSales,Dave,90\nEng,Eve,110\n";
+let df = Csv.parse(csv);
+let view = df.view();
+
+// Chain: filter → group → summarise
+let result = view
+    .filter(dexpr_binop("&gt;", col("salary"), 85))
+    .group_by(["dept"])
+    .summarise("n", tidy_count(), "avg", tidy_mean("salary"));
+print(result.nrows());   // → 2 (Eng and Sales groups)</code></pre>
+<p>This is a three-step pipeline: filter rows where salary exceeds 85, group surviving rows by department, then compute count and mean per group. The filter produces a bitmask; the group-by reads through it to build its index; the summarise collapses each group into one row.</p>
+<p>Here’s a longer chain that shows more of the verb vocabulary:</p>
+<pre><code>let orders = Csv.parse("product,region,qty,price\nWidget,West,10,25.0\nGadget,East,5,40.0\nWidget,East,8,25.0\nGizmo,West,3,100.0\nWidget,West,12,25.0\nGadget,West,7,40.0\n");
+let view = orders.view();
+
+// Chain: filter → mutate → arrange → select
+let report = view
+    .filter(dexpr_binop("==", col("region"), "West"))   // keep West only
+    .mutate("revenue", dexpr_binop("*", col("qty"), col("price")))  // add revenue column
+    .view()                                               // back to immutable view
+    .arrange([desc("revenue")])                           // sort by revenue descending
+    .select(["product", "revenue"]);                      // keep only these columns
+
+// Result: Gizmo/300.0, Widget/300.0, Widget/250.0, Gadget/280.0
+// Original `orders` still has all 6 rows, all 4 columns, untouched</code></pre>
+<p>Each verb in the chain returns a new value — a <code>TidyView</code>, a <code>TidyFrame</code>, or a <code>GroupedTidyView</code>. The types guide what you can do next: you can’t call <code>summarise</code> unless you’ve called <code>group_by</code> first, and <code>mutate</code> returns a <code>TidyFrame</code> (because it creates new data) while <code>filter</code> and <code>select</code> return <code>TidyView</code> (because they only narrow what’s visible).</p>
+</section>
+<section id="grouped-aggregation-with-multiple-statistics" class="level3">
+<h3 class="anchored" data-anchor-id="grouped-aggregation-with-multiple-statistics">Grouped Aggregation with Multiple Statistics</h3>
+<pre><code>let sales = Csv.parse("region,product,revenue\nWest,Widget,150\nEast,Gadget,200\nWest,Widget,300\nEast,Gadget,225\nWest,Gizmo,100\nEast,Widget,175\n");
+let view = sales.view();
+
+let summary = view
+    .group_by(["region"])
+    .summarise(
+        "n",         tidy_count(),
+        "total_rev", tidy_sum("revenue"),
+        "avg_rev",   tidy_mean("revenue"),
+        "min_rev",   tidy_min("revenue"),
+        "max_rev",   tidy_max("revenue")
+    );
+// Groups appear in first-occurrence order: West first, then East
+// West: n=3, total=550, avg=183.33, min=100, max=300
+// East: n=3, total=600, avg=200.00, min=175, max=225</code></pre>
+<p>Group order is always <strong>first-occurrence</strong> — the group that appears first in the data appears first in the result. Not alphabetical, not hash-dependent. Deterministic.</p>
+</section>
+<section id="adding-computed-columns" class="level3">
+<h3 class="anchored" data-anchor-id="adding-computed-columns">Adding Computed Columns</h3>
+<pre><code>let mutated = view.mutate("bonus", dexpr_binop("*", col("salary"), 10));
+print(mutated.ncols());   // → 4 (dept, name, salary, bonus)</code></pre>
+<p><code>mutate</code> returns a <code>TidyFrame</code> — a materialized copy with the new column appended. The original <code>view</code> still has three columns. This is the copy-on-write boundary: reads are free, writes trigger a copy.</p>
+</section>
+<section id="sorting-and-lazy-permutation" class="level3">
+<h3 class="anchored" data-anchor-id="sorting-and-lazy-permutation">Sorting and Lazy Permutation</h3>
+<pre><code>let csv = "name,score\nAlice,85\nBob,92\nCharlie,78\nDiana,95\n";
+let df = Csv.parse(csv);
+let sorted = df.view().arrange([desc("score")]);
+let top2 = sorted.slice_head(2);
+print(top2.nrows());   // → 2 (Diana=95, Bob=92)</code></pre>
+<p><code>arrange</code> computes a permutation vector but does <strong>not</strong> materialize a new DataFrame. The sorted order is stored lazily — operations like <code>select</code>, <code>rename</code>, and <code>relocate</code> pass the permutation through without resolving it. Only when you need physical data (e.g., <code>materialize</code>, <code>filter</code>, <code>slice</code>, <code>group_by</code>) does the sort actually reorder the rows. This means <code>arrange</code> followed by <code>slice_head</code> is significantly faster than sorting the entire dataset.</p>
+</section>
+<section id="joins" class="level3">
+<h3 class="anchored" data-anchor-id="joins">Joins</h3>
+<pre><code>let left = Csv.parse("id,name\n10,Alice\n20,Bob\n30,Charlie\n").view();
+let right = Csv.parse("id,dept\n10,Eng\n30,Sales\n40,HR\n").view();
+
+let joined = left.inner_join(right, "id", "id");
+print(joined.nrows());   // → 2 (id=10 and id=30 match)</code></pre>
+<p>Inner join keeps only rows where the key exists in both tables. Alice (id=10) matches Eng, Charlie (id=30) matches Sales. Bob (id=20) and HR (id=40) are dropped.</p>
+<p>TidyView supports seven join types: <code>inner_join</code>, <code>left_join</code>, <code>semi_join</code>, <code>anti_join</code>, <code>full_join</code>, <code>cross_join</code>, and <code>natural_join</code>. All use BTreeMap-based lookups with borrowed keys — no per-row string allocation.</p>
+</section>
+<section id="reshaping" class="level3">
+<h3 class="anchored" data-anchor-id="reshaping">Reshaping</h3>
+<pre><code>// pivot_longer: columns → rows
+let wide = Csv.parse("name,math,english\nAlice,90,85\nBob,78,92\n");
+let long = wide.view().pivot_longer(
+    ["math", "english"],   // columns to pivot
+    "subject",             // new name column
+    "score"                // new value column
+);
+// Result: 4 rows (Alice/math/90, Alice/english/85, Bob/math/78, Bob/english/92)
+
+// pivot_wider: rows → columns
+let summary = long.view().pivot_wider("subject", "score");
+// Back to: Alice/90/85, Bob/78/92</code></pre>
+</section>
+<section id="distinct-and-sampling" class="level3">
+<h3 class="anchored" data-anchor-id="distinct-and-sampling">Distinct and Sampling</h3>
+<pre><code>// distinct: unique rows by column subset
+let unique_regions = view.distinct(["region"]);
+
+// deterministic sampling: same seed → same rows, every time
+let sample = view.slice_sample(100, seed: 42);</code></pre>
+<p><code>slice_sample</code> uses a seeded LCG-based Fisher-Yates shuffle. Same seed, same 100 rows, on every machine.</p>
+</section>
+</section>
 <section id="how-to-audit-a-tidyview-pipeline" class="level2">
 <h2 class="anchored" data-anchor-id="how-to-audit-a-tidyview-pipeline">How to Audit a TidyView Pipeline</h2>
 <p>This is where the architecture pays off in practice. When something goes wrong in a data pipeline, the question is always: <em>where did the data go wrong?</em></p>
-<p>In TidyView, every intermediate step is inspectable because the original data is never modified. Every <code>filter</code> produces a bitmask you can inspect — count the set bits, iterate them to see which rows survived, AND two masks to see which rows passed both filters. Every <code>group_by</code> produces a group index with key values and row indices. And the original data stays intact behind a shared reference, so you can always go back and check it.</p>
-<p>This is fundamentally different from a system where <code>df = df[df.region == "West"]</code> discards the filtered-out rows. In that system, if the filter was wrong, the evidence is gone. In TidyView, the evidence is the bitmask, and the original data is still there to check against. (A full worked example with concrete row indices is in the Auditing a Pipeline section below.)</p>
+<p>In TidyView, every intermediate step is inspectable because the original data is never modified. Every <code>filter</code> produces a bitmask you can examine. Every <code>group_by</code> produces a group index with key values and row indices. And the original data stays intact behind a shared reference, so you can always go back and check it.</p>
+<section id="inspection-methods" class="level3">
+<h3 class="anchored" data-anchor-id="inspection-methods">Inspection Methods</h3>
+<p>At any point in a pipeline, you can call:</p>
+<pre><code>view.mask()           // → the bitmask — which rows are visible
+view.proj()           // → the projection map — which columns are visible
+grouped.group_index() // → group keys + row indices per group</code></pre>
+<p>From the mask:</p>
+<ul>
+<li><code>mask.iter_set()</code> gives the exact indices of visible rows</li>
+<li><code>mask.count_ones()</code> gives the count of surviving rows</li>
+</ul>
+<p>From the projection:</p>
+<ul>
+<li><code>proj.indices()</code> gives which column indices are visible</li>
+</ul>
+<p>The original data is always there behind the <code>Rc&lt;DataFrame&gt;</code> — no operation destroys it.</p>
+</section>
+<section id="a-worked-example" class="level3">
+<h3 class="anchored" data-anchor-id="a-worked-example">A Worked Example</h3>
+<p>Suppose you’re analyzing quarterly sales data and you get a result that looks wrong. In a traditional DataFrame library, you’d re-run the pipeline with print statements and hope to catch the problem. In TidyView, you can inspect every intermediate state because nothing was destroyed.</p>
+<p>Here’s a concrete scenario. You have eight sales records and you want total revenue by product in the West region:</p>
+<pre><code>let sales = Csv.parse("product,region,revenue\nWidget,West,150\nGadget,West,200\nWidget,East,175\nGadget,East,225\nWidget,West,300\nGizmo,East,50\nGadget,West,180\nGizmo,East,75\n");
+let view = sales.view();
+
+let west = view.filter(dexpr_binop("==", col("region"), "West"));
+let grouped = west.group_by(["product"]);
+let summary = grouped.summarise("total_rev", tidy_sum("revenue"));</code></pre>
+<p>The summary shows Widget: 450, Gadget: 380. Is that right? Let’s audit backward.</p>
+<p><strong>Step 1: Which rows survived the filter?</strong></p>
+<p>The bitmask after <code>filter(region == "West")</code> has bits set at positions <code>[0, 1, 4, 6]</code>. That’s four rows out of eight. You can verify: row 0 is Widget/West/150, row 1 is Gadget/West/200, row 4 is Widget/West/300, row 6 is Gadget/West/180. All West. None of the East rows slipped through.</p>
+<p><strong>Step 2: How did the groups form?</strong></p>
+<p>The group index shows two groups in <strong>first-occurrence order</strong>:</p>
+<ul>
+<li>Group “Widget” → base-frame rows [0, 4]</li>
+<li>Group “Gadget” → base-frame rows [1, 6]</li>
+</ul>
+<p>Notice: Gizmo isn’t here. Both Gizmo rows were East, so they were filtered out before grouping. If you expected Gizmo to appear, the bitmask tells you exactly why it didn’t — rows 5 and 7 have their bits cleared.</p>
+<p><strong>Step 3: Verify the aggregation</strong></p>
+<p>Widget revenue: row 0 (150) + row 4 (300) = 450. Gadget revenue: row 1 (200) + row 6 (180) = 380. Both use Kahan compensated summation, so even with millions of rows the result would be bit-identical across runs.</p>
+<p><strong>Step 4: Is the original data intact?</strong></p>
+<p>Yes. <code>view.nrows()</code> still returns 8. You can re-filter, re-group, or inspect any column at any time. If the final number is wrong, you trace backward through bitmasks and group indices until you find where your understanding diverged from reality.</p>
+<p>This is fundamentally different from a system where <code>df = df[df.region == "West"]</code> discards the filtered-out rows. In that system, if the filter was wrong, the evidence is gone. In TidyView, the evidence is the bitmask, and the original data is still there to check against.</p>
+</section>
+<section id="catching-mistakes-at-compile-time" class="level3">
+<h3 class="anchored" data-anchor-id="catching-mistakes-at-compile-time">Catching Mistakes at Compile Time</h3>
+<p>TidyView’s type system and error reporting catch common mistakes before they become wrong numbers:</p>
+<p><strong>Typo in a column name:</strong></p>
+<pre><code>view.filter(dexpr_binop("&gt;", col("revnue"), 100));
+// → Error: column `revnue` not found</code></pre>
+<p><strong>Self-referencing mutate:</strong></p>
+<pre><code>view.mutate("bonus", dexpr_binop("*", col("salary"), 0.1))
+    .mutate("double_bonus", dexpr_binop("*", col("bonus"), 2));</code></pre>
+<p>The second <code>mutate</code> sees <code>bonus</code> because it’s a separate call on the result of the first. But if you tried to reference a column in the same mutate call that creates it:</p>
+<pre><code>view.mutate("a", dexpr_binop("+", col("x"), 1),
+            "b", dexpr_binop("*", col("a"), 2));
+// → Error: column `a` not found</code></pre>
+<p>This is snapshot semantics — all column references are validated against the column list frozen <em>before</em> any assignments. You can’t accidentally create an order-dependent pipeline within a single operation.</p>
+<p><strong>Type mismatch:</strong></p>
+<pre><code>view.filter(dexpr_binop("+", col("name"), 1));
+// → Error: type mismatch — expected Bool predicate, got Int</code></pre>
+<p>The filter predicate must evaluate to Bool. Arithmetic on a string column, or a predicate that returns a number instead of true/false, is caught immediately with an error that names the exact types involved.</p>
+</section>
 <section id="error-messages-that-point-to-the-problem" class="level3">
 <h3 class="anchored" data-anchor-id="error-messages-that-point-to-the-problem">Error Messages That Point to the Problem</h3>
 <p>When something goes wrong, TidyView’s error types name the exact issue:</p>
@@ -2125,9 +2299,9 @@ PredicateNotBool { got: "Int" } // filter predicate returned Int, not Bool
 TypeMismatch { expected: "Float", got: "Str" }  // arithmetic on a string column
 LengthMismatch { expected: 1000, got: 500 }     // broadcast size mismatch
 EmptyGroup                     // first() or last() called on a group with zero rows
-CapacityExceeded { limit: 65535, got: 70000 }   // too many distinct levels for a categorical column</code></pre>
+CapacityExceeded { limit: 65535, got: 70000 }   // too many distinct levels for a factor column</code></pre>
 <p>Every error variant names the specific column, type, or value that caused the problem. You know what went wrong and where, not just that something failed.</p>
-<p><code>EmptyGroup</code> catches a subtle bug: if an aggressive filter removes all rows from a group and you then call <code>first()</code> or <code>last()</code> in your summarise, you get a clear error instead of a silent null or a crash. <code>CapacityExceeded</code> guards the categorical column type — CJC-Lang’s factor columns use <code>u16</code> codes (max 65,535 distinct levels) for cache efficiency, and this error tells you exactly when your data exceeds that budget.</p>
+<p><code>EmptyGroup</code> catches a subtle bug: if an aggressive filter removes all rows from a group and you then call <code>first()</code> or <code>last()</code> in your summarise, you get a clear error instead of a silent null or a crash. <code>CapacityExceeded</code> guards the factor column type — CJC-Lang’s factor columns use <code>u16</code> codes (max 65,535 distinct levels) for cache efficiency, and this error tells you exactly when your data exceeds that budget.</p>
 </section>
 </section>
 <section id="why-not-just-use-polars" class="level2">
@@ -2178,113 +2352,9 @@ CapacityExceeded { limit: 65535, got: 70000 }   // too many distinct levels for 
 <p>None of Polars’ trade-offs are wrong — and Polars is significantly faster for most workloads. It’s a production-grade library optimized for throughput. TidyView is optimizing for a different property: <strong>reproducibility</strong> — the guarantee that the same pipeline on the same data always produces the same result, bit for bit, on any machine. TidyView will be slower than Polars on almost any benchmark. That’s the expected cost of determinism.</p>
 <p>When your work requires an audit trail — when a regulator, a reviewer, or future-you needs to verify that a result is correct — that guarantee can matter more than raw speed.</p>
 </section>
-<section id="tidyview-in-practice" class="level2">
-<h2 class="anchored" data-anchor-id="tidyview-in-practice">TidyView in Practice</h2>
-<p>The architecture above is interesting in the abstract, but what does it actually look like when you write code? Here’s a walkthrough of real CJC-Lang programs using TidyView.</p>
-<section id="loading-and-filtering" class="level3">
-<h3 class="anchored" data-anchor-id="loading-and-filtering">Loading and Filtering</h3>
-<pre><code>let csv = "name,age,city\nAlice,30,NYC\nBob,25,LA\nCharlie,35,NYC\nDiana,28,LA\n";
-let df = Csv.parse(csv);
-let view = df.view();
-
-// filter: age &gt; 28 (keeps Alice=30, Charlie=35)
-let older = view.filter(dexpr_binop("&gt;", col("age"), 28));
-print(older.nrows());   // → 2</code></pre>
-<p><code>Csv.parse()</code> returns a DataFrame. <code>.view()</code> wraps it in a TidyView — a zero-copy lens over the data. The <code>filter</code> call doesn’t copy any rows. It creates a new bitmask: <code>[1, 0, 1, 0]</code>. The original four rows are still sitting in the same memory, untouched.</p>
-</section>
-<section id="chaining-operations" class="level3">
-<h3 class="anchored" data-anchor-id="chaining-operations">Chaining Operations</h3>
-<pre><code>let csv = "dept,name,salary\nEng,Alice,100\nEng,Bob,120\nSales,Carol,80\nSales,Dave,90\nEng,Eve,110\n";
-let df = Csv.parse(csv);
-let view = df.view();
-
-let result = view
-    .filter(dexpr_binop("&gt;", col("salary"), 85))
-    .group_by(["dept"])
-    .summarise("n", tidy_count(), "avg", tidy_mean("salary"));
-print(result.nrows());   // → 2 (Eng and Sales groups)</code></pre>
-<p>This is a three-step pipeline: filter rows where salary exceeds 85, group surviving rows by department, then compute count and mean per group. The filter produces a bitmask; the group-by reads through it to build its index; the summarise collapses each group into one row.</p>
-</section>
-<section id="adding-computed-columns" class="level3">
-<h3 class="anchored" data-anchor-id="adding-computed-columns">Adding Computed Columns</h3>
-<pre><code>let mutated = view.mutate("bonus", dexpr_binop("*", col("salary"), 10));
-print(mutated.ncols());   // → 4 (dept, name, salary, bonus)</code></pre>
-<p><code>mutate</code> returns a <code>TidyFrame</code> — a materialized copy with the new column appended. The original <code>view</code> still has three columns. This is the copy-on-write boundary: reads are free, writes trigger a copy.</p>
-</section>
-<section id="sorting-and-slicing" class="level3">
-<h3 class="anchored" data-anchor-id="sorting-and-slicing">Sorting and Slicing</h3>
-<pre><code>let csv = "name,score\nAlice,85\nBob,92\nCharlie,78\nDiana,95\n";
-let df = Csv.parse(csv);
-let sorted = df.view().arrange([desc("score")]);
-let top2 = sorted.slice_head(2);
-print(top2.nrows());   // → 2 (Diana=95, Bob=92)</code></pre>
-<p><code>arrange</code> materializes the data in sorted order (sorting can’t be lazy — it needs to compare every element). <code>slice_head</code> takes the first N rows from the result.</p>
-</section>
-<section id="joins" class="level3">
-<h3 class="anchored" data-anchor-id="joins">Joins</h3>
-<pre><code>let left = Csv.parse("id,name\n10,Alice\n20,Bob\n30,Charlie\n").view();
-let right = Csv.parse("id,dept\n10,Eng\n30,Sales\n40,HR\n").view();
-
-let joined = left.inner_join(right, "id", "id");
-print(joined.nrows());   // → 2 (id=10 and id=30 match)</code></pre>
-<p>Inner join keeps only rows where the key exists in both tables. Alice (id=10) matches Eng, Charlie (id=30) matches Sales. Bob (id=20) and HR (id=40) are dropped.</p>
-</section>
-</section>
-<section id="auditing-a-pipeline-a-worked-example" class="level2">
-<h2 class="anchored" data-anchor-id="auditing-a-pipeline-a-worked-example">Auditing a Pipeline: A Worked Example</h2>
-<p>Suppose you’re analyzing quarterly sales data and you get a result that looks wrong. In a traditional DataFrame library, you’d re-run the pipeline with print statements and hope to catch the problem. In TidyView, you can inspect every intermediate state because nothing was destroyed.</p>
-<p>Here’s a concrete scenario. You have eight sales records and you want total revenue by product in the West region:</p>
-<pre><code>let sales = Csv.parse("product,region,revenue\nWidget,West,150\nGadget,West,200\nWidget,East,175\nGadget,East,225\nWidget,West,300\nGizmo,East,50\nGadget,West,180\nGizmo,East,75\n");
-let view = sales.view();
-
-let west = view.filter(dexpr_binop("==", col("region"), "West"));
-let grouped = west.group_by(["product"]);
-let summary = grouped.summarise("total_rev", tidy_sum("revenue"));</code></pre>
-<p>The summary shows Widget: 450, Gadget: 380. Is that right? Let’s audit backward.</p>
-<section id="step-1-which-rows-survived-the-filter" class="level3">
-<h3 class="anchored" data-anchor-id="step-1-which-rows-survived-the-filter">Step 1: Which rows survived the filter?</h3>
-<p>The bitmask after <code>filter(region == "West")</code> has bits set at positions <code>[0, 1, 4, 6]</code>. That’s four rows out of eight. You can verify: row 0 is Widget/West/150, row 1 is Gadget/West/200, row 4 is Widget/West/300, row 6 is Gadget/West/180. All West. None of the East rows slipped through.</p>
-</section>
-<section id="step-2-how-did-the-groups-form" class="level3">
-<h3 class="anchored" data-anchor-id="step-2-how-did-the-groups-form">Step 2: How did the groups form?</h3>
-<p>The group index shows two groups in <strong>first-occurrence order</strong>:</p>
-<ul>
-<li>Group “Widget” → base-frame rows [0, 4]</li>
-<li>Group “Gadget” → base-frame rows [1, 6]</li>
-</ul>
-<p>Notice: Gizmo isn’t here. Both Gizmo rows were East, so they were filtered out before grouping. If you expected Gizmo to appear, the bitmask tells you exactly why it didn’t — rows 5 and 7 have their bits cleared.</p>
-</section>
-<section id="step-3-verify-the-aggregation" class="level3">
-<h3 class="anchored" data-anchor-id="step-3-verify-the-aggregation">Step 3: Verify the aggregation</h3>
-<p>Widget revenue: row 0 (150) + row 4 (300) = 450. Gadget revenue: row 1 (200) + row 6 (180) = 380. Both use Kahan compensated summation, so even with millions of rows the result would be bit-identical across runs.</p>
-</section>
-<section id="step-4-is-the-original-data-intact" class="level3">
-<h3 class="anchored" data-anchor-id="step-4-is-the-original-data-intact">Step 4: Is the original data intact?</h3>
-<p>Yes. <code>view.nrows()</code> still returns 8. You can re-filter, re-group, or inspect any column at any time. If the final number is wrong, you trace backward through bitmasks and group indices until you find where your understanding diverged from reality.</p>
-</section>
-<section id="catching-mistakes-at-compile-time" class="level3">
-<h3 class="anchored" data-anchor-id="catching-mistakes-at-compile-time">Catching Mistakes at Compile Time</h3>
-<p>TidyView’s type system and error reporting catch common mistakes before they become wrong numbers:</p>
-<p><strong>Typo in a column name:</strong></p>
-<pre><code>view.filter(dexpr_binop("&gt;", col("revnue"), 100));
-// → Error: column `revnue` not found</code></pre>
-<p><strong>Self-referencing mutate:</strong></p>
-<pre><code>view.mutate("bonus", dexpr_binop("*", col("salary"), 0.1))
-    .mutate("double_bonus", dexpr_binop("*", col("bonus"), 2));</code></pre>
-<p>The second <code>mutate</code> sees <code>bonus</code> because it’s a separate call on the result of the first. But if you tried to reference a column in the same mutate call that creates it:</p>
-<pre><code>view.mutate("a", dexpr_binop("+", col("x"), 1),
-            "b", dexpr_binop("*", col("a"), 2));
-// → Error: column `a` not found</code></pre>
-<p>This is snapshot semantics — all column references are validated against the column list frozen <em>before</em> any assignments. You can’t accidentally create an order-dependent pipeline within a single operation.</p>
-<p><strong>Type mismatch:</strong></p>
-<pre><code>view.filter(dexpr_binop("+", col("name"), 1));
-// → Error: type mismatch — expected Bool predicate, got Int</code></pre>
-<p>The filter predicate must evaluate to Bool. Arithmetic on a string column, or a predicate that returns a number instead of true/false, is caught immediately with an error that names the exact types involved.</p>
-</section>
-</section>
 <section id="benchmark-results" class="level2">
 <h2 class="anchored" data-anchor-id="benchmark-results">Benchmark Results</h2>
-<p>The claims above — bitmask filtering is cheap, chained filters don’t copy data, determinism holds across runs — are testable. I wrote a 38-test benchmark suite that measures TidyView’s performance and verifies its architectural guarantees. Here are the results, run on my machine in release mode.</p>
+<p>The claims above — bitmask filtering is cheap, chained filters don’t copy data, determinism holds across runs — are testable. I wrote a 38-test benchmark suite that measures TidyView’s performance and verifies its architectural guarantees. Here are the results, run on my machine (Intel i7-11390H, Windows, Rust 1.91 release mode, 100K-row datasets).</p>
 <div class="callout callout-style-simple callout-note no-icon">
 <div class="callout-body d-flex">
 <div class="callout-icon-container">
@@ -2309,32 +2379,33 @@ let summary = grouped.summarise("total_rev", tidy_sum("revenue"));</code></pre>
 <tbody>
 <tr class="odd">
 <td>Int filter, 100K rows</td>
-<td>80</td>
-<td>6,459</td>
-<td><strong>80×</strong></td>
+<td>165</td>
+<td>11,943</td>
+<td><strong>72×</strong></td>
 </tr>
 <tr class="even">
 <td>Float filter, 100K rows</td>
-<td>94</td>
-<td>6,322</td>
-<td><strong>67×</strong></td>
+<td>191</td>
+<td>11,804</td>
+<td><strong>62×</strong></td>
 </tr>
 <tr class="odd">
 <td>String filter, 100K rows</td>
-<td>9,821</td>
-<td>13,496</td>
-<td>1.4×</td>
+<td>352</td>
+<td>6,255</td>
+<td><strong>18×</strong></td>
 </tr>
 <tr class="even">
 <td>Int filter, 1M rows</td>
-<td>971</td>
-<td>63,605</td>
-<td><strong>66×</strong></td>
+<td>2,002</td>
+<td>157,135</td>
+<td><strong>79×</strong></td>
 </tr>
 </tbody>
 </table>
-<p><strong>What this proves:</strong> Lazy bitmask filtering is 65–80× faster than eager materialization for numeric columns. The filter itself just scans one column and sets bits — no row copying, no allocation beyond the bitmask. String filters are slower because string comparison is inherently more expensive than integer comparison, but the lazy/eager gap still exists.</p>
-<p>The 1M-row int filter takes under 1 ms to produce a bitmask. Materializing — actually copying the surviving rows into a new DataFrame — takes 64 ms. If you’re chaining multiple filters, you save that materialization cost at every step.</p>
+<p><strong>What this proves:</strong> Lazy bitmask filtering is 62–79× faster than eager materialization for numeric columns. The filter itself just scans one column and sets bits — no row copying, no allocation beyond the bitmask.</p>
+<p>String filters benefit from a columnar fast path that evaluates the predicate directly against the column buffer (bitwise, not row-by-row) — bringing them to 352 µs, an <strong>18× lazy/eager ratio</strong>.</p>
+<p>The 1M-row int filter takes about 2 ms to produce a bitmask. Materializing — actually copying the surviving rows into a new DataFrame — takes 157 ms. If you’re chaining multiple filters, you save that materialization cost at every step.</p>
 </section>
 <section id="b.-chained-filter-composition" class="level3">
 <h3 class="anchored" data-anchor-id="b.-chained-filter-composition">B. Chained Filter Composition</h3>
@@ -2348,19 +2419,19 @@ let summary = grouped.summarise("total_rev", tidy_sum("revenue"));</code></pre>
 <tbody>
 <tr class="odd">
 <td>Single int filter, 100K</td>
-<td>96</td>
+<td>220</td>
 </tr>
 <tr class="even">
 <td>Two chained int filters, 100K</td>
-<td>175</td>
+<td>384</td>
 </tr>
 <tr class="odd">
 <td>Int + string chain, 100K</td>
-<td>7,210</td>
+<td>609</td>
 </tr>
 <tr class="even">
 <td>Two string filters, 100K</td>
-<td>12,821</td>
+<td>813</td>
 </tr>
 </tbody>
 </table>
@@ -2380,31 +2451,32 @@ let summary = grouped.summarise("total_rev", tidy_sum("revenue"));</code></pre>
 <tr class="odd">
 <td>Count, 4 groups, 100K</td>
 <td>4</td>
-<td>11,473</td>
+<td>3,099</td>
 </tr>
 <tr class="even">
 <td>Mixed agg (5 stats), 4 groups, 100K</td>
 <td>4</td>
-<td>13,042</td>
+<td>5,918</td>
 </tr>
 <tr class="odd">
 <td>Count + Sum, 100 groups, 100K</td>
 <td>100</td>
-<td>18,073</td>
+<td>10,734</td>
 </tr>
 <tr class="even">
 <td>Count, 10K groups, 100K</td>
 <td>10,000</td>
-<td>35,930</td>
+<td>42,778</td>
 </tr>
 <tr class="odd">
 <td>Count + Sum + Mean, 10K groups, 100K</td>
 <td>10,000</td>
-<td>39,823</td>
+<td>39,782</td>
 </tr>
 </tbody>
 </table>
-<p><strong>What this proves:</strong> Group-by cost scales with the number of distinct groups, not just row count. With 4 groups (the region column), grouping 100K rows takes about 11 ms. With 10K groups, it takes 36 ms. This is the cost of the BTreeMap-based index — O(N log G) where G is the number of groups. Adding more aggregation functions (from Count alone to Count + Sum + Mean + Sd + Median) adds relatively little overhead; the dominant cost is building the group index, not computing the aggregates.</p>
+<p><strong>What this proves:</strong> Group-by cost scales with the number of distinct groups, not just row count. With 4 groups (the region column), grouping 100K rows takes about 3 ms. With 10K groups, it takes 40 ms. This is the cost of the BTreeMap-based index — O(N log G) where G is the number of groups. Adding more aggregation functions adds relatively little overhead; the dominant cost is building the group index, not computing the aggregates.</p>
+<p>The single-key fast path (used when grouping by one column) avoids per-row heap allocation entirely: the BTreeMap key is a borrowed reference into the column data, not a cloned value. For the 4-group case, this means 100K lookups with zero string copies.</p>
 </section>
 <section id="d.-sorting" class="level3">
 <h3 class="anchored" data-anchor-id="d.-sorting">D. Sorting</h3>
@@ -2418,23 +2490,24 @@ let summary = grouped.summarise("total_rev", tidy_sum("revenue"));</code></pre>
 <tbody>
 <tr class="odd">
 <td>Float descending, 100K</td>
-<td>32,972</td>
+<td>1,378</td>
 </tr>
 <tr class="even">
 <td>Int ascending, 100K</td>
-<td>37,072</td>
+<td>1,201</td>
 </tr>
 <tr class="odd">
 <td>String ascending, 100K</td>
-<td>66,787</td>
+<td>18,343</td>
 </tr>
 <tr class="even">
 <td>Multi-key (string + float), 100K</td>
-<td>89,806</td>
+<td>41,638</td>
 </tr>
 </tbody>
 </table>
-<p><strong>What this proves:</strong> Sorting is the most expensive single operation because it must materialize the result (you can’t lazily represent a sort). String sorting is roughly 2× more expensive than numeric sorting due to comparison cost. Multi-key sorting adds the cost of a secondary comparator. All sorts use Rust’s stable sort (<code>sort_by</code>), which preserves the relative order of equal elements — important for determinism.</p>
+<p><strong>What this proves:</strong> Numeric sorts on 100K rows complete in about 1.2–1.4 ms thanks to pre-resolved column references — the sort comparator holds a direct <code>&amp;Column</code> pointer instead of doing a name lookup on every comparison. String sorting is roughly 13× more expensive than numeric sorting due to comparison cost. Multi-key sorting adds the cost of a secondary comparator.</p>
+<p>All sorts use Rust’s stable sort (<code>sort_by</code>), which preserves the relative order of equal elements — important for determinism. The result is stored as a lazy permutation vector, not a new DataFrame. Operations like <code>select</code>, <code>rename</code>, and <code>relocate</code> propagate the permutation without resolving it.</p>
 </section>
 <section id="e.-joins" class="level3">
 <h3 class="anchored" data-anchor-id="e.-joins">E. Joins</h3>
@@ -2448,19 +2521,20 @@ let summary = grouped.summarise("total_rev", tidy_sum("revenue"));</code></pre>
 <tbody>
 <tr class="odd">
 <td>Inner join, 100K × 100</td>
-<td>34,063</td>
+<td>33,936</td>
 </tr>
 <tr class="even">
 <td>Inner join, 100K × 1K</td>
-<td>38,998</td>
+<td>40,507</td>
 </tr>
 <tr class="odd">
 <td>Left join, 100K × 100</td>
-<td>30,813</td>
+<td>38,712</td>
 </tr>
 </tbody>
 </table>
-<p><strong>What this proves:</strong> Join performance is dominated by the left table size. Increasing the right table from 100 to 1,000 rows adds only ~14% to the join time, because the right table is indexed and lookups are fast. Left joins are slightly faster than inner joins in this case because the left join doesn’t need to check for unmatched right-side rows.</p>
+<p><strong>What this proves:</strong> Join performance is dominated by the left table size. Increasing the right table from 100 to 1,000 rows adds about 20% to the join time, because the right table is indexed and lookups are O(log K) where K is the number of unique keys.</p>
+<p>Both the right-side index build and the left-side probe use borrowed keys — <code>ColumnKeyRef</code> references directly into the column data without cloning. For single-key joins (the common case), the BTreeMap key is a single borrowed value with no <code>Vec</code> wrapper, eliminating per-row allocation on both sides.</p>
 </section>
 <section id="f.-full-pipeline-benchmarks" class="level3">
 <h3 class="anchored" data-anchor-id="f.-full-pipeline-benchmarks">F. Full Pipeline Benchmarks</h3>
@@ -2474,19 +2548,19 @@ let summary = grouped.summarise("total_rev", tidy_sum("revenue"));</code></pre>
 <tbody>
 <tr class="odd">
 <td>filter → group → summarise → arrange, 100K</td>
-<td>12,739</td>
+<td>4,151</td>
 </tr>
 <tr class="even">
 <td>filter → mutate → group → summarise, 100K</td>
-<td>23,819</td>
+<td>40,640</td>
 </tr>
 <tr class="odd">
 <td>join → filter → group → summarise, 100K</td>
-<td>48,316</td>
+<td>97,769</td>
 </tr>
 </tbody>
 </table>
-<p><strong>What this proves:</strong> Realistic multi-step pipelines compose predictably. The filter-group-summarise-arrange pipeline (12.7 ms) is faster than the sum of its parts because the filter reduces the number of rows that downstream operations process. The join-based pipeline is slowest because joins are the most expensive operation and produce a new materialized DataFrame.</p>
+<p><strong>What this proves:</strong> Realistic multi-step pipelines compose predictably. The filter-group-summarise-arrange pipeline (4.2 ms) is faster than the sum of its parts because the filter reduces the number of rows that downstream operations process, and the lazy sort avoids materializing a new DataFrame. The join-based pipeline is slowest because joins are the most expensive operation and produce a new materialized DataFrame.</p>
 </section>
 <section id="g.-scaling-behavior" class="level3">
 <h3 class="anchored" data-anchor-id="g.-scaling-behavior">G. Scaling Behavior</h3>
@@ -2501,15 +2575,15 @@ let summary = grouped.summarise("total_rev", tidy_sum("revenue"));</code></pre>
 <tbody>
 <tr class="odd">
 <td>10K</td>
-<td>9</td>
+<td>17</td>
 </tr>
 <tr class="even">
 <td>100K</td>
-<td>94</td>
+<td>149</td>
 </tr>
 <tr class="odd">
 <td>1M</td>
-<td>1,064</td>
+<td>2,345</td>
 </tr>
 </tbody>
 </table>
@@ -2525,19 +2599,19 @@ let summary = grouped.summarise("total_rev", tidy_sum("revenue"));</code></pre>
 <tbody>
 <tr class="odd">
 <td>10K</td>
-<td>1,035</td>
+<td>384</td>
 </tr>
 <tr class="even">
 <td>100K</td>
-<td>11,778</td>
+<td>4,065</td>
 </tr>
 <tr class="odd">
 <td>1M</td>
-<td>159,033</td>
+<td>65,106</td>
 </tr>
 </tbody>
 </table>
-<p>Group-by also scales linearly, but with a higher constant factor due to the BTreeMap insertions.</p>
+<p>Group-by also scales linearly, but with a higher constant factor due to the BTreeMap insertions. The single-key fast path keeps this manageable: 1M rows grouped in 65 ms.</p>
 <p><strong>Column width scaling (100K rows):</strong></p>
 <table class="table">
 <thead>
@@ -2550,23 +2624,23 @@ let summary = grouped.summarise("total_rev", tidy_sum("revenue"));</code></pre>
 <tbody>
 <tr class="odd">
 <td>3</td>
-<td>154</td>
-<td>542</td>
+<td>183</td>
+<td>957</td>
 </tr>
 <tr class="even">
 <td>11</td>
-<td>201</td>
-<td>1,185</td>
+<td>153</td>
+<td>2,520</td>
 </tr>
 <tr class="odd">
 <td>51</td>
-<td>161</td>
-<td>10,653</td>
+<td>187</td>
+<td>20,388</td>
 </tr>
 <tr class="even">
 <td>101</td>
-<td>211</td>
-<td>19,263</td>
+<td>247</td>
+<td>36,450</td>
 </tr>
 </tbody>
 </table>
@@ -2582,27 +2656,27 @@ let summary = grouped.summarise("total_rev", tidy_sum("revenue"));</code></pre>
 <tbody>
 <tr class="odd">
 <td>4</td>
-<td>15,676</td>
+<td>7,914</td>
 </tr>
 <tr class="even">
 <td>100</td>
-<td>21,305</td>
+<td>17,814</td>
 </tr>
 <tr class="odd">
 <td>1,000</td>
-<td>26,297</td>
+<td>29,940</td>
 </tr>
 <tr class="even">
 <td>10,000</td>
-<td>43,172</td>
+<td>42,220</td>
 </tr>
 <tr class="odd">
 <td>50,000</td>
-<td>73,041</td>
+<td>58,239</td>
 </tr>
 </tbody>
 </table>
-<p>Going from 4 groups to 50,000 groups increases time by about 4.7×. The BTreeMap index is O(N log G), so the cost grows sub-linearly with group count.</p>
+<p>Going from 4 groups to 50,000 groups increases time by about 7.4×. The BTreeMap index is O(N log G), so the cost grows sub-linearly with group count.</p>
 </section>
 <section id="h.-determinism-verification" class="level3">
 <h3 class="anchored" data-anchor-id="h.-determinism-verification">H. Determinism Verification</h3>
@@ -2628,7 +2702,7 @@ let summary = grouped.summarise("total_rev", tidy_sum("revenue"));</code></pre>
 </tr>
 </tbody>
 </table>
-<p><strong>What this proves:</strong> The determinism guarantee isn’t aspirational — it’s measured. Ten runs of the same pipeline produce identical floating-point results down to the last bit. The sort is stable (equal elements preserve their original order), and groups always appear in first-occurrence order.</p>
+<p><strong>What this proves:</strong> The determinism guarantee isn’t aspirational — it’s measured. Ten runs of the same pipeline produce identical floating-point results down to the last bit. The sort is stable (equal elements preserve their original order), and groups always appear in first-occurrence order. Additionally, five proptest property suites (200 random cases each) verify these invariants hold across random inputs.</p>
 </section>
 <section id="i.-memory-budget" class="level3">
 <h3 class="anchored" data-anchor-id="i.-memory-budget">I. Memory Budget</h3>
@@ -2714,7 +2788,7 @@ let summary = grouped.summarise("total_rev", tidy_sum("revenue"));</code></pre>
 <i class="callout-icon no-icon"></i>
 </div>
 <div class="callout-body-container">
-<p>CJC-Lang is open source and available on <a href="https://crates.io/crates/cjc-lang">crates.io</a>. The TidyView implementation lives in <code>crates/cjc-data/</code> — about 11,000 lines of Rust with zero external dependencies. The full benchmark suite (38 tests, 10 categories) is in <code>tests/tidyview_benchmarks.rs</code>.</p>
+<p>CJC-Lang is open source and available on <a href="https://crates.io/crates/cjc-lang">crates.io</a>. The TidyView implementation lives in <code>crates/cjc-data/</code> — about 14,000 lines of Rust with zero external dependencies. The full benchmark suite (38 tests, 10 categories) is in <code>tests/tidyview_benchmarks.rs</code>.</p>
 </div>
 </div>
 </div>
