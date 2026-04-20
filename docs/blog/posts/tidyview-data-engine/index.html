@@ -280,7 +280,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span class="number">3</span><span class="stat-label">layers</span>
 </div>
 <div class="stat">
-<span class="number">40+</span><span class="stat-label">operations</span>
+<span class="number">103</span><span class="stat-label">operations</span>
 </div>
 <div class="stat">
 <span class="number">0</span><span class="stat-label">HashMaps</span>
@@ -299,7 +299,7 @@ TL;DR
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p>TidyView is CJC-Lang’s data manipulation system. It looks like R’s dplyr on the surface, but underneath it’s a database engine: columnar storage, lazy evaluation, bitmask filtering, predicate pushdown, and zone maps. The result is a data pipeline where every intermediate state is inspectable, the original data is never mutated, and the same input always produces the same output — down to the last bit.</p>
+<p>TidyView is CJC-Lang’s data manipulation system. It looks like R’s dplyr on the surface, but underneath it’s a database engine: columnar storage, lazy evaluation, bitmask filtering, predicate pushdown, and zone maps. The result is a data pipeline where every intermediate state is inspectable, the original data is never mutated, and the same input always produces the same output — down to the last bit, on every run. (Tested on Windows; cross-platform verification is ongoing.)</p>
 </div>
 </div>
 <section id="the-problem" class="level2">
@@ -616,7 +616,7 @@ let unique_regions = view.distinct(["region"]);
 
 // deterministic sampling: same seed → same rows, every time
 let sample = view.slice_sample(100, seed: 42);</code></pre>
-<p><code>slice_sample</code> uses a seeded LCG-based Fisher-Yates shuffle. Same seed, same 100 rows, on every machine.</p>
+<p><code>slice_sample</code> uses a seeded LCG-based Fisher-Yates shuffle. Same seed, same 100 rows, every run. (Cross-platform determinism has been verified on Windows; Linux and macOS testing is ongoing.)</p>
 </section>
 </section>
 <section id="how-to-audit-a-tidyview-pipeline" class="level2">
@@ -744,7 +744,7 @@ CapacityExceeded { limit: 65535, got: 70000 }   // too many distinct levels for 
 </tr>
 </tbody>
 </table>
-<p>None of Polars’ trade-offs are wrong — and Polars is significantly faster for most workloads. It’s a production-grade library optimized for throughput. TidyView is optimizing for a different property: <strong>reproducibility</strong> — the guarantee that the same pipeline on the same data always produces the same result, bit for bit, on any machine. TidyView will be slower than Polars on almost any benchmark. That’s the expected cost of determinism.</p>
+<p>None of Polars’ trade-offs are wrong — and Polars is significantly faster for most workloads. It’s a production-grade library optimized for throughput. TidyView is optimizing for a different property: <strong>reproducibility</strong> — the guarantee that the same pipeline on the same data always produces the same result, bit for bit, across repeated runs. (All benchmarks and determinism tests were run on Windows; cross-platform verification is ongoing.) TidyView will be slower than Polars on almost any benchmark. That’s the expected cost of determinism.</p>
 <p>When your work requires an audit trail — when a regulator, a reviewer, or future-you needs to verify that a result is correct — that guarantee can matter more than raw speed.</p>
 </section>
 <section id="benchmark-results" class="level2">
@@ -1175,7 +1175,7 @@ CapacityExceeded { limit: 65535, got: 70000 }   // too many distinct levels for 
 </section>
 <section id="the-one-sentence-summary" class="level2">
 <h2 class="anchored" data-anchor-id="the-one-sentence-summary">The One-Sentence Summary</h2>
-<p>TidyView is a database engine wearing a tidyverse costume, designed so that <strong>same data + same code = same result</strong> on every machine, every run, every time.</p>
+<p>TidyView is a database engine wearing a tidyverse costume, designed so that <strong>same data + same code = same result</strong> on every run, every time — verified on Windows, with cross-platform testing still ahead.</p>
 <p>It combines familiar dplyr verbs (<code>filter</code>, <code>select</code>, <code>mutate</code>, <code>group_by</code>, <code>summarise</code>) with database-engine internals (columnar storage, bitmask filtering, predicate pushdown, zone maps) to deliver data pipelines that are deterministic by construction, auditable by design, and memory-safe without runtime surprises.</p>
 <div class="callout callout-style-simple callout-note no-icon">
 <div class="callout-body d-flex">

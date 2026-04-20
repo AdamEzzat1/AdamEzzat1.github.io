@@ -12,14 +12,14 @@ description: "TidyView is CJC-Lang's data manipulation system. It uses a tidyver
 
 <div class="stats-row">
 <div class="stat"><span class="number">3</span><span class="stat-label">layers</span></div>
-<div class="stat"><span class="number">40+</span><span class="stat-label">operations</span></div>
+<div class="stat"><span class="number">103</span><span class="stat-label">operations</span></div>
 <div class="stat"><span class="number">0</span><span class="stat-label">HashMaps</span></div>
 <div class="stat"><span class="number">38</span><span class="stat-label">benchmark tests</span></div>
 </div>
 
 ::: {.callout-tip appearance="minimal"}
 ## TL;DR
-TidyView is CJC-Lang's data manipulation system. It looks like R's dplyr on the surface, but underneath it's a database engine: columnar storage, lazy evaluation, bitmask filtering, predicate pushdown, and zone maps. The result is a data pipeline where every intermediate state is inspectable, the original data is never mutated, and the same input always produces the same output — down to the last bit.
+TidyView is CJC-Lang's data manipulation system. It looks like R's dplyr on the surface, but underneath it's a database engine: columnar storage, lazy evaluation, bitmask filtering, predicate pushdown, and zone maps. The result is a data pipeline where every intermediate state is inspectable, the original data is never mutated, and the same input always produces the same output — down to the last bit, on every run. (Tested on Windows; cross-platform verification is ongoing.)
 :::
 
 ## The Problem
