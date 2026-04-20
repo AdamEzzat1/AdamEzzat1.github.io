@@ -403,7 +403,7 @@ let unique_regions = view.distinct(["region"]);
 let sample = view.slice_sample(100, seed: 42);
 ```
 
-`slice_sample` uses a seeded LCG-based Fisher-Yates shuffle. Same seed, same 100 rows, on every machine.
+`slice_sample` uses a seeded LCG-based Fisher-Yates shuffle. Same seed, same 100 rows, every run. (Cross-platform determinism has been verified on Windows; Linux and macOS testing is ongoing.)
 
 ## How to Audit a TidyView Pipeline
 
@@ -538,7 +538,7 @@ But Polars makes different trade-offs than TidyView:
 | **Null model** | Nullable everywhere (Arrow validity bitmaps) | Null-free by default, `NullCol` only where needed |
 | **Sampling** | System RNG | Seeded LCG-based Fisher-Yates |
 
-None of Polars' trade-offs are wrong — and Polars is significantly faster for most workloads. It's a production-grade library optimized for throughput. TidyView is optimizing for a different property: **reproducibility** — the guarantee that the same pipeline on the same data always produces the same result, bit for bit, on any machine. TidyView will be slower than Polars on almost any benchmark. That's the expected cost of determinism.
+None of Polars' trade-offs are wrong — and Polars is significantly faster for most workloads. It's a production-grade library optimized for throughput. TidyView is optimizing for a different property: **reproducibility** — the guarantee that the same pipeline on the same data always produces the same result, bit for bit, across repeated runs. (All benchmarks and determinism tests were run on Windows; cross-platform verification is ongoing.) TidyView will be slower than Polars on almost any benchmark. That's the expected cost of determinism.
 
 When your work requires an audit trail — when a regulator, a reviewer, or future-you needs to verify that a result is correct — that guarantee can matter more than raw speed.
 
@@ -707,7 +707,7 @@ These are not performance benchmarks — they're correctness proofs that verify 
 
 ## The One-Sentence Summary
 
-TidyView is a database engine wearing a tidyverse costume, designed so that **same data + same code = same result** on every machine, every run, every time.
+TidyView is a database engine wearing a tidyverse costume, designed so that **same data + same code = same result** on every run, every time — verified on Windows, with cross-platform testing still ahead.
 
 It combines familiar dplyr verbs (`filter`, `select`, `mutate`, `group_by`, `summarise`) with database-engine internals (columnar storage, bitmask filtering, predicate pushdown, zone maps) to deliver data pipelines that are deterministic by construction, auditable by design, and memory-safe without runtime surprises.
 
