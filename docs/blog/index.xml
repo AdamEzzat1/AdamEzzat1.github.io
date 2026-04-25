@@ -12,7 +12,7 @@
 <generator>quarto-1.3.340</generator>
 <lastBuildDate>Mon, 13 Apr 2026 07:00:00 GMT</lastBuildDate>
 <item>
-  <title>The cjcl CLI: 31 Commands for Deterministic Computing</title>
+  <title>The cjcl CLI: 30 Commands for Deterministic Computing</title>
   <dc:creator>Adam Ezzat</dc:creator>
   <link>https://adamezzat1.github.io/blog/posts/cjcl-cli-reference/index.html</link>
   <description><![CDATA[ 
@@ -24,7 +24,7 @@
 </div>
 <div class="stats-row">
 <div class="stat">
-<span class="number">31</span><span class="stat-label">commands</span>
+<span class="number">30</span><span class="stat-label">commands</span>
 </div>
 <div class="stat">
 <span class="number">4</span><span class="stat-label">categories</span>
@@ -46,12 +46,12 @@ TL;DR
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p><code>cjcl</code> is a single binary with 31 commands. Install with <code>cargo install cjc-lang</code>, then <code>cjcl run your_file.cjcl</code>. Every command produces deterministic output — same input, same flags, same result, every time.</p>
+<p><code>cjcl</code> is a single binary with 30 commands. Install with <code>cargo install cjc-lang</code>, then <code>cjcl run your_file.cjcl</code>. Every command produces deterministic output — same input, same flags, same result, every time.</p>
 </div>
 </div>
 <section id="what-is-cjcl" class="level2">
 <h2 class="anchored" data-anchor-id="what-is-cjcl">What Is cjcl?</h2>
-<p><code>cjcl</code> is the CLI frontend for <a href="../../../blog/posts/introducing-cjc/index.html">CJC-Lang</a>, a deterministic numerical programming language. One binary, zero external dependencies, 31 commands that span compilation, data engineering, profiling, and reproducibility verification.</p>
+<p><code>cjcl</code> is the CLI frontend for <a href="../../../blog/posts/introducing-cjc/index.html">CJC-Lang</a>, a deterministic numerical programming language. One binary, zero external dependencies, 30 commands that span compilation, data engineering, profiling, and reproducibility verification.</p>
 <div class="sourceCode" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb1-1"><span class="ex" style="color: null;
 background-color: null;
 font-style: inherit;">cargo</span> install cjc-lang</span>
@@ -61,7 +61,7 @@ font-style: inherit;">cjcl</span> <span class="at" style="color: #657422;
 background-color: null;
 font-style: inherit;">--version</span>   <span class="co" style="color: #5E5E5E;
 background-color: null;
-font-style: inherit;"># CJC-Lang v0.1.4</span></span></code></pre></div>
+font-style: inherit;"># CJC-Lang v0.1.6</span></span></code></pre></div>
 <p>Every command that produces output supports three output modes: <code>--color</code> (default, human-readable), <code>--plain</code> (no ANSI escapes, pipe-friendly), and <code>--json</code> (machine-readable). Most commands that execute code accept <code>--seed &lt;N&gt;</code> for deterministic RNG seeding (default: 42).</p>
 </section>
 <section id="quick-reference" class="level2">
@@ -1792,7 +1792,7 @@ font-style: inherit;"># What changed?</span></span></code></pre></div>
 <i class="callout-icon no-icon"></i>
 </div>
 <div class="callout-body-container">
-<p>CJC-Lang is open source and available on <a href="https://crates.io/crates/cjc-lang">crates.io</a>. All 31 commands are included in the single <code>cjcl</code> binary. Run <code>cjcl &lt;command&gt; --help</code> for command-specific help.</p>
+<p>CJC-Lang is open source and available on <a href="https://crates.io/crates/cjc-lang">crates.io</a>. All 30 commands are included in the single <code>cjcl</code> binary. Run <code>cjcl &lt;command&gt; --help</code> for command-specific help.</p>
 </div>
 </div>
 </div>

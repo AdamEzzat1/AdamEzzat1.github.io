@@ -1,5 +1,5 @@
 ---
-title: "The cjcl CLI: 31 Commands for Deterministic Computing"
+title: "The cjcl CLI: 30 Commands for Deterministic Computing"
 subtitle: "A complete reference for every command in CJC-Lang's CLI toolkit."
 author: "Adam Ezzat"
 date: "2026-04-13"
@@ -11,7 +11,7 @@ description: "A practical reference for every command in the cjcl CLI — from b
 <div class="reading-time">&#128337; ~20 min read</div>
 
 <div class="stats-row">
-<div class="stat"><span class="number">31</span><span class="stat-label">commands</span></div>
+<div class="stat"><span class="number">30</span><span class="stat-label">commands</span></div>
 <div class="stat"><span class="number">4</span><span class="stat-label">categories</span></div>
 <div class="stat"><span class="number">0</span><span class="stat-label">external deps</span></div>
 <div class="stat"><span class="number">42</span><span class="stat-label">default seed</span></div>
@@ -19,16 +19,16 @@ description: "A practical reference for every command in the cjcl CLI — from b
 
 ::: {.callout-tip appearance="minimal"}
 ## TL;DR
-`cjcl` is a single binary with 31 commands. Install with `cargo install cjc-lang`, then `cjcl run your_file.cjcl`. Every command produces deterministic output — same input, same flags, same result, every time.
+`cjcl` is a single binary with 30 commands. Install with `cargo install cjc-lang`, then `cjcl run your_file.cjcl`. Every command produces deterministic output — same input, same flags, same result, every time.
 :::
 
 ## What Is cjcl?
 
-`cjcl` is the CLI frontend for [CJC-Lang](../introducing-cjc/index.qmd), a deterministic numerical programming language. One binary, zero external dependencies, 31 commands that span compilation, data engineering, profiling, and reproducibility verification.
+`cjcl` is the CLI frontend for [CJC-Lang](../introducing-cjc/index.qmd), a deterministic numerical programming language. One binary, zero external dependencies, 30 commands that span compilation, data engineering, profiling, and reproducibility verification.
 
 ```bash
 cargo install cjc-lang
-cjcl --version   # CJC-Lang v0.1.4
+cjcl --version   # CJC-Lang v0.1.6
 ```
 
 Every command that produces output supports three output modes: `--color` (default, human-readable), `--plain` (no ANSI escapes, pipe-friendly), and `--json` (machine-readable). Most commands that execute code accept `--seed <N>` for deterministic RNG seeding (default: 42).
@@ -762,5 +762,5 @@ These flags work with any command:
 | `--version, -V` | Print version |
 
 ::: {.callout-note appearance="minimal"}
-CJC-Lang is open source and available on [crates.io](https://crates.io/crates/cjc-lang). All 31 commands are included in the single `cjcl` binary. Run `cjcl <command> --help` for command-specific help.
+CJC-Lang is open source and available on [crates.io](https://crates.io/crates/cjc-lang). All 30 commands are included in the single `cjcl` binary. Run `cjcl <command> --help` for command-specific help.
 :::
