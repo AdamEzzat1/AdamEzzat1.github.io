@@ -1,0 +1,355 @@
+---
+title: "TidyView v3 and the D-HARHT Memory Engine"
+subtitle: "How CJC-Lang v0.1.7 got its data pipelines down to byte-equal reproducibility at near-HashMap speed."
+author: "Adam Ezzat"
+date: "2026-04-29"
+date-modified: "2026-04-29"
+categories: [CJC-Lang, data, determinism, architecture, benchmarks, hash-tables, release]
+description: "v0.1.7 ships TidyView v3 (twelve phases of incremental optimization to the data engine) and a new family of deterministic collections including the D-HARHT Memory profile — a sealed lookup table that matches std::HashMap's speed while keeping byte-equal iteration order across runs. This post walks through every phase, every benchmark, and the honest gaps."
+---
+
+<div class="reading-time">&#128337; ~25 min read</div>
+
+<div class="stats-row">
+<div class="stat"><span class="number">12</span><span class="stat-label">phases</span></div>
+<div class="stat"><span class="number">495</span><span class="stat-label">TidyView tests</span></div>
+<div class="stat"><span class="number">258</span><span class="stat-label">cjc-data unit tests</span></div>
+<div class="stat"><span class="number">~108</span><span class="stat-label">ns/op (DHarht Mem)</span></div>
+</div>
+
+::: {.callout-tip appearance="minimal"}
+## TL;DR
+v0.1.7 ships TidyView v3 — twelve phases of focused optimization to CJC-Lang's data engine — and a new module `cjc_data::detcoll` containing five deterministic collection types. The headline win is **D-HARHT Memory**, a sealed-lookup table that matches `std::HashMap` speed (~108 ns/op) while preserving byte-equal iteration order across runs. The new `SealedU64Map` wrapper is the recommended drop-in for any `BTreeMap<u64, V>` whose access pattern is "build once, look up many" and where reproducibility matters.
+:::
+
+## The arc
+
+When [v0.1.6 shipped TidyView's adaptive selection engine](../tidyview-data-engine/index.qmd), I closed the post with a list of "what's next" items. v0.1.7 is what happened after that list got picked apart, one item at a time, over twelve phases. Each phase fixed a specific bottleneck, shipped a specific bench, and then exposed the next bottleneck.
+
+The phases compound. By Phase 4, joins on categorical keys are 6× faster. By Phase 10, sealed `u64` lookup matches HashMap speed. By Phase 12, the determinism contract holds even under adversarial collision-heavy workloads.
+
+This post walks through every phase: what it solved, what it cost, what came next.
+
+## Part 1 — TidyView v3
+
+The eight TidyView-specific phases (0 through 6) all share a theme: **categorical columns are the right unit of work for analytical queries, but the engine kept paying for `String` allocations every time a verb touched one.** Each phase eliminated one of those allocations on a different verb.
+
+### Phase 0 — Tidyverse parity audit
+
+The starting point: verify the dispatch path from `.cjcl` source → `tidy_dispatch` → Rust API was 1:1 with no bypass. Six new tests pin filter / select / arrange / distinct / group_by + summarise. No work, just verification — but it set the contract for everything that followed: any optimization had to keep this dispatch layer pure.
+
+### Phase 1 — Deterministic Adaptive Dictionary Engine
+
+A new module `cjc_data::byte_dict` shipped six types: `ByteStringPool`, `ByteStrView`, `AdaptiveCodes` (U8/U16/U32/U64 auto-promoting at 256 / 65 536 / 2³² thresholds), `ByteDictionary` (`BTreeMap<Vec<u8>, u64>` lookup, `frozen` flag, `CategoryOrdering::FirstSeen|Lexical|Explicit`), `CategoricalColumn`, `UnknownCategoryPolicy`.
+
+Six-clause determinism contract: integer-only thresholds, BTreeMap (not HashMap), byte-lex (not Unicode) sort, lazy code-width promotion, strict frozen rejection, byte-equal round-trip.
+
+Standalone — Phase 1 didn't replace anything. Phase 2 is where it started showing up in production.
+
+### Phase 2 — Cat-aware group_by + distinct
+
+When all `group_by` keys are `Column::Categorical`, the lookup `BTreeMap` keys flip from `Vec<String>` to `Vec<u32>` codes. Mixed-type keys auto-fall-back to the string path.
+
+The bench that mattered: 1M rows × 100 unique categorical keys, single-key `group_by_fast`:
+
+| Path | Time |
+|---|---|
+| String-key BTreeMap | 859.9 ms |
+| **Cat-aware (`Vec<u32>` keys)** | **114.8 ms** |
+| **Speedup** | **7.49×** |
+
+The win is purely structural — codes are `u32` integers, not heap-allocated `String` clones per row.
+
+### Phase 3 — Hybrid streaming set-op fast paths
+
+`AdaptiveSelection::intersect` and `union` got per-chunk dispatch when one or both operands are `Hybrid`. Pre-Phase-3, those routed through `to_verbatim_mask() → AND/OR → re-classify`, allocating a `nrows/64`-word bitmap per Hybrid operand.
+
+The 4×4 chunk-shape table (`Empty | All | Sparse(Vec<u16>) | Dense(Box<[u64]>)`) collapses to **5 effective shapes** after Empty/All folding:
+
+| left × right | path |
+|---|---|
+| `Sparse ∩ Sparse` | merge-walk on two ascending `Vec<u16>` |
+| `Sparse ∩ Dense`  | filter-walk: bit-test each sparse row against partner words |
+| `Dense ∩ Dense`   | per-word AND over `chunk_len.div_ceil(64)` u64s |
+| `Empty ∩ *`       | fold to `Empty` |
+| `All ∩ x`         | fold to `x` unchanged |
+
+Headline bench (favorable case, 100k rows, sparse-chunked × dense-chunked Hybrid):
+
+```
+Phase 3 chunked path:           4.69 μs avg (n=100)
+Pre-Phase-3 materialize path:  391.41 μs avg (n=100)
+Speedup:                        83.46×
+```
+
+Caveat I had to be honest about: that's the favorable case. Contiguous-Hybrid (Dense × Dense everywhere) shrinks the win to ~5–10× — still net positive but no longer allocation-bound.
+
+### Phase 4 — Cat-aware joins
+
+This was the bundled deliverable: cat-aware joins **plus** Column ↔ CategoricalColumn conversions.
+
+The join path: when every join-key column is `Column::Categorical` on **both** frames, route through `BTreeMap<Vec<u32>, Vec<usize>>` with a deterministic per-column **right-code → left-code remap**. Each frame owns its own dictionary, so left-side code 3 ≠ right-side code 3 in general — the per-column remap is what makes cross-frame comparison safe:
+
+```rust
+right_to_left[ki][right_code] = Some(left_code) | None
+```
+
+`None` means the level doesn't exist on the left dictionary; that right row is skipped before BTreeMap insertion (it can never join). Build order via `BTreeMap<&str, u32>` over left levels — BTree not Hash, so the remap is itself deterministic.
+
+Headline bench (100k × 100k rows, 100 unique categorical levels, single-key inner join):
+
+| Path | Time |
+|---|---|
+| String-key | 16.82 s |
+| **Cat-aware** | **2.77 s** |
+| **Speedup** | **6.08×** |
+
+### Phase 5 — Three deferred items in one bundle
+
+Phase 5 was where I closed all three deferrals from prior phases:
+
+**(a) Full Column wiring.** New `Column::CategoricalAdaptive(Box<CategoricalColumn>)` variant — a sibling of the legacy `Column::Categorical`. The 21 column-reader sites all dispatch through a `to_legacy_categorical()` shim (lossless when levels are UTF-8 + no nulls). Hot paths bypass the shim entirely.
+
+**(b) Filter-chain Hybrid intersect path.** New `predicate_bytecode::evaluate_to_selection`. `TidyView::filter` routes through `existing.intersect(fresh)` when the existing mask is already `Hybrid` and not in sparse-path territory — exercising the Phase 3 chunk dispatch in production.
+
+**(c) Phase 5 = cat-aware arrange.** When `Column::Categorical` levels are lex-sorted (the Phase 17 `forcats` invariant), comparing `u32` codes is byte-identical to comparing `String` levels. Pre-resolution per key:
+
+```rust
+enum ArrangeKeyResolved<'a> {
+    CatCodes { codes: &'a [u32], descending: bool },  // pure u32 compare
+    Legacy { col: &'a Column, descending: bool },     // string compare
+}
+```
+
+100k rows × 100 unique categorical levels, single-key ascending sort:
+
+| Path | Time |
+|---|---|
+| String compare | 92.73 ms |
+| **u32 code compare** | **9.58 ms** |
+| **Speedup** | **9.68×** |
+
+Higher than Phase 4's join win because arrange's stable sort calls the comparator ~1.6M times for 100k rows — every eliminated `String::cmp` counts.
+
+### Phase 6 — Streaming summarise + cat-aware mutate + lazy optimizer
+
+**Streaming summarise**: `TidyView::summarise_streaming(keys, aggs)` walks visible rows ONCE, maintaining a `BTreeMap<key, Vec<AccState>>` where each accumulator holds running state of constant size:
+
+| `StreamingAgg` | `AccState` | Algorithm |
+|---|---|---|
+| `Count` | `{ n: u64 }` | counter |
+| `Sum(col)` | `{ sum, c }` | Kahan running sum |
+| `Mean(col)` | `{ sum, c, n }` | Kahan + count |
+| `Min(col)` / `Max(col)` | `{ cur, any }` | NaN-aware extremum |
+| `Var(col)` / `Sd(col)` | `{ n, mean, m2 }` | Welford online variance |
+
+**Memory: O(K · acc_size)** instead of `O(N · usize)`. For 100M rows / 1000 groups: ~32 KB vs ~800 MB — **25 000× less memory.**
+
+CPU savings on 1M × 1000 groups were modest (1.10×, BTreeMap ops dominate at this shape) — but the memory win unlocks workloads that previously OOM'd.
+
+**Cat-aware mutate**: `mutate("k_copy", DExpr::Col("k"))` over a categorical column used to degrade to `Column::Str`, breaking downstream cat-aware fast paths. Phase 6 adds an early-return at the top of `eval_expr_column`:
+
+```rust
+if let DExpr::Col(name) = expr {
+    if let Some(src) = df.get_column(name) {
+        match src {
+            Column::Categorical { .. } | Column::CategoricalAdaptive(_) => {
+                return Ok(src.clone());
+            }
+            _ => {}
+        }
+    }
+}
+```
+
+**Lazy optimizer**: new `ViewNode::StreamingGroupSummarise` variant. New pass `annotate_streamable_summarise` rewrites `GroupSummarise` → `StreamingGroupSummarise` when **every** aggregation is streaming-friendly. All-or-nothing — any non-streamable agg keeps the legacy path.
+
+## Part 2 — The Deterministic Collection Family
+
+Phase 7 onwards is a different track: not TidyView verbs but the **collections those verbs use under the hood**.
+
+### Phase 7 — Five deterministic collection types
+
+A new module `cjc_data::detcoll` shipped:
+
+| Type | Niche | Lookup | Iteration |
+|---|---|---|---|
+| `IndexVec<I, V>` | dense `IdType → Value` | `O(1)` | insertion order |
+| `TinyDetMap<K, V>` | ≤ 16 entries | linear scan | sorted |
+| `SortedVecMap<K, V>` | small-medium sealed sorted | binary search + range | sorted |
+| `DetOpenMap<K, V>` | sparse mutable equality | open addressing + BTreeMap fallback | undefined-but-deterministic |
+| `DHarht<V>` | large sealed equality, byte-keys | per-shard hash + microbucket | undefined-but-deterministic |
+
+The first four are simple, but `DHarht` was meant to be the centerpiece — and the first version was **slower than BTreeMap**. The next four phases were about closing that gap.
+
+### Phase 8 — Slab + singleton + inline-keys SSO
+
+Three constant-factor improvements:
+
+1. **Per-shard typed slab allocator.** Each `Shard` now owns a single `key_pool: Vec<u8>`. `MicroBucket` entries store `KeyHandle { offset, len }` instead of `Vec<u8>`. One allocation per shard instead of one per entry.
+2. **Singleton front-entry fast path.** First insertion at a prefix → `FrontEntry::Singleton { handle, value }` (no bucket allocation). Second insertion → promote.
+3. **Inline-keys SSO.** `KeyHandle` carries `inline: [u8; 16]`. Keys ≤ 16 bytes are stored inline; the slab is bypassed entirely on lookup.
+
+Cumulative effect on a categorical-dictionary lookup bench (50k cats, 500k probes):
+
+| Stage | DHarht/BTreeMap |
+|---|---|
+| Phase 7 baseline | 0.34× (DHarht **3× slower**) |
+| Phase 8a (slab + singleton) | 0.48× |
+| Phase 8b (+ inline-keys SSO) | 0.55× |
+
+Three rounds, ~62% improvement in ratio. Still slower than BTreeMap — the gap was clearly architectural, not micro-optimization.
+
+### Phase 9 — Hash swap + jump table
+
+The categorical dict bench plateaued at 0.55× and I knew the hash function was burning cycles. Phase 9 swapped `splitmix64+FNV` per chunk for a tighter multiplicative mixer, then replaced the sorted-Vec front directory with a 256-slot jump table for `O(1)` slot lookup.
+
+Result: marginal improvement on the categorical-dict bench. **Still slower than BTreeMap on this workload.** The bench shape was wrong.
+
+### Phase 10 — D-HARHT Memory profile (the real win)
+
+Then I got hold of [the actual D-HARHT blueprint](https://github.com/AdamEzzat1/CJC) the original architecture was based on, and the gap became obvious. My v.01 was a byte-key implementation; the original D-HARHT Memory profile is `u64`-keyed with very different choices:
+
+| Aspect | D-HARHT Memory (their blueprint) | DHarht v.01 (mine, Phase 7-9) |
+|---|---|---|
+| Key type | `u64` (no allocation) | arbitrary `&[u8]` (slab + handles) |
+| Front directory | **16-bit, 65 536 slots, sparse-paged** | 8-bit, 256 slots, dense |
+| Front entry | Packed `u64` with 3-bit tag | Rust enum |
+| MicroBucket | 4 / 8 / 16 sized | only 16 |
+| Match | Parallel scalar `match_mask` | Linear scan |
+| Hash | `splitmix64` finalizer = scatter | Multiplicative + finalize |
+
+Phase 10 ported the Memory profile faithfully as a sibling type `DHarhtMemory<V>`. Then I ran a 4-way bench on the same workload shape the blueprint used (100k u64 keys, 2M random-stream lookups, 3 stable runs):
+
+| Backend | Run 1 | Run 2 | Run 3 | Stable avg |
+|---|---|---|---|---|
+| BTreeMap | 266 | 242 | 186 | ~232 ns/op |
+| HashMap (std SipHash) | 148 | 91 | 84 | ~107 ns/op |
+| DHarht v.01 (byte-key) | 238 | 185 | 217 | ~213 ns/op |
+| **DHarht Memory (u64-key)** | **105** | **108** | **112** | **~108 ns/op** |
+
+**DHarht Memory ≈ HashMap.** And ~2.2× faster than BTreeMap. Architecture matters. The constant-factor optimizations in Phases 8 and 9 helped at the margins; **the architectural shift from byte-key to u64-key + sparse paged 16-bit front directory was where the 2× win came from**.
+
+DHarht Memory's run-to-run variance is also the smallest of any backend (±3%) — sealed lookup with cache-resident sparse pages is consistent in a way HashMap (with adaptive table sizing) is not.
+
+### Phase 11 — `SealedU64Map` wrapper + memory & security
+
+Phase 10 shipped the architecture. Phase 11 packaged it for production use and ran the comparisons users care about beyond raw speed.
+
+**`SealedU64Map<V>`** — a thin public wrapper around `DHarhtMemory` enforcing the `build → seal → read-many` lifecycle. Surface: `new`, `insert`, `get`, `seal`, `iter_sorted`, `approx_memory_bytes`, `shape_hash`. The recommended drop-in for any `BTreeMap<u64, V>` whose access pattern matches.
+
+**First wiring demo**: `ByteDictionary::seal_with_u64_hash_index()` builds a u64-hash content-cache so callers who already have the deterministic 64-bit hash of bytes (from snapshot diffing, content-addressed storage) can look up the dictionary code via `lookup_by_hash(hash)` without rehashing.
+
+**Memory comparison** (50k u64 entries, 8B keys + 8B values):
+
+| Backend | Total bytes | Bytes/entry | vs HashMap |
+|---|---|---|---|
+| HashMap (std) | 1 376 256 | **27.5** | 1.0× |
+| BTreeMap | 3 600 000 | 72.0 | 2.6× |
+| **DHarhtMemory** | 5 319 232 | **106.4** | **3.87×** |
+
+HashMap wins on memory. DHarhtMemory pays ~3.87× more bytes for the 16-bit sparse-paged front directory + per-shard slabs + micro-bucket pools. **That's the cost of the determinism contract.**
+
+**Determinism comparison**:
+
+| Property | BTreeMap | HashMap | DHarhtMemory |
+|---|---|---|---|
+| Same input → same iter order, same process | ✅ | **❌** randomized | ✅ |
+| Same input → same iter order, across processes | ✅ | **❌** seed varies | ✅ |
+| `shape_hash` byte-equal across builds | ✅ | n/a | ✅ |
+
+Empirically confirmed: HashMap iter order **varied across 10 independent builds in the same process**. This isn't a bug — it's HashDoS protection — but it's exactly the property that disqualifies HashMap from canonical-output paths in CJC-Lang. DHarhtMemory's `shape_hash` was `0xa7792345c13b05b0` stable across all builds.
+
+**Security comparison**:
+
+| Threat | BTreeMap | HashMap | DHarhtMemory |
+|---|---|---|---|
+| HashDoS adversarial collision | ✅ Ord-tree immune | ⚠️ random seed mitigates (loses determinism) | ✅ MicroBucket16 cap → fallback |
+| Silent entry loss | ✅ | ✅ | ✅ |
+| False-positive lookups | ✅ | ✅ | ✅ full key equality |
+| Reproducibility for audit | ✅ | **❌** | ✅ |
+| Adversarial diagnostics | implicit | none | ✅ counters queryable |
+
+The trade is real and intentional: DHarhtMemory pays ~3.9× more memory than HashMap to deliver what HashMap **structurally cannot** — deterministic iteration across processes **with** HashDoS resistance. For a workspace whose hard rule is "same seed → bit-identical output across runs", that's exactly the profile that fits.
+
+### Phase 12 — ART fallback (port complete)
+
+Phase 11 shipped DHarhtMemory using a `BTreeMap<u64, V>` as the per-table fallback when a front-directory collision group exceeded MicroBucket16. The original blueprint uses a per-shard **Adaptive Radix Tree** (ART) with the full Node4/Node16/Node32/Node48/Node256 hierarchy — I'd deferred that as a multi-day port.
+
+Phase 12 lands it. Each shard now owns an `ArtSlab<V>` containing entries (3-bit-tagged `u32` discriminators), leaves, and per-node-type arrays. When a collision group overflows during seal, those entries go into the originating shard's ART rather than a global BTreeMap. Lookup with the `FRONT_FALLBACK` tag walks that shard's ART by descending through bytes of the scattered key.
+
+Adaptive growth is monotonic and deterministic: Node4 → Node16 → Node32 → Node48 → Node256 by child count, with the same insertion order producing byte-identical tree shape after compaction.
+
+Verified by `art_fallback_handles_forced_overflow`: brute-search keys that collide on the same (shard, 16-bit prefix) until you have 17+ of them; verify that the seal triggers the ART path (`micro_overflow_count > 0`) and every key is still findable through the radix descent.
+
+The win on collision-heavy workloads is structural — ART's worst-case lookup is at most 8 byte-radix descents (one per byte of the 64-bit scatter) vs BTreeMap's `O(log N)` tree walk. For the well-distributed workloads this engine targets, the ART path almost never fires; for adversarial inputs it caps the worst case deterministically.
+
+## Where this leaves CJC-Lang
+
+The recommended backend selection table after v0.1.7:
+
+| Workload | Pick |
+|---|---|
+| u64-keyed sealed lookup, **deterministic** + audit + reproducibility | **`SealedU64Map`** |
+| u64-keyed sealed lookup, **lowest memory**, no audit needs | `std::HashMap` |
+| u64-keyed mutable + ordered iteration | `BTreeMap` |
+| Arbitrary byte keys, sealed (categorical dictionaries, interning) | `DHarht` v.01 |
+| Tiny tables (≤ 16 entries) | `TinyDetMap` |
+| Small-medium sealed sorted maps with range queries | `SortedVecMap` |
+| Sparse mutable equality, ordering doesn't matter | `DetOpenMap` |
+| Dense `IdType → Value` ID tables | `IndexVec` |
+
+The `BTreeMap` line is unchanged — it's still the right answer for ordered iteration, range queries, and mutation-heavy workloads. The `HashMap` line is new: it's faster than DHarhtMemory and uses less memory, but **only if your workload doesn't need reproducible iteration across runs**. The vast majority of CJC-Lang's data paths do — that's why the language exists in the first place.
+
+## Numbers, in one place
+
+| Phase | Bench | Headline |
+|---|---|---|
+| 2 | group_by + cat keys | 7.49× faster |
+| 3 | Hybrid set ops | 83.46× (favorable) |
+| 4 | Categorical joins | 6.08× |
+| 5(c) | Categorical arrange | 9.68× |
+| 6 | Streaming summarise memory | 25 000× less RAM |
+| 10 | DHarht Memory u64 lookup | matches HashMap (~108 ns/op) |
+| 11 | Memory cost | 3.87× HashMap |
+| 11 | Determinism | HashMap fails, DHarht passes |
+| 12 | Adversarial collision | ART fallback bounds worst case |
+
+Test counts (across the whole suite, end-to-end):
+
+```
+cjc-data         258  (was 193 in v0.1.6; +65 from v3 work)
+test_phase10_tidy 495  (was 379 in v0.1.6; +116 from v3 work)
+bolero fuzz       32   (was 26 in v0.1.6; +6)
+tidyview-bench    38   (unchanged)
+physics_ml        71   (unchanged)
+```
+
+Workspace builds clean. Vault audit: 1 738 / 1 738 wikilinks resolve. `cjc-lang v0.1.7` packages cleanly via `cargo publish --dry-run`.
+
+## What's deferred (with reasons)
+
+Honest scope notes — these landed on the future-work list rather than v0.1.7:
+
+- **Full `Column::Categorical → CategoricalColumn` storage replacement.** The additive `CategoricalAdaptive` variant in Phase 5(a) is the gateway; the literal storage swap touches ~200 column-reader call sites. Single-session work won't do it justice.
+- **`LookupProfile::Speed` and `LookupProfile::Balanced`.** The Memory profile is the recommended starting point per the original blueprint. Speed adds ~6 MB per shard for a marginal lookup-time improvement; not worth it until measured demand appears.
+- **Manual SSE2 `find_key16_sse2` for ART nodes.** The scalar `match_mask` already inlines into tight code; SIMD here would be `unsafe` + architecture-specific for a path that fires only on adversarial input.
+- **Full compiler/runtime wiring of `SealedU64Map`** beyond the `ByteDictionary` content-hash demo. Symbol interning, MIR value tables, runtime globals — each is its own integration point and needs its own measurement.
+
+## Try it
+
+```bash
+cargo install cjc-lang  # picks up v0.1.7 once published
+```
+
+Or pull the workspace and run the bench yourself:
+
+```bash
+git clone https://github.com/AdamEzzat1/CJC
+cd CJC
+cargo test --test test_phase10_tidy --release -- --ignored bench_phase10 --nocapture
+```
+
+The 4-way bench output should look like the table above. If yours is different — say, HashMap is much faster than mine — that's interesting data. The blueprint reported ~37 ns/op for both DHarht Memory and HashMap on the original author's hardware; I see ~108 ns/op vs ~107 ns/op on Windows. Same ratio, different absolute. Architecture is portable; constant factors are not.
+
+If you spot a workload where the chosen backend is wrong for the shape, that's exactly the kind of feedback that drove this release. The collection family is open-ended — Phase 13 will be whatever shape isn't covered yet.
