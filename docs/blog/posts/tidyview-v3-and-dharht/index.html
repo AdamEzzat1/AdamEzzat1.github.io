@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.3.340">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Adam Ezzat">
+<meta name="dcterms.date" content="2026-04-29">
+<meta name="description" content="v0.1.7 ships TidyView v3 (twelve phases of incremental optimization to the data engine) and a new family of deterministic collections including the D-HARHT Memory profile — a sealed lookup table that matches std::HashMap’s speed while keeping byte-equal iteration order across runs. This post walks through every phase, every benchmark, and the honest gaps.">
+
+<title>Adam Ezzat - TidyView v3 and the D-HARHT Memory Engine</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../../">
+<script src="../../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<script src="../../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-dark.min.css" rel="prefetch" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+<style>html{ scroll-behavior: smooth; }</style>
+
+
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../../index.html">
+    <span class="navbar-title">Adam Ezzat</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../../index.html" rel="" target="">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../about.html" rel="" target="">
+ <span class="menu-text">About</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../projects.html" rel="" target="">
+ <span class="menu-text">Projects</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../blog/index.html" rel="" target="">
+ <span class="menu-text">Blog</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/AdamEzzat1" rel="" target=""><i class="bi bi-github" role="img" aria-label="GitHub">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://linkedin.com/in/adamezzat" rel="" target=""><i class="bi bi-linkedin" role="img" aria-label="LinkedIn">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+            <div class="quarto-navbar-tools">
+  <a href="" class="quarto-color-scheme-toggle quarto-navigation-tool  px-1" onclick="window.quartoToggleColorScheme(); return false;" title="Toggle dark mode"><i class="bi"></i></a>
+</div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#the-arc" id="toc-the-arc" class="nav-link active" data-scroll-target="#the-arc">The arc</a></li>
+  <li><a href="#part-1-tidyview-v3" id="toc-part-1-tidyview-v3" class="nav-link" data-scroll-target="#part-1-tidyview-v3">Part 1 — TidyView v3</a>
+  <ul class="collapse">
+  <li><a href="#phase-0-tidyverse-parity-audit" id="toc-phase-0-tidyverse-parity-audit" class="nav-link" data-scroll-target="#phase-0-tidyverse-parity-audit">Phase 0 — Tidyverse parity audit</a></li>
+  <li><a href="#phase-1-deterministic-adaptive-dictionary-engine" id="toc-phase-1-deterministic-adaptive-dictionary-engine" class="nav-link" data-scroll-target="#phase-1-deterministic-adaptive-dictionary-engine">Phase 1 — Deterministic Adaptive Dictionary Engine</a></li>
+  <li><a href="#phase-2-cat-aware-group_by-distinct" id="toc-phase-2-cat-aware-group_by-distinct" class="nav-link" data-scroll-target="#phase-2-cat-aware-group_by-distinct">Phase 2 — Cat-aware group_by + distinct</a></li>
+  <li><a href="#phase-3-hybrid-streaming-set-op-fast-paths" id="toc-phase-3-hybrid-streaming-set-op-fast-paths" class="nav-link" data-scroll-target="#phase-3-hybrid-streaming-set-op-fast-paths">Phase 3 — Hybrid streaming set-op fast paths</a></li>
+  <li><a href="#phase-4-cat-aware-joins" id="toc-phase-4-cat-aware-joins" class="nav-link" data-scroll-target="#phase-4-cat-aware-joins">Phase 4 — Cat-aware joins</a></li>
+  <li><a href="#phase-5-three-deferred-items-in-one-bundle" id="toc-phase-5-three-deferred-items-in-one-bundle" class="nav-link" data-scroll-target="#phase-5-three-deferred-items-in-one-bundle">Phase 5 — Three deferred items in one bundle</a></li>
+  <li><a href="#phase-6-streaming-summarise-cat-aware-mutate-lazy-optimizer" id="toc-phase-6-streaming-summarise-cat-aware-mutate-lazy-optimizer" class="nav-link" data-scroll-target="#phase-6-streaming-summarise-cat-aware-mutate-lazy-optimizer">Phase 6 — Streaming summarise + cat-aware mutate + lazy optimizer</a></li>
+  </ul></li>
+  <li><a href="#part-2-the-deterministic-collection-family" id="toc-part-2-the-deterministic-collection-family" class="nav-link" data-scroll-target="#part-2-the-deterministic-collection-family">Part 2 — The Deterministic Collection Family</a>
+  <ul class="collapse">
+  <li><a href="#phase-7-five-deterministic-collection-types" id="toc-phase-7-five-deterministic-collection-types" class="nav-link" data-scroll-target="#phase-7-five-deterministic-collection-types">Phase 7 — Five deterministic collection types</a></li>
+  <li><a href="#phase-8-slab-singleton-inline-keys-sso" id="toc-phase-8-slab-singleton-inline-keys-sso" class="nav-link" data-scroll-target="#phase-8-slab-singleton-inline-keys-sso">Phase 8 — Slab + singleton + inline-keys SSO</a></li>
+  <li><a href="#phase-9-hash-swap-jump-table" id="toc-phase-9-hash-swap-jump-table" class="nav-link" data-scroll-target="#phase-9-hash-swap-jump-table">Phase 9 — Hash swap + jump table</a></li>
+  <li><a href="#phase-10-d-harht-memory-profile-the-real-win" id="toc-phase-10-d-harht-memory-profile-the-real-win" class="nav-link" data-scroll-target="#phase-10-d-harht-memory-profile-the-real-win">Phase 10 — D-HARHT Memory profile (the real win)</a></li>
+  <li><a href="#phase-11-sealedu64map-wrapper-memory-security" id="toc-phase-11-sealedu64map-wrapper-memory-security" class="nav-link" data-scroll-target="#phase-11-sealedu64map-wrapper-memory-security">Phase 11 — <code>SealedU64Map</code> wrapper + memory &amp; security</a></li>
+  <li><a href="#phase-12-art-fallback-port-complete" id="toc-phase-12-art-fallback-port-complete" class="nav-link" data-scroll-target="#phase-12-art-fallback-port-complete">Phase 12 — ART fallback (port complete)</a></li>
+  </ul></li>
+  <li><a href="#where-this-leaves-cjc-lang" id="toc-where-this-leaves-cjc-lang" class="nav-link" data-scroll-target="#where-this-leaves-cjc-lang">Where this leaves CJC-Lang</a></li>
+  <li><a href="#numbers-in-one-place" id="toc-numbers-in-one-place" class="nav-link" data-scroll-target="#numbers-in-one-place">Numbers, in one place</a></li>
+  <li><a href="#whats-deferred-with-reasons" id="toc-whats-deferred-with-reasons" class="nav-link" data-scroll-target="#whats-deferred-with-reasons">What’s deferred (with reasons)</a></li>
+  <li><a href="#try-it" id="toc-try-it" class="nav-link" data-scroll-target="#try-it">Try it</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">TidyView v3 and the D-HARHT Memory Engine</h1>
+<p class="subtitle lead">How CJC-Lang v0.1.7 got its data pipelines down to byte-equal reproducibility at near-HashMap speed.</p>
+  <div class="quarto-categories">
+    <div class="quarto-category">CJC-Lang</div>
+    <div class="quarto-category">data</div>
+    <div class="quarto-category">determinism</div>
+    <div class="quarto-category">architecture</div>
+    <div class="quarto-category">benchmarks</div>
+    <div class="quarto-category">hash-tables</div>
+    <div class="quarto-category">release</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    v0.1.7 ships TidyView v3 (twelve phases of incremental optimization to the data engine) and a new family of deterministic collections including the D-HARHT Memory profile — a sealed lookup table that matches std::HashMap’s speed while keeping byte-equal iteration order across runs. This post walks through every phase, every benchmark, and the honest gaps.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Adam Ezzat </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">April 29, 2026</p>
+    </div>
+  </div>
+  
+    <div>
+    <div class="quarto-title-meta-heading">Modified</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date-modified">April 29, 2026</p>
+    </div>
+  </div>
+    
+  </div>
+  
+
+</header>
+
+<div class="reading-time">
+🕑 ~25 min read
+</div>
+<div class="stats-row">
+<div class="stat">
+<span class="number">12</span><span class="stat-label">phases</span>
+</div>
+<div class="stat">
+<span class="number">495</span><span class="stat-label">TidyView tests</span>
+</div>
+<div class="stat">
+<span class="number">258</span><span class="stat-label">cjc-data unit tests</span>
+</div>
+<div class="stat">
+<span class="number">~108</span><span class="stat-label">ns/op (DHarht Mem)</span>
+</div>
+</div>
+<div class="callout callout-style-simple callout-tip no-icon callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+TL;DR
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>v0.1.7 ships TidyView v3 — twelve phases of focused optimization to CJC-Lang’s data engine — and a new module <code>cjc_data::detcoll</code> containing five deterministic collection types. The headline win is <strong>D-HARHT Memory</strong>, a sealed-lookup table that matches <code>std::HashMap</code> speed (~108 ns/op) while preserving byte-equal iteration order across runs. The new <code>SealedU64Map</code> wrapper is the recommended drop-in for any <code>BTreeMap&lt;u64, V&gt;</code> whose access pattern is “build once, look up many” and where reproducibility matters.</p>
+</div>
+</div>
+<section id="the-arc" class="level2">
+<h2 class="anchored" data-anchor-id="the-arc">The arc</h2>
+<p>When <a href="../../../blog/posts/tidyview-data-engine/index.html">v0.1.6 shipped TidyView’s adaptive selection engine</a>, I closed the post with a list of “what’s next” items. v0.1.7 is what happened after that list got picked apart, one item at a time, over twelve phases. Each phase fixed a specific bottleneck, shipped a specific bench, and then exposed the next bottleneck.</p>
+<p>The phases compound. By Phase 4, joins on categorical keys are 6× faster. By Phase 10, sealed <code>u64</code> lookup matches HashMap speed. By Phase 12, the determinism contract holds even under adversarial collision-heavy workloads.</p>
+<p>This post walks through every phase: what it solved, what it cost, what came next.</p>
+</section>
+<section id="part-1-tidyview-v3" class="level2">
+<h2 class="anchored" data-anchor-id="part-1-tidyview-v3">Part 1 — TidyView v3</h2>
+<p>The eight TidyView-specific phases (0 through 6) all share a theme: <strong>categorical columns are the right unit of work for analytical queries, but the engine kept paying for <code>String</code> allocations every time a verb touched one.</strong> Each phase eliminated one of those allocations on a different verb.</p>
+<section id="phase-0-tidyverse-parity-audit" class="level3">
+<h3 class="anchored" data-anchor-id="phase-0-tidyverse-parity-audit">Phase 0 — Tidyverse parity audit</h3>
+<p>The starting point: verify the dispatch path from <code>.cjcl</code> source → <code>tidy_dispatch</code> → Rust API was 1:1 with no bypass. Six new tests pin filter / select / arrange / distinct / group_by + summarise. No work, just verification — but it set the contract for everything that followed: any optimization had to keep this dispatch layer pure.</p>
+</section>
+<section id="phase-1-deterministic-adaptive-dictionary-engine" class="level3">
+<h3 class="anchored" data-anchor-id="phase-1-deterministic-adaptive-dictionary-engine">Phase 1 — Deterministic Adaptive Dictionary Engine</h3>
+<p>A new module <code>cjc_data::byte_dict</code> shipped six types: <code>ByteStringPool</code>, <code>ByteStrView</code>, <code>AdaptiveCodes</code> (U8/U16/U32/U64 auto-promoting at 256 / 65 536 / 2³² thresholds), <code>ByteDictionary</code> (<code>BTreeMap&lt;Vec&lt;u8&gt;, u64&gt;</code> lookup, <code>frozen</code> flag, <code>CategoryOrdering::FirstSeen|Lexical|Explicit</code>), <code>CategoricalColumn</code>, <code>UnknownCategoryPolicy</code>.</p>
+<p>Six-clause determinism contract: integer-only thresholds, BTreeMap (not HashMap), byte-lex (not Unicode) sort, lazy code-width promotion, strict frozen rejection, byte-equal round-trip.</p>
+<p>Standalone — Phase 1 didn’t replace anything. Phase 2 is where it started showing up in production.</p>
+</section>
+<section id="phase-2-cat-aware-group_by-distinct" class="level3">
+<h3 class="anchored" data-anchor-id="phase-2-cat-aware-group_by-distinct">Phase 2 — Cat-aware group_by + distinct</h3>
+<p>When all <code>group_by</code> keys are <code>Column::Categorical</code>, the lookup <code>BTreeMap</code> keys flip from <code>Vec&lt;String&gt;</code> to <code>Vec&lt;u32&gt;</code> codes. Mixed-type keys auto-fall-back to the string path.</p>
+<p>The bench that mattered: 1M rows × 100 unique categorical keys, single-key <code>group_by_fast</code>:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Path</th>
+<th>Time</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>String-key BTreeMap</td>
+<td>859.9 ms</td>
+</tr>
+<tr class="even">
+<td><strong>Cat-aware (<code>Vec&lt;u32&gt;</code> keys)</strong></td>
+<td><strong>114.8 ms</strong></td>
+</tr>
+<tr class="odd">
+<td><strong>Speedup</strong></td>
+<td><strong>7.49×</strong></td>
+</tr>
+</tbody>
+</table>
+<p>The win is purely structural — codes are <code>u32</code> integers, not heap-allocated <code>String</code> clones per row.</p>
+</section>
+<section id="phase-3-hybrid-streaming-set-op-fast-paths" class="level3">
+<h3 class="anchored" data-anchor-id="phase-3-hybrid-streaming-set-op-fast-paths">Phase 3 — Hybrid streaming set-op fast paths</h3>
+<p><code>AdaptiveSelection::intersect</code> and <code>union</code> got per-chunk dispatch when one or both operands are <code>Hybrid</code>. Pre-Phase-3, those routed through <code>to_verbatim_mask() → AND/OR → re-classify</code>, allocating a <code>nrows/64</code>-word bitmap per Hybrid operand.</p>
+<p>The 4×4 chunk-shape table (<code>Empty | All | Sparse(Vec&lt;u16&gt;) | Dense(Box&lt;[u64]&gt;)</code>) collapses to <strong>5 effective shapes</strong> after Empty/All folding:</p>
+<table class="table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>left × right</th>
+<th>path</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>Sparse ∩ Sparse</code></td>
+<td>merge-walk on two ascending <code>Vec&lt;u16&gt;</code></td>
+</tr>
+<tr class="even">
+<td><code>Sparse ∩ Dense</code></td>
+<td>filter-walk: bit-test each sparse row against partner words</td>
+</tr>
+<tr class="odd">
+<td><code>Dense ∩ Dense</code></td>
+<td>per-word AND over <code>chunk_len.div_ceil(64)</code> u64s</td>
+</tr>
+<tr class="even">
+<td><code>Empty ∩ *</code></td>
+<td>fold to <code>Empty</code></td>
+</tr>
+<tr class="odd">
+<td><code>All ∩ x</code></td>
+<td>fold to <code>x</code> unchanged</td>
+</tr>
+</tbody>
+</table>
+<p>Headline bench (favorable case, 100k rows, sparse-chunked × dense-chunked Hybrid):</p>
+<pre><code>Phase 3 chunked path:           4.69 μs avg (n=100)
+Pre-Phase-3 materialize path:  391.41 μs avg (n=100)
+Speedup:                        83.46×</code></pre>
+<p>Caveat I had to be honest about: that’s the favorable case. Contiguous-Hybrid (Dense × Dense everywhere) shrinks the win to ~5–10× — still net positive but no longer allocation-bound.</p>
+</section>
+<section id="phase-4-cat-aware-joins" class="level3">
+<h3 class="anchored" data-anchor-id="phase-4-cat-aware-joins">Phase 4 — Cat-aware joins</h3>
+<p>This was the bundled deliverable: cat-aware joins <strong>plus</strong> Column ↔︎ CategoricalColumn conversions.</p>
+<p>The join path: when every join-key column is <code>Column::Categorical</code> on <strong>both</strong> frames, route through <code>BTreeMap&lt;Vec&lt;u32&gt;, Vec&lt;usize&gt;&gt;</code> with a deterministic per-column <strong>right-code → left-code remap</strong>. Each frame owns its own dictionary, so left-side code 3 ≠ right-side code 3 in general — the per-column remap is what makes cross-frame comparison safe:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>right_to_left[ki][right_code] <span class="op">=</span> <span class="cn">Some</span>(left_code) <span class="op">|</span> <span class="cn">None</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><code>None</code> means the level doesn’t exist on the left dictionary; that right row is skipped before BTreeMap insertion (it can never join). Build order via <code>BTreeMap&lt;&amp;str, u32&gt;</code> over left levels — BTree not Hash, so the remap is itself deterministic.</p>
+<p>Headline bench (100k × 100k rows, 100 unique categorical levels, single-key inner join):</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Path</th>
+<th>Time</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>String-key</td>
+<td>16.82 s</td>
+</tr>
+<tr class="even">
+<td><strong>Cat-aware</strong></td>
+<td><strong>2.77 s</strong></td>
+</tr>
+<tr class="odd">
+<td><strong>Speedup</strong></td>
+<td><strong>6.08×</strong></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="phase-5-three-deferred-items-in-one-bundle" class="level3">
+<h3 class="anchored" data-anchor-id="phase-5-three-deferred-items-in-one-bundle">Phase 5 — Three deferred items in one bundle</h3>
+<p>Phase 5 was where I closed all three deferrals from prior phases:</p>
+<p><strong>(a) Full Column wiring.</strong> New <code>Column::CategoricalAdaptive(Box&lt;CategoricalColumn&gt;)</code> variant — a sibling of the legacy <code>Column::Categorical</code>. The 21 column-reader sites all dispatch through a <code>to_legacy_categorical()</code> shim (lossless when levels are UTF-8 + no nulls). Hot paths bypass the shim entirely.</p>
+<p><strong>(b) Filter-chain Hybrid intersect path.</strong> New <code>predicate_bytecode::evaluate_to_selection</code>. <code>TidyView::filter</code> routes through <code>existing.intersect(fresh)</code> when the existing mask is already <code>Hybrid</code> and not in sparse-path territory — exercising the Phase 3 chunk dispatch in production.</p>
+<p><strong>(c) Phase 5 = cat-aware arrange.</strong> When <code>Column::Categorical</code> levels are lex-sorted (the Phase 17 <code>forcats</code> invariant), comparing <code>u32</code> codes is byte-identical to comparing <code>String</code> levels. Pre-resolution per key:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">enum</span> ArrangeKeyResolved<span class="op">&lt;</span><span class="ot">'a</span><span class="op">&gt;</span> <span class="op">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    CatCodes <span class="op">{</span> codes<span class="op">:</span> <span class="op">&amp;</span><span class="ot">'a</span> [<span class="dt">u32</span>]<span class="op">,</span> descending<span class="op">:</span> <span class="dt">bool</span> <span class="op">},</span>  <span class="co">// pure u32 compare</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    Legacy <span class="op">{</span> col<span class="op">:</span> <span class="op">&amp;</span><span class="ot">'a</span> Column<span class="op">,</span> descending<span class="op">:</span> <span class="dt">bool</span> <span class="op">},</span>     <span class="co">// string compare</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>100k rows × 100 unique categorical levels, single-key ascending sort:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Path</th>
+<th>Time</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>String compare</td>
+<td>92.73 ms</td>
+</tr>
+<tr class="even">
+<td><strong>u32 code compare</strong></td>
+<td><strong>9.58 ms</strong></td>
+</tr>
+<tr class="odd">
+<td><strong>Speedup</strong></td>
+<td><strong>9.68×</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Higher than Phase 4’s join win because arrange’s stable sort calls the comparator ~1.6M times for 100k rows — every eliminated <code>String::cmp</code> counts.</p>
+</section>
+<section id="phase-6-streaming-summarise-cat-aware-mutate-lazy-optimizer" class="level3">
+<h3 class="anchored" data-anchor-id="phase-6-streaming-summarise-cat-aware-mutate-lazy-optimizer">Phase 6 — Streaming summarise + cat-aware mutate + lazy optimizer</h3>
+<p><strong>Streaming summarise</strong>: <code>TidyView::summarise_streaming(keys, aggs)</code> walks visible rows ONCE, maintaining a <code>BTreeMap&lt;key, Vec&lt;AccState&gt;&gt;</code> where each accumulator holds running state of constant size:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th><code>StreamingAgg</code></th>
+<th><code>AccState</code></th>
+<th>Algorithm</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>Count</code></td>
+<td><code>{ n: u64 }</code></td>
+<td>counter</td>
+</tr>
+<tr class="even">
+<td><code>Sum(col)</code></td>
+<td><code>{ sum, c }</code></td>
+<td>Kahan running sum</td>
+</tr>
+<tr class="odd">
+<td><code>Mean(col)</code></td>
+<td><code>{ sum, c, n }</code></td>
+<td>Kahan + count</td>
+</tr>
+<tr class="even">
+<td><code>Min(col)</code> / <code>Max(col)</code></td>
+<td><code>{ cur, any }</code></td>
+<td>NaN-aware extremum</td>
+</tr>
+<tr class="odd">
+<td><code>Var(col)</code> / <code>Sd(col)</code></td>
+<td><code>{ n, mean, m2 }</code></td>
+<td>Welford online variance</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Memory: O(K · acc_size)</strong> instead of <code>O(N · usize)</code>. For 100M rows / 1000 groups: ~32 KB vs ~800 MB — <strong>25 000× less memory.</strong></p>
+<p>CPU savings on 1M × 1000 groups were modest (1.10×, BTreeMap ops dominate at this shape) — but the memory win unlocks workloads that previously OOM’d.</p>
+<p><strong>Cat-aware mutate</strong>: <code>mutate("k_copy", DExpr::Col("k"))</code> over a categorical column used to degrade to <code>Column::Str</code>, breaking downstream cat-aware fast paths. Phase 6 adds an early-return at the top of <code>eval_expr_column</code>:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="kw">let</span> <span class="pp">DExpr::</span>Col(name) <span class="op">=</span> expr <span class="op">{</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="kw">let</span> <span class="cn">Some</span>(src) <span class="op">=</span> df<span class="op">.</span>get_column(name) <span class="op">{</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a>        <span class="cf">match</span> src <span class="op">{</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>            <span class="pp">Column::</span>Categorical <span class="op">{</span> <span class="op">..</span> <span class="op">}</span> <span class="op">|</span> <span class="pp">Column::</span>CategoricalAdaptive(_) <span class="op">=&gt;</span> <span class="op">{</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>                <span class="cf">return</span> <span class="cn">Ok</span>(src<span class="op">.</span>clone())<span class="op">;</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>            <span class="op">}</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a>            _ <span class="op">=&gt;</span> <span class="op">{}</span></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><strong>Lazy optimizer</strong>: new <code>ViewNode::StreamingGroupSummarise</code> variant. New pass <code>annotate_streamable_summarise</code> rewrites <code>GroupSummarise</code> → <code>StreamingGroupSummarise</code> when <strong>every</strong> aggregation is streaming-friendly. All-or-nothing — any non-streamable agg keeps the legacy path.</p>
+</section>
+</section>
+<section id="part-2-the-deterministic-collection-family" class="level2">
+<h2 class="anchored" data-anchor-id="part-2-the-deterministic-collection-family">Part 2 — The Deterministic Collection Family</h2>
+<p>Phase 7 onwards is a different track: not TidyView verbs but the <strong>collections those verbs use under the hood</strong>.</p>
+<section id="phase-7-five-deterministic-collection-types" class="level3">
+<h3 class="anchored" data-anchor-id="phase-7-five-deterministic-collection-types">Phase 7 — Five deterministic collection types</h3>
+<p>A new module <code>cjc_data::detcoll</code> shipped:</p>
+<table class="table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Type</th>
+<th>Niche</th>
+<th>Lookup</th>
+<th>Iteration</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>IndexVec&lt;I, V&gt;</code></td>
+<td>dense <code>IdType → Value</code></td>
+<td><code>O(1)</code></td>
+<td>insertion order</td>
+</tr>
+<tr class="even">
+<td><code>TinyDetMap&lt;K, V&gt;</code></td>
+<td>≤ 16 entries</td>
+<td>linear scan</td>
+<td>sorted</td>
+</tr>
+<tr class="odd">
+<td><code>SortedVecMap&lt;K, V&gt;</code></td>
+<td>small-medium sealed sorted</td>
+<td>binary search + range</td>
+<td>sorted</td>
+</tr>
+<tr class="even">
+<td><code>DetOpenMap&lt;K, V&gt;</code></td>
+<td>sparse mutable equality</td>
+<td>open addressing + BTreeMap fallback</td>
+<td>undefined-but-deterministic</td>
+</tr>
+<tr class="odd">
+<td><code>DHarht&lt;V&gt;</code></td>
+<td>large sealed equality, byte-keys</td>
+<td>per-shard hash + microbucket</td>
+<td>undefined-but-deterministic</td>
+</tr>
+</tbody>
+</table>
+<p>The first four are simple, but <code>DHarht</code> was meant to be the centerpiece — and the first version was <strong>slower than BTreeMap</strong>. The next four phases were about closing that gap.</p>
+</section>
+<section id="phase-8-slab-singleton-inline-keys-sso" class="level3">
+<h3 class="anchored" data-anchor-id="phase-8-slab-singleton-inline-keys-sso">Phase 8 — Slab + singleton + inline-keys SSO</h3>
+<p>Three constant-factor improvements:</p>
+<ol type="1">
+<li><strong>Per-shard typed slab allocator.</strong> Each <code>Shard</code> now owns a single <code>key_pool: Vec&lt;u8&gt;</code>. <code>MicroBucket</code> entries store <code>KeyHandle { offset, len }</code> instead of <code>Vec&lt;u8&gt;</code>. One allocation per shard instead of one per entry.</li>
+<li><strong>Singleton front-entry fast path.</strong> First insertion at a prefix → <code>FrontEntry::Singleton { handle, value }</code> (no bucket allocation). Second insertion → promote.</li>
+<li><strong>Inline-keys SSO.</strong> <code>KeyHandle</code> carries <code>inline: [u8; 16]</code>. Keys ≤ 16 bytes are stored inline; the slab is bypassed entirely on lookup.</li>
+</ol>
+<p>Cumulative effect on a categorical-dictionary lookup bench (50k cats, 500k probes):</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Stage</th>
+<th>DHarht/BTreeMap</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Phase 7 baseline</td>
+<td>0.34× (DHarht <strong>3× slower</strong>)</td>
+</tr>
+<tr class="even">
+<td>Phase 8a (slab + singleton)</td>
+<td>0.48×</td>
+</tr>
+<tr class="odd">
+<td>Phase 8b (+ inline-keys SSO)</td>
+<td>0.55×</td>
+</tr>
+</tbody>
+</table>
+<p>Three rounds, ~62% improvement in ratio. Still slower than BTreeMap — the gap was clearly architectural, not micro-optimization.</p>
+</section>
+<section id="phase-9-hash-swap-jump-table" class="level3">
+<h3 class="anchored" data-anchor-id="phase-9-hash-swap-jump-table">Phase 9 — Hash swap + jump table</h3>
+<p>The categorical dict bench plateaued at 0.55× and I knew the hash function was burning cycles. Phase 9 swapped <code>splitmix64+FNV</code> per chunk for a tighter multiplicative mixer, then replaced the sorted-Vec front directory with a 256-slot jump table for <code>O(1)</code> slot lookup.</p>
+<p>Result: marginal improvement on the categorical-dict bench. <strong>Still slower than BTreeMap on this workload.</strong> The bench shape was wrong.</p>
+</section>
+<section id="phase-10-d-harht-memory-profile-the-real-win" class="level3">
+<h3 class="anchored" data-anchor-id="phase-10-d-harht-memory-profile-the-real-win">Phase 10 — D-HARHT Memory profile (the real win)</h3>
+<p>Then I got hold of <a href="https://github.com/AdamEzzat1/CJC">the actual D-HARHT blueprint</a> the original architecture was based on, and the gap became obvious. My v.01 was a byte-key implementation; the original D-HARHT Memory profile is <code>u64</code>-keyed with very different choices:</p>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Aspect</th>
+<th>D-HARHT Memory (their blueprint)</th>
+<th>DHarht v.01 (mine, Phase 7-9)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Key type</td>
+<td><code>u64</code> (no allocation)</td>
+<td>arbitrary <code>&amp;[u8]</code> (slab + handles)</td>
+</tr>
+<tr class="even">
+<td>Front directory</td>
+<td><strong>16-bit, 65 536 slots, sparse-paged</strong></td>
+<td>8-bit, 256 slots, dense</td>
+</tr>
+<tr class="odd">
+<td>Front entry</td>
+<td>Packed <code>u64</code> with 3-bit tag</td>
+<td>Rust enum</td>
+</tr>
+<tr class="even">
+<td>MicroBucket</td>
+<td>4 / 8 / 16 sized</td>
+<td>only 16</td>
+</tr>
+<tr class="odd">
+<td>Match</td>
+<td>Parallel scalar <code>match_mask</code></td>
+<td>Linear scan</td>
+</tr>
+<tr class="even">
+<td>Hash</td>
+<td><code>splitmix64</code> finalizer = scatter</td>
+<td>Multiplicative + finalize</td>
+</tr>
+</tbody>
+</table>
+<p>Phase 10 ported the Memory profile faithfully as a sibling type <code>DHarhtMemory&lt;V&gt;</code>. Then I ran a 4-way bench on the same workload shape the blueprint used (100k u64 keys, 2M random-stream lookups, 3 stable runs):</p>
+<table class="table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Backend</th>
+<th>Run 1</th>
+<th>Run 2</th>
+<th>Run 3</th>
+<th>Stable avg</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>BTreeMap</td>
+<td>266</td>
+<td>242</td>
+<td>186</td>
+<td>~232 ns/op</td>
+</tr>
+<tr class="even">
+<td>HashMap (std SipHash)</td>
+<td>148</td>
+<td>91</td>
+<td>84</td>
+<td>~107 ns/op</td>
+</tr>
+<tr class="odd">
+<td>DHarht v.01 (byte-key)</td>
+<td>238</td>
+<td>185</td>
+<td>217</td>
+<td>~213 ns/op</td>
+</tr>
+<tr class="even">
+<td><strong>DHarht Memory (u64-key)</strong></td>
+<td><strong>105</strong></td>
+<td><strong>108</strong></td>
+<td><strong>112</strong></td>
+<td><strong>~108 ns/op</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>DHarht Memory ≈ HashMap.</strong> And ~2.2× faster than BTreeMap. Architecture matters. The constant-factor optimizations in Phases 8 and 9 helped at the margins; <strong>the architectural shift from byte-key to u64-key + sparse paged 16-bit front directory was where the 2× win came from</strong>.</p>
+<p>DHarht Memory’s run-to-run variance is also the smallest of any backend (±3%) — sealed lookup with cache-resident sparse pages is consistent in a way HashMap (with adaptive table sizing) is not.</p>
+</section>
+<section id="phase-11-sealedu64map-wrapper-memory-security" class="level3">
+<h3 class="anchored" data-anchor-id="phase-11-sealedu64map-wrapper-memory-security">Phase 11 — <code>SealedU64Map</code> wrapper + memory &amp; security</h3>
+<p>Phase 10 shipped the architecture. Phase 11 packaged it for production use and ran the comparisons users care about beyond raw speed.</p>
+<p><strong><code>SealedU64Map&lt;V&gt;</code></strong> — a thin public wrapper around <code>DHarhtMemory</code> enforcing the <code>build → seal → read-many</code> lifecycle. Surface: <code>new</code>, <code>insert</code>, <code>get</code>, <code>seal</code>, <code>iter_sorted</code>, <code>approx_memory_bytes</code>, <code>shape_hash</code>. The recommended drop-in for any <code>BTreeMap&lt;u64, V&gt;</code> whose access pattern matches.</p>
+<p><strong>First wiring demo</strong>: <code>ByteDictionary::seal_with_u64_hash_index()</code> builds a u64-hash content-cache so callers who already have the deterministic 64-bit hash of bytes (from snapshot diffing, content-addressed storage) can look up the dictionary code via <code>lookup_by_hash(hash)</code> without rehashing.</p>
+<p><strong>Memory comparison</strong> (50k u64 entries, 8B keys + 8B values):</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Backend</th>
+<th>Total bytes</th>
+<th>Bytes/entry</th>
+<th>vs HashMap</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>HashMap (std)</td>
+<td>1 376 256</td>
+<td><strong>27.5</strong></td>
+<td>1.0×</td>
+</tr>
+<tr class="even">
+<td>BTreeMap</td>
+<td>3 600 000</td>
+<td>72.0</td>
+<td>2.6×</td>
+</tr>
+<tr class="odd">
+<td><strong>DHarhtMemory</strong></td>
+<td>5 319 232</td>
+<td><strong>106.4</strong></td>
+<td><strong>3.87×</strong></td>
+</tr>
+</tbody>
+</table>
+<p>HashMap wins on memory. DHarhtMemory pays ~3.87× more bytes for the 16-bit sparse-paged front directory + per-shard slabs + micro-bucket pools. <strong>That’s the cost of the determinism contract.</strong></p>
+<p><strong>Determinism comparison</strong>:</p>
+<table class="table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Property</th>
+<th>BTreeMap</th>
+<th>HashMap</th>
+<th>DHarhtMemory</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Same input → same iter order, same process</td>
+<td>✅</td>
+<td><strong>❌</strong> randomized</td>
+<td>✅</td>
+</tr>
+<tr class="even">
+<td>Same input → same iter order, across processes</td>
+<td>✅</td>
+<td><strong>❌</strong> seed varies</td>
+<td>✅</td>
+</tr>
+<tr class="odd">
+<td><code>shape_hash</code> byte-equal across builds</td>
+<td>✅</td>
+<td>n/a</td>
+<td>✅</td>
+</tr>
+</tbody>
+</table>
+<p>Empirically confirmed: HashMap iter order <strong>varied across 10 independent builds in the same process</strong>. This isn’t a bug — it’s HashDoS protection — but it’s exactly the property that disqualifies HashMap from canonical-output paths in CJC-Lang. DHarhtMemory’s <code>shape_hash</code> was <code>0xa7792345c13b05b0</code> stable across all builds.</p>
+<p><strong>Security comparison</strong>:</p>
+<table class="table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Threat</th>
+<th>BTreeMap</th>
+<th>HashMap</th>
+<th>DHarhtMemory</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>HashDoS adversarial collision</td>
+<td>✅ Ord-tree immune</td>
+<td>⚠️ random seed mitigates (loses determinism)</td>
+<td>✅ MicroBucket16 cap → fallback</td>
+</tr>
+<tr class="even">
+<td>Silent entry loss</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅</td>
+</tr>
+<tr class="odd">
+<td>False-positive lookups</td>
+<td>✅</td>
+<td>✅</td>
+<td>✅ full key equality</td>
+</tr>
+<tr class="even">
+<td>Reproducibility for audit</td>
+<td>✅</td>
+<td><strong>❌</strong></td>
+<td>✅</td>
+</tr>
+<tr class="odd">
+<td>Adversarial diagnostics</td>
+<td>implicit</td>
+<td>none</td>
+<td>✅ counters queryable</td>
+</tr>
+</tbody>
+</table>
+<p>The trade is real and intentional: DHarhtMemory pays ~3.9× more memory than HashMap to deliver what HashMap <strong>structurally cannot</strong> — deterministic iteration across processes <strong>with</strong> HashDoS resistance. For a workspace whose hard rule is “same seed → bit-identical output across runs”, that’s exactly the profile that fits.</p>
+</section>
+<section id="phase-12-art-fallback-port-complete" class="level3">
+<h3 class="anchored" data-anchor-id="phase-12-art-fallback-port-complete">Phase 12 — ART fallback (port complete)</h3>
+<p>Phase 11 shipped DHarhtMemory using a <code>BTreeMap&lt;u64, V&gt;</code> as the per-table fallback when a front-directory collision group exceeded MicroBucket16. The original blueprint uses a per-shard <strong>Adaptive Radix Tree</strong> (ART) with the full Node4/Node16/Node32/Node48/Node256 hierarchy — I’d deferred that as a multi-day port.</p>
+<p>Phase 12 lands it. Each shard now owns an <code>ArtSlab&lt;V&gt;</code> containing entries (3-bit-tagged <code>u32</code> discriminators), leaves, and per-node-type arrays. When a collision group overflows during seal, those entries go into the originating shard’s ART rather than a global BTreeMap. Lookup with the <code>FRONT_FALLBACK</code> tag walks that shard’s ART by descending through bytes of the scattered key.</p>
+<p>Adaptive growth is monotonic and deterministic: Node4 → Node16 → Node32 → Node48 → Node256 by child count, with the same insertion order producing byte-identical tree shape after compaction.</p>
+<p>Verified by <code>art_fallback_handles_forced_overflow</code>: brute-search keys that collide on the same (shard, 16-bit prefix) until you have 17+ of them; verify that the seal triggers the ART path (<code>micro_overflow_count &gt; 0</code>) and every key is still findable through the radix descent.</p>
+<p>The win on collision-heavy workloads is structural — ART’s worst-case lookup is at most 8 byte-radix descents (one per byte of the 64-bit scatter) vs BTreeMap’s <code>O(log N)</code> tree walk. For the well-distributed workloads this engine targets, the ART path almost never fires; for adversarial inputs it caps the worst case deterministically.</p>
+</section>
+</section>
+<section id="where-this-leaves-cjc-lang" class="level2">
+<h2 class="anchored" data-anchor-id="where-this-leaves-cjc-lang">Where this leaves CJC-Lang</h2>
+<p>The recommended backend selection table after v0.1.7:</p>
+<table class="table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Workload</th>
+<th>Pick</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>u64-keyed sealed lookup, <strong>deterministic</strong> + audit + reproducibility</td>
+<td><strong><code>SealedU64Map</code></strong></td>
+</tr>
+<tr class="even">
+<td>u64-keyed sealed lookup, <strong>lowest memory</strong>, no audit needs</td>
+<td><code>std::HashMap</code></td>
+</tr>
+<tr class="odd">
+<td>u64-keyed mutable + ordered iteration</td>
+<td><code>BTreeMap</code></td>
+</tr>
+<tr class="even">
+<td>Arbitrary byte keys, sealed (categorical dictionaries, interning)</td>
+<td><code>DHarht</code> v.01</td>
+</tr>
+<tr class="odd">
+<td>Tiny tables (≤ 16 entries)</td>
+<td><code>TinyDetMap</code></td>
+</tr>
+<tr class="even">
+<td>Small-medium sealed sorted maps with range queries</td>
+<td><code>SortedVecMap</code></td>
+</tr>
+<tr class="odd">
+<td>Sparse mutable equality, ordering doesn’t matter</td>
+<td><code>DetOpenMap</code></td>
+</tr>
+<tr class="even">
+<td>Dense <code>IdType → Value</code> ID tables</td>
+<td><code>IndexVec</code></td>
+</tr>
+</tbody>
+</table>
+<p>The <code>BTreeMap</code> line is unchanged — it’s still the right answer for ordered iteration, range queries, and mutation-heavy workloads. The <code>HashMap</code> line is new: it’s faster than DHarhtMemory and uses less memory, but <strong>only if your workload doesn’t need reproducible iteration across runs</strong>. The vast majority of CJC-Lang’s data paths do — that’s why the language exists in the first place.</p>
+</section>
+<section id="numbers-in-one-place" class="level2">
+<h2 class="anchored" data-anchor-id="numbers-in-one-place">Numbers, in one place</h2>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Phase</th>
+<th>Bench</th>
+<th>Headline</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>2</td>
+<td>group_by + cat keys</td>
+<td>7.49× faster</td>
+</tr>
+<tr class="even">
+<td>3</td>
+<td>Hybrid set ops</td>
+<td>83.46× (favorable)</td>
+</tr>
+<tr class="odd">
+<td>4</td>
+<td>Categorical joins</td>
+<td>6.08×</td>
+</tr>
+<tr class="even">
+<td>5(c)</td>
+<td>Categorical arrange</td>
+<td>9.68×</td>
+</tr>
+<tr class="odd">
+<td>6</td>
+<td>Streaming summarise memory</td>
+<td>25 000× less RAM</td>
+</tr>
+<tr class="even">
+<td>10</td>
+<td>DHarht Memory u64 lookup</td>
+<td>matches HashMap (~108 ns/op)</td>
+</tr>
+<tr class="odd">
+<td>11</td>
+<td>Memory cost</td>
+<td>3.87× HashMap</td>
+</tr>
+<tr class="even">
+<td>11</td>
+<td>Determinism</td>
+<td>HashMap fails, DHarht passes</td>
+</tr>
+<tr class="odd">
+<td>12</td>
+<td>Adversarial collision</td>
+<td>ART fallback bounds worst case</td>
+</tr>
+</tbody>
+</table>
+<p>Test counts (across the whole suite, end-to-end):</p>
+<pre><code>cjc-data         258  (was 193 in v0.1.6; +65 from v3 work)
+test_phase10_tidy 495  (was 379 in v0.1.6; +116 from v3 work)
+bolero fuzz       32   (was 26 in v0.1.6; +6)
+tidyview-bench    38   (unchanged)
+physics_ml        71   (unchanged)</code></pre>
+<p>Workspace builds clean. Vault audit: 1 738 / 1 738 wikilinks resolve. <code>cjc-lang v0.1.7</code> packages cleanly via <code>cargo publish --dry-run</code>.</p>
+</section>
+<section id="whats-deferred-with-reasons" class="level2">
+<h2 class="anchored" data-anchor-id="whats-deferred-with-reasons">What’s deferred (with reasons)</h2>
+<p>Honest scope notes — these landed on the future-work list rather than v0.1.7:</p>
+<ul>
+<li><strong>Full <code>Column::Categorical → CategoricalColumn</code> storage replacement.</strong> The additive <code>CategoricalAdaptive</code> variant in Phase 5(a) is the gateway; the literal storage swap touches ~200 column-reader call sites. Single-session work won’t do it justice.</li>
+<li><strong><code>LookupProfile::Speed</code> and <code>LookupProfile::Balanced</code>.</strong> The Memory profile is the recommended starting point per the original blueprint. Speed adds ~6 MB per shard for a marginal lookup-time improvement; not worth it until measured demand appears.</li>
+<li><strong>Manual SSE2 <code>find_key16_sse2</code> for ART nodes.</strong> The scalar <code>match_mask</code> already inlines into tight code; SIMD here would be <code>unsafe</code> + architecture-specific for a path that fires only on adversarial input.</li>
+<li><strong>Full compiler/runtime wiring of <code>SealedU64Map</code></strong> beyond the <code>ByteDictionary</code> content-hash demo. Symbol interning, MIR value tables, runtime globals — each is its own integration point and needs its own measurement.</li>
+</ul>
+</section>
+<section id="try-it" class="level2">
+<h2 class="anchored" data-anchor-id="try-it">Try it</h2>
+<div class="sourceCode" id="cb6"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> install cjc-lang  <span class="co"># picks up v0.1.7 once published</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Or pull the workspace and run the bench yourself:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/AdamEzzat1/CJC</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> CJC</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> test <span class="at">--test</span> test_phase10_tidy <span class="at">--release</span> <span class="at">--</span> <span class="at">--ignored</span> bench_phase10 <span class="at">--nocapture</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The 4-way bench output should look like the table above. If yours is different — say, HashMap is much faster than mine — that’s interesting data. The blueprint reported ~37 ns/op for both DHarht Memory and HashMap on the original author’s hardware; I see ~108 ns/op vs ~107 ns/op on Windows. Same ratio, different absolute. Architecture is portable; constant factors are not.</p>
+<p>If you spot a workload where the chosen backend is wrong for the shape, that’s exactly the kind of feedback that drove this release. The collection family is open-ended — Phase 13 will be whatever shape isn’t covered yet.</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const disableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'prefetch';
+    }
+  }
+  const enableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'stylesheet';
+    }
+  }
+  const manageTransitions = (selector, allowTransitions) => {
+    const els = window.document.querySelectorAll(selector);
+    for (let i=0; i < els.length; i++) {
+      const el = els[i];
+      if (allowTransitions) {
+        el.classList.remove('notransition');
+      } else {
+        el.classList.add('notransition');
+      }
+    }
+  }
+  const toggleColorMode = (alternate) => {
+    // Switch the stylesheets
+    const alternateStylesheets = window.document.querySelectorAll('link.quarto-color-scheme.quarto-color-alternate');
+    manageTransitions('#quarto-margin-sidebar .nav-link', false);
+    if (alternate) {
+      enableStylesheet(alternateStylesheets);
+      for (const sheetNode of alternateStylesheets) {
+        if (sheetNode.id === "quarto-bootstrap") {
+          toggleBodyColorMode(sheetNode);
+        }
+      }
+    } else {
+      disableStylesheet(alternateStylesheets);
+      toggleBodyColorPrimary();
+    }
+    manageTransitions('#quarto-margin-sidebar .nav-link', true);
+    // Switch the toggles
+    const toggles = window.document.querySelectorAll('.quarto-color-scheme-toggle');
+    for (let i=0; i < toggles.length; i++) {
+      const toggle = toggles[i];
+      if (toggle) {
+        if (alternate) {
+          toggle.classList.add("alternate");     
+        } else {
+          toggle.classList.remove("alternate");
+        }
+      }
+    }
+    // Hack to workaround the fact that safari doesn't
+    // properly recolor the scrollbar when toggling (#1455)
+    if (navigator.userAgent.indexOf('Safari') > 0 && navigator.userAgent.indexOf('Chrome') == -1) {
+      manageTransitions("body", false);
+      window.scrollTo(0, 1);
+      setTimeout(() => {
+        window.scrollTo(0, 0);
+        manageTransitions("body", true);
+      }, 40);  
+    }
+  }
+  const isFileUrl = () => { 
+    return window.location.protocol === 'file:';
+  }
+  const hasAlternateSentinel = () => {  
+    let styleSentinel = getColorSchemeSentinel();
+    if (styleSentinel !== null) {
+      return styleSentinel === "alternate";
+    } else {
+      return false;
+    }
+  }
+  const setStyleSentinel = (alternate) => {
+    const value = alternate ? "alternate" : "default";
+    if (!isFileUrl()) {
+      window.localStorage.setItem("quarto-color-scheme", value);
+    } else {
+      localAlternateSentinel = value;
+    }
+  }
+  const getColorSchemeSentinel = () => {
+    if (!isFileUrl()) {
+      const storageValue = window.localStorage.getItem("quarto-color-scheme");
+      return storageValue != null ? storageValue : localAlternateSentinel;
+    } else {
+      return localAlternateSentinel;
+    }
+  }
+  let localAlternateSentinel = 'default';
+  // Dark / light mode switch
+  window.quartoToggleColorScheme = () => {
+    // Read the current dark / light value 
+    let toAlternate = !hasAlternateSentinel();
+    toggleColorMode(toAlternate);
+    setStyleSentinel(toAlternate);
+  };
+  // Ensure there is a toggle, if there isn't float one in the top right
+  if (window.document.querySelector('.quarto-color-scheme-toggle') === null) {
+    const a = window.document.createElement('a');
+    a.classList.add('top-right');
+    a.classList.add('quarto-color-scheme-toggle');
+    a.href = "";
+    a.onclick = function() { try { window.quartoToggleColorScheme(); } catch {} return false; };
+    const i = window.document.createElement("i");
+    i.classList.add('bi');
+    a.appendChild(i);
+    window.document.body.appendChild(a);
+  }
+  // Switch to dark mode if need be
+  if (hasAlternateSentinel()) {
+    toggleColorMode(true);
+  } else {
+    toggleColorMode(false);
+  }
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+      &nbsp;
+    </div>   
+    <div class="nav-footer-center">© 2026 Adam Ezzat. Built with <a href="https://quarto.org/">Quarto</a>.</div>
+    <div class="nav-footer-right">
+      &nbsp;
+    </div>
+  </div>
+</footer>
+
+
+
+<script src="../../../site_libs/quarto-html/zenscroll-min.js"></script>
+</body></html>

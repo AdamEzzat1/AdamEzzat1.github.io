@@ -2,6 +2,7 @@
   {
     "listing": "/blog/index.html",
     "items": [
+      "/blog/posts/tidyview-v3-and-dharht/index.html",
       "/blog/posts/cjcl-cli-reference/index.html",
       "/blog/posts/tidyview-data-engine/index.html",
       "/blog/posts/chess-rl-v2/index.html",
