@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.3.340">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Adam Ezzat">
+<meta name="dcterms.date" content="2026-05-08">
+<meta name="description" content="ABNG (Adaptive Belief Network Graph) is an experimental cjc-abng crate exposing 75 abng_* builtins to CJC-Lang. This post walks through eleven distinct capabilities — eleven demos, six in CJC-Lang source — and what each one actually proves. Plus the honest gaps: ABNG is still experimental, the interpreter is a known bottleneck, and there’s compiler/interpreter work ahead before this becomes production-grade.">
+
+<title>Adam Ezzat - ABNG — An Experimental Adaptive Belief Network Graph for CJC-Lang</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="../../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../../">
+<script src="../../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<script src="../../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-dark.min.css" rel="prefetch" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+<style>html{ scroll-behavior: smooth; }</style>
+<script src="../../../site_libs/quarto-diagram/mermaid.min.js"></script>
+<script src="../../../site_libs/quarto-diagram/mermaid-init.js"></script>
+<link href="../../../site_libs/quarto-diagram/mermaid.css" rel="stylesheet">
+
+
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../../index.html">
+    <span class="navbar-title">Adam Ezzat</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../../index.html" rel="" target="">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../about.html" rel="" target="">
+ <span class="menu-text">About</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../projects.html" rel="" target="">
+ <span class="menu-text">Projects</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../blog/index.html" rel="" target="">
+ <span class="menu-text">Blog</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/AdamEzzat1" rel="" target=""><i class="bi bi-github" role="img" aria-label="GitHub">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://linkedin.com/in/adamezzat" rel="" target=""><i class="bi bi-linkedin" role="img" aria-label="LinkedIn">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+            <div class="quarto-navbar-tools">
+  <a href="" class="quarto-color-scheme-toggle quarto-navigation-tool  px-1" onclick="window.quartoToggleColorScheme(); return false;" title="Toggle dark mode"><i class="bi"></i></a>
+</div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#what-is-abng" id="toc-what-is-abng" class="nav-link active" data-scroll-target="#what-is-abng">What is ABNG?</a></li>
+  <li><a href="#the-proof-discipline" id="toc-the-proof-discipline" class="nav-link" data-scroll-target="#the-proof-discipline">The proof discipline</a></li>
+  <li><a href="#capability-1-per-state-bayesian-uncertainty" id="toc-capability-1-per-state-bayesian-uncertainty" class="nav-link" data-scroll-target="#capability-1-per-state-bayesian-uncertainty">Capability 1 — Per-state Bayesian uncertainty</a>
+  <ul class="collapse">
+  <li><a href="#what-this-demo-proves" id="toc-what-this-demo-proves" class="nav-link" data-scroll-target="#what-this-demo-proves">What this demo proves</a></li>
+  <li><a href="#why-the-heat-equation" id="toc-why-the-heat-equation" class="nav-link" data-scroll-target="#why-the-heat-equation">Why the heat equation</a></li>
+  <li><a href="#what-this-enables" id="toc-what-this-enables" class="nav-link" data-scroll-target="#what-this-enables">What this enables</a></li>
+  </ul></li>
+  <li><a href="#capability-2-per-leaf-bounded-scaling-gp-like-scalable" id="toc-capability-2-per-leaf-bounded-scaling-gp-like-scalable" class="nav-link" data-scroll-target="#capability-2-per-leaf-bounded-scaling-gp-like-scalable">Capability 2 — Per-leaf bounded scaling (GP-like, scalable)</a>
+  <ul class="collapse">
+  <li><a href="#what-this-demo-proves-1" id="toc-what-this-demo-proves-1" class="nav-link" data-scroll-target="#what-this-demo-proves-1">What this demo proves</a></li>
+  <li><a href="#why-bilinear-regression-on-the-unit-square" id="toc-why-bilinear-regression-on-the-unit-square" class="nav-link" data-scroll-target="#why-bilinear-regression-on-the-unit-square">Why bilinear regression on the unit square</a></li>
+  <li><a href="#what-this-enables-1" id="toc-what-this-enables-1" class="nav-link" data-scroll-target="#what-this-enables-1">What this enables</a></li>
+  </ul></li>
+  <li><a href="#capability-3-tamper-evident-training-history-audit-chain" id="toc-capability-3-tamper-evident-training-history-audit-chain" class="nav-link" data-scroll-target="#capability-3-tamper-evident-training-history-audit-chain">Capability 3 — Tamper-evident training history (audit chain)</a>
+  <ul class="collapse">
+  <li><a href="#what-every-demo-proves" id="toc-what-every-demo-proves" class="nav-link" data-scroll-target="#what-every-demo-proves">What every demo proves</a></li>
+  <li><a href="#what-this-enables-2" id="toc-what-this-enables-2" class="nav-link" data-scroll-target="#what-this-enables-2">What this enables</a></li>
+  </ul></li>
+  <li><a href="#capability-4-cryptographic-dataset-attestation" id="toc-capability-4-cryptographic-dataset-attestation" class="nav-link" data-scroll-target="#capability-4-cryptographic-dataset-attestation">Capability 4 — Cryptographic dataset attestation</a>
+  <ul class="collapse">
+  <li><a href="#what-this-demo-proves-2" id="toc-what-this-demo-proves-2" class="nav-link" data-scroll-target="#what-this-demo-proves-2">What this demo proves</a></li>
+  <li><a href="#why-a-synthetic-clinical-trial-workload" id="toc-why-a-synthetic-clinical-trial-workload" class="nav-link" data-scroll-target="#why-a-synthetic-clinical-trial-workload">Why a synthetic clinical-trial workload</a></li>
+  <li><a href="#what-this-enables-3" id="toc-what-this-enables-3" class="nav-link" data-scroll-target="#what-this-enables-3">What this enables</a></li>
+  </ul></li>
+  <li><a href="#capability-5-ood-detection-composite" id="toc-capability-5-ood-detection-composite" class="nav-link" data-scroll-target="#capability-5-ood-detection-composite">Capability 5 — OOD detection composite</a>
+  <ul class="collapse">
+  <li><a href="#what-this-demo-proves-3" id="toc-what-this-demo-proves-3" class="nav-link" data-scroll-target="#what-this-demo-proves-3">What this demo proves</a></li>
+  <li><a href="#why-deliberately-omit-one-child" id="toc-why-deliberately-omit-one-child" class="nav-link" data-scroll-target="#why-deliberately-omit-one-child">Why deliberately omit one child</a></li>
+  <li><a href="#what-this-enables-4" id="toc-what-this-enables-4" class="nav-link" data-scroll-target="#what-this-enables-4">What this enables</a></li>
+  </ul></li>
+  <li><a href="#capability-6-adaptive-structural-triggers" id="toc-capability-6-adaptive-structural-triggers" class="nav-link" data-scroll-target="#capability-6-adaptive-structural-triggers">Capability 6 — Adaptive structural triggers</a>
+  <ul class="collapse">
+  <li><a href="#what-this-demo-proves-4" id="toc-what-this-demo-proves-4" class="nav-link" data-scroll-target="#what-this-demo-proves-4">What this demo proves</a></li>
+  <li><a href="#why-the-two-sibling-shared-signature-topology" id="toc-why-the-two-sibling-shared-signature-topology" class="nav-link" data-scroll-target="#why-the-two-sibling-shared-signature-topology">Why the two-sibling shared-signature topology</a></li>
+  <li><a href="#what-this-enables-5" id="toc-what-this-enables-5" class="nav-link" data-scroll-target="#what-this-enables-5">What this enables</a></li>
+  </ul></li>
+  <li><a href="#capability-7-calibration-ece" id="toc-capability-7-calibration-ece" class="nav-link" data-scroll-target="#capability-7-calibration-ece">Capability 7 — Calibration / ECE</a>
+  <ul class="collapse">
+  <li><a href="#what-this-demo-proves-5" id="toc-what-this-demo-proves-5" class="nav-link" data-scroll-target="#what-this-demo-proves-5">What this demo proves</a></li>
+  <li><a href="#why-flip-outcomes-as-the-miscalibration-model" id="toc-why-flip-outcomes-as-the-miscalibration-model" class="nav-link" data-scroll-target="#why-flip-outcomes-as-the-miscalibration-model">Why “flip outcomes” as the miscalibration model</a></li>
+  <li><a href="#what-this-enables-6" id="toc-what-this-enables-6" class="nav-link" data-scroll-target="#what-this-enables-6">What this enables</a></li>
+  </ul></li>
+  <li><a href="#capability-8-distribution-drift-detection" id="toc-capability-8-distribution-drift-detection" class="nav-link" data-scroll-target="#capability-8-distribution-drift-detection">Capability 8 — Distribution-drift detection</a>
+  <ul class="collapse">
+  <li><a href="#what-this-demo-proves-6" id="toc-what-this-demo-proves-6" class="nav-link" data-scroll-target="#what-this-demo-proves-6">What this demo proves</a></li>
+  <li><a href="#why-a-pure-mean-shift" id="toc-why-a-pure-mean-shift" class="nav-link" data-scroll-target="#why-a-pure-mean-shift">Why a pure mean shift</a></li>
+  <li><a href="#what-this-enables-7" id="toc-what-this-enables-7" class="nav-link" data-scroll-target="#what-this-enables-7">What this enables</a></li>
+  </ul></li>
+  <li><a href="#capability-9-log-compaction" id="toc-capability-9-log-compaction" class="nav-link" data-scroll-target="#capability-9-log-compaction">Capability 9 — Log compaction</a>
+  <ul class="collapse">
+  <li><a href="#what-this-demo-proves-7" id="toc-what-this-demo-proves-7" class="nav-link" data-scroll-target="#what-this-demo-proves-7">What this demo proves</a></li>
+  <li><a href="#what-this-enables-8" id="toc-what-this-enables-8" class="nav-link" data-scroll-target="#what-this-enables-8">What this enables</a></li>
+  </ul></li>
+  <li><a href="#capability-10-maturity-observability" id="toc-capability-10-maturity-observability" class="nav-link" data-scroll-target="#capability-10-maturity-observability">Capability 10 — Maturity observability</a>
+  <ul class="collapse">
+  <li><a href="#what-this-demo-proves-8" id="toc-what-this-demo-proves-8" class="nav-link" data-scroll-target="#what-this-demo-proves-8">What this demo proves</a></li>
+  <li><a href="#what-this-enables-9" id="toc-what-this-enables-9" class="nav-link" data-scroll-target="#what-this-enables-9">What this enables</a></li>
+  </ul></li>
+  <li><a href="#capability-11-end-to-end-determinism" id="toc-capability-11-end-to-end-determinism" class="nav-link" data-scroll-target="#capability-11-end-to-end-determinism">Capability 11 — End-to-end determinism</a>
+  <ul class="collapse">
+  <li><a href="#what-every-demo-proves-1" id="toc-what-every-demo-proves-1" class="nav-link" data-scroll-target="#what-every-demo-proves-1">What every demo proves</a></li>
+  <li><a href="#why-this-is-hard-to-deliver-in-practice" id="toc-why-this-is-hard-to-deliver-in-practice" class="nav-link" data-scroll-target="#why-this-is-hard-to-deliver-in-practice">Why this is hard to deliver in practice</a></li>
+  </ul></li>
+  <li><a href="#phase-0.5-in-numbers" id="toc-phase-0.5-in-numbers" class="nav-link" data-scroll-target="#phase-0.5-in-numbers">Phase 0.5 in numbers</a></li>
+  <li><a href="#whats-next-and-why-interpreter-compiler-work-matters" id="toc-whats-next-and-why-interpreter-compiler-work-matters" class="nav-link" data-scroll-target="#whats-next-and-why-interpreter-compiler-work-matters">What’s next — and why interpreter / compiler work matters</a>
+  <ul class="collapse">
+  <li><a href="#cross-platform-determinism-ci" id="toc-cross-platform-determinism-ci" class="nav-link" data-scroll-target="#cross-platform-determinism-ci">Cross-platform determinism CI</a></li>
+  <li><a href="#performance-benchmarks" id="toc-performance-benchmarks" class="nav-link" data-scroll-target="#performance-benchmarks">Performance benchmarks</a></li>
+  <li><a href="#compiler-interpreter-performance" id="toc-compiler-interpreter-performance" class="nav-link" data-scroll-target="#compiler-interpreter-performance">Compiler / interpreter performance</a></li>
+  </ul></li>
+  <li><a href="#honest-aggregate" id="toc-honest-aggregate" class="nav-link" data-scroll-target="#honest-aggregate">Honest aggregate</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">ABNG — An Experimental Adaptive Belief Network Graph for CJC-Lang</h1>
+<p class="subtitle lead">Bayesian uncertainty, cryptographic dataset attestation, and adaptive structural triggers — proven by demos, honestly bounded by what’s still unfinished.</p>
+  <div class="quarto-categories">
+    <div class="quarto-category">CJC-Lang</div>
+    <div class="quarto-category">ABNG</div>
+    <div class="quarto-category">Bayesian</div>
+    <div class="quarto-category">determinism</div>
+    <div class="quarto-category">attestation</div>
+    <div class="quarto-category">experimental</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    ABNG (Adaptive Belief Network Graph) is an experimental cjc-abng crate exposing 75 abng_* builtins to CJC-Lang. This post walks through eleven distinct capabilities — eleven demos, six in CJC-Lang source — and what each one actually proves. Plus the honest gaps: ABNG is still experimental, the interpreter is a known bottleneck, and there’s compiler/interpreter work ahead before this becomes production-grade.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Adam Ezzat </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">May 8, 2026</p>
+    </div>
+  </div>
+  
+    <div>
+    <div class="quarto-title-meta-heading">Modified</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date-modified">May 8, 2026</p>
+    </div>
+  </div>
+    
+  </div>
+  
+
+</header>
+
+<div class="reading-time">
+🕑 ~22 min read
+</div>
+<div class="stats-row">
+<div class="stat">
+<span class="number">75</span><span class="stat-label">abng_* builtins</span>
+</div>
+<div class="stat">
+<span class="number">11</span><span class="stat-label">capabilities demoed</span>
+</div>
+<div class="stat">
+<span class="number">960</span><span class="stat-label">tests passing</span>
+</div>
+<div class="stat">
+<span class="number">v12</span><span class="stat-label">snapshot magic</span>
+</div>
+</div>
+<div class="callout callout-style-simple callout-tip no-icon callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+TL;DR
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>ABNG is an <strong>experimental</strong> addition to CJC-Lang shipping in the <code>cjc-abng</code> crate (Phase 0.1 → 0.5). It exposes 75 <code>abng_*</code> builtins for building <strong>adaptive belief network graphs</strong> — Bayesian-flavored ML primitives that combine codebook-routed BLR posteriors, an SHA-256 audit chain, structural-decision triggers, and per-node provenance stamps. This post walks through eleven distinct capabilities, each proven by a working demo (six of them written in CJC-Lang source and parity-tested across both executors). It also names what’s <em>not</em> proven yet — and why interpreter / compiler work is on the critical path before ABNG becomes production-grade.</p>
+</div>
+</div>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+ABNG is experimental
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>ABNG is a research-grade addition to CJC-Lang. The capabilities described here are <em>demonstrated</em> by tests, but not yet <em>productized</em>: there are no benchmarks against industry baselines, no cross-platform CI verification of the determinism canaries, and no real-world case study of someone using ABNG to attest a deployed model. Treat this as a progress report, not a production recommendation. The “what’s still missing” section at the end is honest about the gaps.</p>
+</div>
+</div>
+<section id="what-is-abng" class="level2">
+<h2 class="anchored" data-anchor-id="what-is-abng">What is ABNG?</h2>
+<p>ABNG — Adaptive Belief Network Graph — is a <code>cjc-abng</code> crate that lives alongside the existing CJC-Lang workspace. The goal: provide ML primitives that go beyond “fit some weights to data” by adding three orthogonal axes:</p>
+<ol type="1">
+<li><strong>Bayesian uncertainty</strong> at every prediction (mean, epistemic leverage, aleatoric variance) — without MCMC, ensembles, or variational inference.</li>
+<li><strong>Cryptographic provenance</strong> of training history — every observation, every weight update, every structural decision lands in a SHA-256 audit chain that detects post-hoc tampering.</li>
+<li><strong>Adaptive structure</strong> — the graph’s topology genuinely changes under the workload. Nodes grow, split, merge, prune, compress, freeze under a deterministic decision-policy engine.</li>
+</ol>
+<p>The architecture is a radix-style graph: a root node descends into children indexed by <strong>prefix bytes</strong> from a quantile codebook, and each leaf carries a <strong>Bayesian Linear Regression posterior</strong> over a feature basis. Predictions descend the tree, the posterior at the resolved leaf gives <code>(mean, epistemic_leverage, aleatoric_var)</code>, and structural decisions fire periodically to adapt the tree.</p>
+<div class="cell">
+<div class="cell-output-display">
+<div>
+<div>
+<pre class="mermaid mermaid-js">flowchart LR
+    F["State&lt;br/&gt;features"] --&gt; CB["Codebook&lt;br/&gt;encode"]
+    CB --&gt; P["Prefix&lt;br/&gt;bytes"]
+    P --&gt; D["Descend&lt;br/&gt;tree"]
+    D --&gt; L["Leaf&lt;br/&gt;BLR"]
+    L --&gt; Pred["(mean,&lt;br/&gt;leverage,&lt;br/&gt;aleatoric)"]
+    L -.-&gt;|every step| AC["Audit chain&lt;br/&gt;SHA-256"]
+</pre>
+</div>
+<p>ABNG conceptual flow. State features → codebook prefix → descend tree → BLR posterior at leaf → (mean, leverage, aleatoric) — plus an audit chain that hashes every step.</p>
+</div>
+</div>
+</div>
+<p>It’s exposed to CJC-Lang as <strong>75 <code>abng_*</code> builtins</strong> — <code>abng_new</code>, <code>abng_set_codebook</code>, <code>abng_set_leaf_head</code>, <code>abng_set_blr_prior</code>, <code>abng_observe</code>, <code>abng_blr_predict</code>, <code>abng_descend</code>, <code>abng_decide_step</code>, <code>abng_stamp_provenance</code>, etc. — so you can build and drive an ABNG graph entirely from <code>.cjcl</code> source.</p>
+</section>
+<section id="the-proof-discipline" class="level2">
+<h2 class="anchored" data-anchor-id="the-proof-discipline">The proof discipline</h2>
+<p>Every capability in this post has the same proof structure:</p>
+<ol type="1">
+<li><strong>A workload</strong> — a small but non-trivial problem where the capability <em>should</em> manifest if it’s working.</li>
+<li><strong>A specific assertion</strong> that would fail if the capability didn’t work.</li>
+<li><strong>A locked SHA-256 canary</strong> of the resulting graph’s <code>chain_head</code>, gating any future regression.</li>
+<li><strong>Cross-pipeline determinism</strong>: most demos run through both <code>cjc-eval</code> (AST tree-walk) AND <code>cjc-mir-exec</code> (MIR register-machine) with byte-identical printed output asserted.</li>
+</ol>
+<p>That last property is the <em>strongest</em> determinism gate the project supports. AST and MIR are completely different code paths — if any FP arithmetic, hash computation, or dispatch routing differs anywhere in the pipeline, the printed output diverges and the parity test fails.</p>
+<p>OK — let’s walk through what’s actually proven.</p>
+<hr>
+</section>
+<section id="capability-1-per-state-bayesian-uncertainty" class="level2">
+<h2 class="anchored" data-anchor-id="capability-1-per-state-bayesian-uncertainty">Capability 1 — Per-state Bayesian uncertainty</h2>
+<p><strong>Demo:</strong> PINN heat-equation solver (<code>tests/test_abng_pinn_uncertainty_cjcl.rs</code> + <code>pinn_source.rs</code>)</p>
+<section id="what-this-demo-proves" class="level3">
+<h3 class="anchored" data-anchor-id="what-this-demo-proves">What this demo proves</h3>
+<p>The Bayesian Linear Regression posterior at each codebook-routed leaf returns a 3-tuple <code>(mean, epistemic_leverage, aleatoric_var)</code>. The headline assertion is a <strong>strict spatial-partition property</strong>:</p>
+<pre><code>min(epistemic_leverage at edge probes) &gt; max(epistemic_leverage at interior probes)</code></pre>
+<p>This is stronger than “average edge uncertainty exceeds average interior uncertainty” — it’s a <em>no-overlap</em> claim. After training, the worst-case interior point has lower uncertainty than the best-case edge point. The signal cleanly partitions evidence-rich vs evidence-poor regions of the input space.</p>
+<p>The fit-quality assertion (<code>abs_err_50 &lt; 0.05</code>) proves the mean <em>also</em> converges to the analytical solution. Without this, “leverage is uncertain at edges” would be vacuous — the mean could just be wrong everywhere.</p>
+</section>
+<section id="why-the-heat-equation" class="level3">
+<h3 class="anchored" data-anchor-id="why-the-heat-equation">Why the heat equation</h3>
+<p>The 1-D heat equation <code>∂u/∂t = α∂²u/∂x²</code> with Dirichlet BCs <code>u(0,t) = u(1,t) = 0</code> and IC <code>u(x,0) = sin(πx)</code> was chosen because it has a <strong>known closed-form analytical solution</strong>: <code>u(x,t) = exp(-α π² t) · sin(πx)</code>.</p>
+<p>That choice is load-bearing for the demo. The BLR feature basis is <code>[1, x, sin(πx), cos(πx)]</code> — the analytical solution <code>exp(-π²·0.1)·sin(πx)</code> is <em>exactly representable</em> as a single non-zero coefficient on the <code>sin(πx)</code> basis function. So with enough samples, the BLR posterior mean <em>must</em> converge to the truth. If it doesn’t, the BLR implementation is broken, not the test.</p>
+<p>The training schedule is <strong>deliberately asymmetric</strong>: 32 samples uniformly across <code>[0.25, 0.75]</code> (interior), 4 samples each in <code>[0, 0.25)</code> and <code>[0.75, 1]</code> (edges). Without this asymmetry, uniform training would give uniform uncertainty and the spatial-partition property would be invisible.</p>
+</section>
+<section id="what-this-enables" class="level3">
+<h3 class="anchored" data-anchor-id="what-this-enables">What this enables</h3>
+<ul>
+<li><strong>Active learning in scientific computing</strong> — query the BLR for uncertainty; sample where uncertainty is highest.</li>
+<li><strong>Uncertainty-aware PINNs</strong> — refuse to predict in regions where leverage exceeds a threshold; fall back to a higher-fidelity solver.</li>
+<li><strong>Uncertainty propagation</strong> — feed <code>(mean ± sqrt(aleatoric_var + epistemic_leverage))</code> into Monte Carlo / robust optimization pipelines.</li>
+<li><strong>Calibrated predictions out of the box</strong> — vanilla MLPs don’t say “I don’t know this region”; ABNG does, and you can route around it.</li>
+</ul>
+<p>The PINN literature has spent years adding Bayesian uncertainty to neural PDE solvers via MCMC, variational inference, or deep ensembles. ABNG provides this <strong>for free</strong> via the BLR posterior — no inference machinery beyond a closed-form Bayesian update.</p>
+<hr>
+</section>
+</section>
+<section id="capability-2-per-leaf-bounded-scaling-gp-like-scalable" class="level2">
+<h2 class="anchored" data-anchor-id="capability-2-per-leaf-bounded-scaling-gp-like-scalable">Capability 2 — Per-leaf bounded scaling (GP-like, scalable)</h2>
+<p><strong>Demo:</strong> Tabular regression on the unit square (<code>tests/test_abng_tabular_gp_cjcl.rs</code> + <code>tabular_source.rs</code>)</p>
+<section id="what-this-demo-proves-1" class="level3">
+<h3 class="anchored" data-anchor-id="what-this-demo-proves-1">What this demo proves</h3>
+<p>Five distinct properties asserted as separate tests:</p>
+<ol type="1">
+<li><strong><code>max(per_leaf_n_seen) &lt; 0.9 × N</code></strong> — no single leaf holds the entire dataset. Evidence is partitioned, not duplicated.</li>
+<li><strong><code>sum(per_leaf_n_seen) == N</code></strong> — every training point routes to exactly one leaf. No double-counting; no points lost.</li>
+<li><strong><code>max_per_leaf_bounded</code></strong> — the partitioning works as designed. (This is the <em>scalability</em> claim’s empirical foundation.)</li>
+<li><strong><code>trained_mse &lt; 0.5 × prior_mse</code></strong> — the BLR posterior actually <em>learns</em>. Without this, all the structure-of-the-graph properties would be vacuous.</li>
+<li><strong><code>lev_shrinks_with_data</code></strong> — leverage at a fixed probe drops from a 16-pt-trained leaf to a 64-pt-trained leaf. GP-like uncertainty contraction reproduced.</li>
+</ol>
+</section>
+<section id="why-bilinear-regression-on-the-unit-square" class="level3">
+<h3 class="anchored" data-anchor-id="why-bilinear-regression-on-the-unit-square">Why bilinear regression on the unit square</h3>
+<p>The target is <code>y = 0.3 + 0.5x₁ + 0.4x₂ + 0.7·x₁·x₂</code>. Three deliberate choices:</p>
+<ul>
+<li><strong>Exactly fittable in the BLR feature basis</strong> <code>[1, x₁, x₂, x₁·x₂]</code>. With enough samples, BLR posterior mean → exact coefficients <code>[0.3, 0.5, 0.4, 0.7]</code>. This makes the MSE-reduction test <em>meaningful</em>: any residual MSE comes from sample efficiency, not from the model class being wrong.</li>
+<li><strong>2-D input with a routing dimension.</strong> The codebook routes by <code>x₁</code> (4 bins) and lets <code>x₂</code> become a within-leaf feature. This mirrors the canonical ABNG pattern: <em>use one dimension to partition the input space, regress on the rest within each leaf</em>.</li>
+<li><strong>Unit square domain</strong> — predictable, no scaling tricks. Codebook boundaries <code>[0.25, 0.5, 0.75]</code> evenly partition <code>[0, 1]</code>.</li>
+</ul>
+<p>The 200-point training set is small enough to run quickly through the interpreter, large enough that the per-leaf BLR posteriors clearly converge.</p>
+</section>
+<section id="what-this-enables-1" class="level3">
+<h3 class="anchored" data-anchor-id="what-this-enables-1">What this enables</h3>
+<p>The classical Gaussian Process scales <strong>O(n³)</strong> in training data because the kernel matrix is dense. At n ≈ 10⁴ training points a single GP fit takes minutes-to-hours; at n ≈ 10⁵ it’s infeasible without specialized approximations.</p>
+<p>ABNG’s per-leaf BLR is <strong>O(d²·n_leaf)</strong> per update, where <code>d</code> is the BLR feature dim (4 in this demo) and <code>n_leaf ≪ n</code>. Aggregate cost across N points: <strong>O(N · d²)</strong> — linear in N.</p>
+<p>The trade-off: ABNG’s leaves are independent, so you lose the <em>global</em> covariance structure a GP captures. For workloads where local Bayesian behavior is sufficient (most tabular ML), this is a feature, not a bug — and it’s what enables linear scaling.</p>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Warning
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>The asymptotic claim is correct by construction (the math says so) but <strong>not yet benchmarked</strong> against a classical GP at realistic sizes. Before treating ABNG as a “GP killer,” wall-clock benchmarks at n ∈ {10³, 10⁴, 10⁵} need to be run.</p>
+</div>
+</div>
+<hr>
+</section>
+</section>
+<section id="capability-3-tamper-evident-training-history-audit-chain" class="level2">
+<h2 class="anchored" data-anchor-id="capability-3-tamper-evident-training-history-audit-chain">Capability 3 — Tamper-evident training history (audit chain)</h2>
+<p><strong>Demo:</strong> Universal property — every demo asserts it.</p>
+<section id="what-every-demo-proves" class="level3">
+<h3 class="anchored" data-anchor-id="what-every-demo-proves">What every demo proves</h3>
+<p>Every state mutation in ABNG funnels through one chain step:</p>
+<pre><code>new_hash = sha256(previous_hash ‖ canonical_payload(event))</code></pre>
+<p>Every demo asserts <code>verify_chain == Ok</code> after training. For an n-event audit log, <code>verify_chain</code> walks the chain forward, recomputing <code>new_hash</code> at every step, and compares to the stored value. Any single byte changed in any payload would fail the recomputation at that event AND every subsequent event (cascade property).</p>
+<p>Across the 11 demos, this code path runs <strong>hundreds of times</strong>. The fact that <code>verify_chain == Ok</code> after every demo’s training session is the empirical proof the audit chain is sound under realistic workloads.</p>
+</section>
+<section id="what-this-enables-2" class="level3">
+<h3 class="anchored" data-anchor-id="what-this-enables-2">What this enables</h3>
+<ul>
+<li><strong>Forensic post-incident analysis</strong> — “Was this model trained on the bad data?” Replay the chain, check.</li>
+<li><strong>Regulatory replay (FDA, SEC, HIPAA)</strong> — the model’s full training history is one cryptographically-linked blob.</li>
+<li><strong>Reproducibility</strong> — papers ship <code>(model.snap, dataset)</code> pairs; reviewers reproduce + verify chain.</li>
+<li><strong>ML supply chain</strong> — fine-tuning extends the chain; provenance of every weight is traceable.</li>
+</ul>
+<p>This is closer to Git’s content-addressed model than to traditional ML metadata stores. MLflow / Weights &amp; Biases give you <em>external</em> logs you have to trust; ABNG gives you a model artifact whose history is <strong>cryptographically self-attesting</strong>.</p>
+<hr>
+</section>
+</section>
+<section id="capability-4-cryptographic-dataset-attestation" class="level2">
+<h2 class="anchored" data-anchor-id="capability-4-cryptographic-dataset-attestation">Capability 4 — Cryptographic dataset attestation</h2>
+<p><strong>Demo:</strong> Lineage attestation with synthetic clinical-trial data (<code>tests/test_abng_lineage_attestation_cjcl.rs</code> + <code>lineage_source.rs</code>)</p>
+<section id="what-this-demo-proves-2" class="level3">
+<h3 class="anchored" data-anchor-id="what-this-demo-proves-2">What this demo proves</h3>
+<p>This is the strongest single capability in ABNG. The headline test (<code>lineage_attestation_three_signals_independent</code>) proves that tampering one row of a 64-row dataset (changing patient #17’s response from <code>0.525</code> to <code>0.999</code>) produces <strong>three independent SHA-256 divergences</strong>:</p>
+<ol type="1">
+<li><strong><code>chain_head</code> divergence</strong> — every audit event’s hash cascades from row 17 onward.</li>
+<li><strong>BLR <code>state_hash</code> divergence</strong> — the leaf where the tampered row routes has a different posterior.</li>
+<li><strong><code>provenance_stamp</code> divergence</strong> — the dataset fingerprint differs by construction.</li>
+</ol>
+<p>The “independent” qualifier is doing real work. Even if an attacker forged one signal (e.g., recomputed the chain to hide the change), the other two would still surface the tamper. <strong>Three independent failure modes is a stronger security claim than three correlated ones.</strong></p>
+</section>
+<section id="why-a-synthetic-clinical-trial-workload" class="level3">
+<h3 class="anchored" data-anchor-id="why-a-synthetic-clinical-trial-workload">Why a synthetic clinical-trial workload</h3>
+<ul>
+<li><strong>Maps directly to a real industry threat model.</strong> “Lab A trains a model claiming approved dataset; attacker substitutes contaminated dataset” is the FDA model-attestation problem in one sentence. The two-graph structure (<code>g_a</code> trained on dataset_a, <code>g_b</code> on tampered dataset_b) literally executes this scenario.</li>
+<li><strong>64-row size is realistic for clinical-trial cohorts.</strong> Phase II trials often have &lt;200 patients per arm. Tampering a single patient’s outcome (1.5% of the dataset) is the <em>minimum-effort</em> attack.</li>
+<li><strong>Cubic dose-response curve</strong> <code>y = 0.2 + 0.6·dose + 0.1·dose²</code> is biologically plausible AND exactly fittable in the BLR feature basis <code>[1, dose, dose², dose³]</code>, giving us ground-truth assertions in addition to the security claims.</li>
+</ul>
+<p>The “tamper at row 17” choice is intentional: row 17’s <code>dose=0.5</code> falls right at a codebook bin boundary. This routes the tampered observation to a specific leaf, making the BLR <code>state_hash</code> divergence clearly attributable to one node’s posterior.</p>
+</section>
+<section id="what-this-enables-3" class="level3">
+<h3 class="anchored" data-anchor-id="what-this-enables-3">What this enables</h3>
+<table class="table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Use case</th>
+<th>Concrete flow</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>FDA model attestation (pharma)</strong></td>
+<td>Lab runs trial → trains ABNG → stamps with <code>sha256(approved_dataset)</code>. Regulator: <code>cjcl abng explain --model X.snap pred.snap</code> checks all three signals</td>
+</tr>
+<tr class="even">
+<td><strong>Financial model audit (SEC, Basel III)</strong></td>
+<td>“Prove this risk model used only data through model-validation cutoff”</td>
+</tr>
+<tr class="odd">
+<td><strong>HIPAA-compliant healthcare ML</strong></td>
+<td>Patient-consent boundaries enforced cryptographically: stamp = <code>sha256(consent_set_v2)</code></td>
+</tr>
+<tr class="even">
+<td><strong>GDPR Article 22 right-to-explanation</strong></td>
+<td>“Show me the audit trail of training data that produced this decision about me”</td>
+</tr>
+<tr class="odd">
+<td><strong>Academic reproducibility</strong></td>
+<td><code>paper.pdf + model.snap + dataset.csv</code> — anyone with all three can verify the paper’s claims byte-for-byte</td>
+</tr>
+<tr class="even">
+<td><strong>Insider-threat in ML supply chain</strong></td>
+<td>Attacker who fine-tunes a base model on contaminated data CAN’T hide the audit-chain extension</td>
+</tr>
+</tbody>
+</table>
+<p>Most ML provenance tools today are <em>external</em>: file-system audit logs, MLflow metadata, sigstore-style attestations. ABNG bakes provenance <em>inside</em> the model artifact. The closest analog isn’t an ML tool — it’s Git’s content-addressed history.</p>
+<hr>
+</section>
+</section>
+<section id="capability-5-ood-detection-composite" class="level2">
+<h2 class="anchored" data-anchor-id="capability-5-ood-detection-composite">Capability 5 — OOD detection composite</h2>
+<p><strong>Demo:</strong> Asymmetric codebook with deliberately-missing children (<code>tests/test_abng_ood_detection_cjcl.rs</code> + <code>ood_source.rs</code>)</p>
+<section id="what-this-demo-proves-3" class="level3">
+<h3 class="anchored" data-anchor-id="what-this-demo-proves-3">What this demo proves</h3>
+<p>The headline assertion is <strong>three-tier separation</strong>:</p>
+<pre><code>max(ood_score in dense bins)  &lt;  ood_score in sparse bin  &lt;  ood_score in routing-fall-off bin</code></pre>
+<p>Three evidence regimes are cleanly partitioned. The composite score is a function of three independent inputs:</p>
+<ul>
+<li><strong>density_score</strong> — Mahalanobis-style distance from training points</li>
+<li><strong>epistemic_z</strong> — BLR’s leverage at the query phi</li>
+<li><strong>prefix_distance</strong> — <code>(prefix_max − matched_prefix) / prefix_max</code></li>
+</ul>
+<p>The demo exercises all three by <em>construction</em>: dense bins have low density_score AND low epistemic_z. The sparse bin has high density_score (few training points). The bin with no child has high prefix_distance (descent fell off the tree).</p>
+</section>
+<section id="why-deliberately-omit-one-child" class="level3">
+<h3 class="anchored" data-anchor-id="why-deliberately-omit-one-child">Why deliberately omit one child</h3>
+<p>A symmetric setup (children in all 4 bins, varying training density) would only exercise the density and epistemic signals — not prefix_distance. By deliberately <em>not</em> adding a child for bin 3, queries in bin 3 descend with <code>matched_prefix=0</code> and the prefix-distance contribution to the composite fires.</p>
+<p>The demo is asserting the <strong>composite</strong> works, not just individual signals. If it only varied density, you’d be left wondering whether the routing-distance contribution is real or just a docstring claim. The asymmetric child set proves it’s real.</p>
+</section>
+<section id="what-this-enables-4" class="level3">
+<h3 class="anchored" data-anchor-id="what-this-enables-4">What this enables</h3>
+<ul>
+<li><strong>Self-driving / robotics</strong> — refuse to act on inputs unfamiliar to the training distribution; hand off to safe-mode.</li>
+<li><strong>Medical diagnosis</strong> — don’t predict on patient profiles outside the training population.</li>
+<li><strong>Fraud detection</strong> — novel attack patterns trigger high OOD scores.</li>
+<li><strong>Active learning</strong> — high-OOD inputs are highest-value labeling candidates.</li>
+</ul>
+<p>The ABNG composite is more nuanced than typical “OOD detection” approaches because it composes <strong>three orthogonal signals</strong>. A query can be OOD because (a) it’s far from training points (density), (b) the model is uncertain there (epistemic), or (c) it doesn’t fit the codebook structure at all (prefix). Each tells a different operational story.</p>
+<hr>
+</section>
+</section>
+<section id="capability-6-adaptive-structural-triggers" class="level2">
+<h2 class="anchored" data-anchor-id="capability-6-adaptive-structural-triggers">Capability 6 — Adaptive structural triggers</h2>
+<p><strong>Demo:</strong> Two-sibling shared-signature topology (<code>tests/test_abng_adaptive_triggers_cjcl.rs</code> + <code>adaptive_source.rs</code>)</p>
+<section id="what-this-demo-proves-4" class="level3">
+<h3 class="anchored" data-anchor-id="what-this-demo-proves-4">What this demo proves</h3>
+<p>After running <code>abng_decide_step</code> three times on a graph with two sibling children:</p>
+<ol type="1">
+<li><strong><code>merge_count == 1</code></strong> — exactly one Merge action fires (deterministic given the canary thresholds).</li>
+<li><strong><code>audit_log_grew</code></strong> — the structural mutation is recorded as an event in the chain.</li>
+<li><strong><code>verify_chain == Ok</code></strong> — the chain integrity holds after structural mutation.</li>
+<li><strong><code>chain_head</code> matches the Rust-side <code>decide_step_canary</code> BYTE-FOR-BYTE</strong> — this is the most striking property in the entire demo set.</li>
+</ol>
+<p>That last point deserves emphasis. The Rust-side <code>decide_step_canary_tests.rs</code> locks <code>chain_head = d064fb08…7807</code>. The CJC-Lang demo, running through both AST eval AND MIR exec, produces the <em>same</em> hex. <strong>The same workload, expressed three different ways (direct Rust API, CJC-Lang AST, CJC-Lang MIR), produces bit-identical SHA-256 output through 23+ events.</strong></p>
+</section>
+<section id="why-the-two-sibling-shared-signature-topology" class="level3">
+<h3 class="anchored" data-anchor-id="why-the-two-sibling-shared-signature-topology">Why the two-sibling shared-signature topology</h3>
+<ul>
+<li><strong>It’s the canonical canary setup.</strong> Mirrors the Rust-side <code>decide_step_canary_tests</code> exactly — root + 2 children at keys 1 and 2, three observations at root, three decide_step calls. This lets the CJC-Lang demo serve as a <em>direct cross-pipeline determinism gate</em>.</li>
+<li><strong>Merge is the most reliably-triggered action.</strong> With identical training distributions on the two siblings, their signatures align. Decision-policy thresholds <code>tau_merge=0</code> (Hamming distance) and small <code>kl_merge</code> are satisfied immediately. Merge fires deterministically.</li>
+<li><strong>Small graph keeps the test fast</strong> — 4 nodes, 3 observations, 3 decide_step calls. Runs in milliseconds even through the AST interpreter.</li>
+</ul>
+</section>
+<section id="what-this-enables-5" class="level3">
+<h3 class="anchored" data-anchor-id="what-this-enables-5">What this enables</h3>
+<ul>
+<li><strong>Self-organizing ML models</strong> — graph capacity scales with workload complexity.</li>
+<li><strong>Streaming / online learning</strong> — non-stationary distributions cause Grow on new modes, Prune on dead branches.</li>
+<li><strong>Memory-efficient ML</strong> — Compress unused subtrees; Merge redundant leaves; Prune inactive nodes.</li>
+<li><strong>Continual learning</strong> — Freeze stable-signature subtrees while training others.</li>
+</ul>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Warning
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><strong>Honest caveat:</strong> the demo proves <strong>Merge</strong> fires deterministically. The other five trigger types (Grow, Split, Prune, Compress, Freeze) are tested at the primitive level but not demonstrated firing in a realistic workload. The “graph adapts to workload complexity” claim is half-substantiated by current demos. Closing this gap is straightforward (more demos with engineered workloads that fire each trigger type) but not yet shipped.</p>
+</div>
+</div>
+<hr>
+</section>
+</section>
+<section id="capability-7-calibration-ece" class="level2">
+<h2 class="anchored" data-anchor-id="capability-7-calibration-ece">Capability 7 — Calibration / ECE</h2>
+<p><strong>Demo:</strong> Hand-constructed well-calibrated vs miscalibrated outcomes (<code>tests/test_abng_calibration_cjcl.rs</code> + <code>calibration_source.rs</code>)</p>
+<section id="what-this-demo-proves-5" class="level3">
+<h3 class="anchored" data-anchor-id="what-this-demo-proves-5">What this demo proves</h3>
+<p>Two graphs receive 30 calibration observations each. Same predicted probabilities (<code>p ∈ {0.1, 0.5, 0.9}</code>, 10 each), different outcome distributions:</p>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Graph</th>
+<th>Outcome convention</th>
+<th>Expected ECE</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>A: well-calibrated</td>
+<td>predicted=0.1 → 1 of 10 positive; predicted=0.9 → 9 of 10 positive</td>
+<td>&lt; 0.05</td>
+</tr>
+<tr class="even">
+<td>B: miscalibrated</td>
+<td>predicted=0.1 → 9 of 10 positive (FLIPPED); predicted=0.9 → 1 of 10 positive</td>
+<td>&gt; 0.5</td>
+</tr>
+</tbody>
+</table>
+<p>The headline assertion <code>ece_a &lt; ece_b</code> separates the two cleanly. Plus the specific bounds: <code>ece_a &lt; 0.05</code> (well-calibrated achieves near-zero ECE) and <code>ece_b &gt; 0.5</code> (flipped outcomes produce huge ECE).</p>
+</section>
+<section id="why-flip-outcomes-as-the-miscalibration-model" class="level3">
+<h3 class="anchored" data-anchor-id="why-flip-outcomes-as-the-miscalibration-model">Why “flip outcomes” as the miscalibration model</h3>
+<ul>
+<li><strong>Flipping is the maximally-miscalibrated case.</strong> Predicting 90% confidence and being right 10% of the time is the worst possible outcome — confidence is <em>anti-correlated</em> with truth.</li>
+<li><strong>Same prediction distribution → isolates the calibration signal.</strong> Both graphs see the same <code>(p, y)</code> pairs <em>modulo y</em>. Any difference in ECE is attributable to outcomes, not predictions.</li>
+<li><strong>Three reliability bins</strong> (0.1, 0.5, 0.9) span low/mid/high probability range without requiring 100+ observations to populate every bin.</li>
+</ul>
+</section>
+<section id="what-this-enables-6" class="level3">
+<h3 class="anchored" data-anchor-id="what-this-enables-6">What this enables</h3>
+<ul>
+<li><strong>Risk-sensitive deployment</strong> — a poorly-calibrated 95%-confident prediction is operationally indistinguishable from an honest 60%-confident one — but you’ll act on it differently.</li>
+<li><strong>Threshold tuning</strong> — “should I act on predictions above 0.7?” depends on whether 0.7-bin predictions are actually correct 70% of the time.</li>
+<li><strong>Model selection in production</strong> — beyond accuracy/F1: ECE is the second-order quality metric.</li>
+<li><strong>Active learning targeting</strong> — high-ECE bins are evidence the model needs more training data in that probability range.</li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="capability-8-distribution-drift-detection" class="level2">
+<h2 class="anchored" data-anchor-id="capability-8-distribution-drift-detection">Capability 8 — Distribution-drift detection</h2>
+<p><strong>Demo:</strong> Mean shift from 0 to 0.8 on a 4-D density tracker (<code>tests/test_abng_drift_detection_cjcl.rs</code> + <code>drift_source.rs</code>)</p>
+<section id="what-this-demo-proves-6" class="level3">
+<h3 class="anchored" data-anchor-id="what-this-demo-proves-6">What this demo proves</h3>
+<p>A three-phase workload: train baseline, freeze, observe under same distribution, observe under shifted distribution. Three assertions:</p>
+<ol type="1">
+<li><strong><code>drift_grew</code></strong> — <code>drift_score(post-shift) &gt; drift_score(same-dist)</code>.</li>
+<li><strong><code>meaningful_shift</code></strong> — <code>drift_score(post-shift) &gt; 2 × drift_score(same-dist)</code>. Catches a regression where drift detection becomes noisy.</li>
+<li><strong><code>drift_nonneg</code></strong> — both scores are non-negative (no NaN, no negative noise).</li>
+</ol>
+</section>
+<section id="why-a-pure-mean-shift" class="level3">
+<h3 class="anchored" data-anchor-id="why-a-pure-mean-shift">Why a pure mean shift</h3>
+<ul>
+<li><strong>Translation, not rescaling.</strong> The Mahalanobis-style distance the density tracker uses decomposes into mean-shift + covariance-shift contributions. By shifting only the mean, the test isolates that contribution cleanly.</li>
+<li><strong>0 to 0.8 is large enough to be unambiguous.</strong> Both distributions have ~0.01 jitter (effectively delta functions for density purposes); shifting the center by 0.8 is 80x the jitter — the drift signal saturates well above the floor.</li>
+<li><strong>Same density-tracker geometry.</strong> Both phases use the same dimension count (4-D features), same covariance scale, same batch sizes (16 each post-baseline). Only the location changes — isolating “distribution shifted” from confounders.</li>
+</ul>
+</section>
+<section id="what-this-enables-7" class="level3">
+<h3 class="anchored" data-anchor-id="what-this-enables-7">What this enables</h3>
+<ul>
+<li><strong>Production ML monitoring</strong> — alert ops when input distribution drifts from training; trigger retraining.</li>
+<li><strong>Continual learning auto-trigger</strong> — drift signal is the cue to incorporate new data into the model.</li>
+<li><strong>A/B test data validation</strong> — confirm the new dataset’s distribution matches the original before deploying a new model.</li>
+<li><strong>Sensor / pipeline integrity</strong> — detect upstream data-source switches, sensor drift, schema changes.</li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="capability-9-log-compaction" class="level2">
+<h2 class="anchored" data-anchor-id="capability-9-log-compaction">Capability 9 — Log compaction</h2>
+<p><strong>Demo:</strong> Multi-node observation stream + <code>compact_log</code> (<code>tests/test_abng_compact_log_cjcl.rs</code> + <code>compact_source.rs</code>)</p>
+<section id="what-this-demo-proves-7" class="level3">
+<h3 class="anchored" data-anchor-id="what-this-demo-proves-7">What this demo proves</h3>
+<p>Five training observations across three nodes (root + 2 children, each receives 1-2 observations), then <code>compact_log</code> fires:</p>
+<ol type="1">
+<li><strong><code>emitted == 3</code></strong> — exactly one StatsSnapshot per touched node.</li>
+<li><strong><code>audit_grew_by_emitted</code></strong> — <code>audit_post == audit_pre + emitted</code>.</li>
+<li><strong><code>chain_advanced</code></strong> — chain_head changed (events were properly chain-linked).</li>
+<li><strong><code>verify_chain == Ok</code> post-compact</strong> — the new events don’t break integrity.</li>
+</ol>
+</section>
+<section id="what-this-enables-8" class="level3">
+<h3 class="anchored" data-anchor-id="what-this-enables-8">What this enables</h3>
+<ul>
+<li><strong>Long-running training without log explosion</strong> — periodic compaction preserves checkpoints while bounding audit-log growth.</li>
+<li><strong>Snapshot-based debugging</strong> — each StatsSnapshot is a “save point” for forensic replay.</li>
+<li><strong>Foundation for the Phase 0.6 fast-forward optimization</strong> — smart-replay can fast-forward past observation runs by trusting the StatsSnapshot.</li>
+</ul>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Warning
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><strong>The full read-side optimization is deferred to a future phase.</strong> Today the marker layer ships with chain-integrity preservation; the cycle-saving “skip the observe” optimization that would make this user-visibly faster is Phase 0.6 work.</p>
+</div>
+</div>
+<hr>
+</section>
+</section>
+<section id="capability-10-maturity-observability" class="level2">
+<h2 class="anchored" data-anchor-id="capability-10-maturity-observability">Capability 10 — Maturity observability</h2>
+<p><strong>Demo:</strong> Stable observation stream + decide_step (<code>tests/test_abng_maturity_inspection_cjcl.rs</code> + <code>maturity_source.rs</code>)</p>
+<section id="what-this-demo-proves-8" class="level3">
+<h3 class="anchored" data-anchor-id="what-this-demo-proves-8">What this demo proves</h3>
+<p>Read <code>abng_node_maturity</code> at two timepoints: fresh graph (T=0) and after 10 stable observations + 5 decide_step calls (T=1). Five assertions:</p>
+<ol type="1">
+<li><strong><code>sum_at_t0 == 0.0</code></strong> — fresh graph, all maturity flags are zero.</li>
+<li><strong><code>maturity_evolved</code></strong> — sum at T=1 strictly exceeds sum at T=0.</li>
+<li><strong><code>calib_binary</code> AND <code>unc_binary</code></strong> — positions [1] (calibration_stable) and [2] (uncertainty_stable) are strict 0/1 flags as documented.</li>
+<li><strong><code>samples_seen_nonneg</code></strong> — position [0] (samples_seen) is non-negative.</li>
+<li><strong><code>trust_in_range</code></strong> — position [3] (trust_level) is in <code>[0, 1]</code>.</li>
+</ol>
+<p>The maturity tensor turns out to be heterogeneous — a count, two binary flags, and a continuous trust level. Building this demo is what flushed out the API quirk; the docstring on <code>abng_node_maturity</code> describes it correctly but the behavior is easy to mis-assume.</p>
+</section>
+<section id="what-this-enables-9" class="level3">
+<h3 class="anchored" data-anchor-id="what-this-enables-9">What this enables</h3>
+<ul>
+<li><strong>Production ML monitoring dashboard</strong> — “has my model converged?” → check maturity per-node.</li>
+<li><strong>Auto-stop training</strong> — stop when maturity flags have all stabilized.</li>
+<li><strong>Convergence-failure debugging</strong> — which flag never reaches 1? — points at the failing component.</li>
+<li><strong>Production rollout gating</strong> — deploy-time check: only ship models where <code>calibration_stable == 1</code>.</li>
+</ul>
+<hr>
+</section>
+</section>
+<section id="capability-11-end-to-end-determinism" class="level2">
+<h2 class="anchored" data-anchor-id="capability-11-end-to-end-determinism">Capability 11 — End-to-end determinism</h2>
+<p><strong>Demo:</strong> Universal property — every CJC-Lang demo asserts it.</p>
+<section id="what-every-demo-proves-1" class="level3">
+<h3 class="anchored" data-anchor-id="what-every-demo-proves-1">What every demo proves</h3>
+<p>Every CJC-Lang demo runs through both <code>cjc-eval</code> (AST tree-walk) AND <code>cjc-mir-exec</code> (MIR register-machine), then asserts byte-equal printed output. Across the 13 ABNG demo files, this constitutes ~95 byte-equal parity assertions over a vocabulary of ~30 <code>abng_*</code> builtins.</p>
+<p>The strongest single instance: the <strong>adaptive triggers demo’s <code>chain_head</code> matches the Rust-side <code>decide_step_canary</code> byte-for-byte</strong> (<code>d064fb08…7807</code>). Same workload, three pipelines (direct Rust API + AST eval + MIR exec), bit-identical SHA-256 over 23+ audit events.</p>
+</section>
+<section id="why-this-is-hard-to-deliver-in-practice" class="level3">
+<h3 class="anchored" data-anchor-id="why-this-is-hard-to-deliver-in-practice">Why this is hard to deliver in practice</h3>
+<p>Three architectural choices that <em>make</em> this possible:</p>
+<ul>
+<li><strong>All FP arithmetic uses Kahan compensation</strong> — no FMA, no SIMD-introduced reordering, deterministic add-order semantics.</li>
+<li><strong>All maps are <code>BTreeMap</code></strong> — iteration order is sorted, never random. <code>HashMap</code> with random hashing would silently break determinism.</li>
+<li><strong>All RNG is <code>SplitMix64</code></strong> with explicit seed threading — no thread-local randomness, no time-based seeds, no platform-specific entropy.</li>
+</ul>
+<p>Most ML stacks claim “deterministic with same seed” but produce subtly different bytes across runs. ABNG’s parity gates <em>prove</em> determinism every test run.</p>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Warning
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><strong>Cross-platform determinism is not yet verified.</strong> All canary hashes were computed on Windows. They <em>should</em> hold on Linux/macOS (Kahan, no FMA, BTreeMap), but this isn’t yet tested in CI.</p>
+</div>
+</div>
+<hr>
+</section>
+</section>
+<section id="phase-0.5-in-numbers" class="level2">
+<h2 class="anchored" data-anchor-id="phase-0.5-in-numbers">Phase 0.5 in numbers</h2>
+<p>The current ABNG state is the result of Phase 0.5, which shipped:</p>
+<table class="table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Item</th>
+<th>What it added</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>v12 wire-format bump</strong></td>
+<td>Per-node <code>provenance_stamp_hash</code> field + new <code>0x1C ProvenanceStamped</code> audit kind; <code>NodeStats::canonical_bytes</code> extended 24B → 32B to capture the Kahan compensation register</td>
+</tr>
+<tr class="even">
+<td><strong><code>smart_replay</code> API</strong></td>
+<td>Opt-in tamper detection via StatsSnapshot consistency check (cycle-saving fast-forward layer deferred to Phase 0.6)</td>
+</tr>
+<tr class="odd">
+<td><strong>TOML <code>--config</code> files for <code>cjcl abng train</code></strong></td>
+<td>Hand-rolled minimal TOML parser (zero external deps), full schema for graph / codebook / leaf_head / blr_prior / density / calibration / decision_policy / training / output sections</td>
+</tr>
+<tr class="even">
+<td><strong>Chess RL v2.6 retrofit scaffold</strong></td>
+<td>Sibling test file demonstrating the API pattern; locked v2.6 weight-hash canary</td>
+</tr>
+<tr class="odd">
+<td><strong>6 capability demos</strong></td>
+<td>OOD detection, adaptive triggers, calibration, drift, compact_log, maturity — all in CJC-Lang source with AST↔︎MIR parity gates</td>
+</tr>
+<tr class="even">
+<td><strong>3 application demos</strong></td>
+<td>PINN, tabular GP-like, lineage attestation — both Rust-direct AND CJC-Lang versions</td>
+</tr>
+</tbody>
+</table>
+<p>Net impact: <strong>906 → 960 tests, +54 in this final round, 0 failures across the whole suite.</strong></p>
+</section>
+<section id="whats-next-and-why-interpreter-compiler-work-matters" class="level2">
+<h2 class="anchored" data-anchor-id="whats-next-and-why-interpreter-compiler-work-matters">What’s next — and why interpreter / compiler work matters</h2>
+<p>ABNG is genuinely useful for a specific niche: <strong>regulated ML training where you need Bayesian uncertainty + cryptographically-verifiable lineage on tabular data.</strong> The demos prove the niche capabilities; they don’t prove ABNG should replace PyTorch.</p>
+<p>Three things stand between current ABNG and production readiness:</p>
+<section id="cross-platform-determinism-ci" class="level3">
+<h3 class="anchored" data-anchor-id="cross-platform-determinism-ci">Cross-platform determinism CI</h3>
+<p>The locked canary hashes are Windows-only today. They <em>should</em> hold across platforms (the architecture is designed for it), but this is unverified. Adding GitHub Actions CI that runs the full test suite on Linux + macOS + Windows and compares the canaries is a one-day project that pays off forever — every future commit either preserves cross-platform determinism or fails CI loudly.</p>
+</section>
+<section id="performance-benchmarks" class="level3">
+<h3 class="anchored" data-anchor-id="performance-benchmarks">Performance benchmarks</h3>
+<p>The “linear scaling” claim for ABNG vs classical GP is <em>correct</em> asymptotically but <strong>not yet benchmarked</strong> at realistic dataset sizes. Without <code>n ∈ {10³, 10⁴, 10⁵}</code> wall-clock numbers, this is a “promising primitive” not a “GP killer.”</p>
+</section>
+<section id="compiler-interpreter-performance" class="level3">
+<h3 class="anchored" data-anchor-id="compiler-interpreter-performance">Compiler / interpreter performance</h3>
+<p>This is the bigger long-term constraint. The CJC-Lang interpreter is currently 5–50× slower than direct Rust API access for ABNG demos. For research / experimentation that’s fine. For production ML training at scale, it’s a hard ceiling.</p>
+<p>The chess RL benchmark hit this wall directly — project memory: <em>“bottleneck is interpreter throughput, not ML algorithm design.”</em> Specific levers, in increasing order of effort:</p>
+<ul>
+<li><strong>MIR optimizer passes</strong> — current optimizer has CF + DCE; further passes (loop-invariant code motion, common subexpression elimination, function inlining) are weeks of work each.</li>
+<li><strong>Hot-path specialization in <code>cjc-runtime</code></strong> — ABNG already shows the pattern (75 native builtins for what users actually do). Has architectural cost: every native kernel is a feature you can’t compose out of simpler primitives.</li>
+<li><strong>AOT compilation</strong> — <code>cjcl compile foo.cjcl → foo.exe</code>. LLVM or Cranelift backend. Months of work but the only path that closes the perf gap meaningfully.</li>
+</ul>
+<p>Most likely sequencing: continue ABNG (Phase 0.6 work — smart-replay fast-forward, cross-platform CI, lineage case study) while landing incremental MIR optimizer + native-kernel work. AOT is a multi-month commitment that depends on whether CJC-Lang’s long-term identity is <em>research vehicle</em> or <em>production language</em>.</p>
+</section>
+</section>
+<section id="honest-aggregate" class="level2">
+<h2 class="anchored" data-anchor-id="honest-aggregate">Honest aggregate</h2>
+<p>ABNG is <strong>a 7/10 system if you have the niche problems it solves</strong>, and <strong>a 2/10 system if you don’t.</strong> The demos honestly bound where it’s useful:</p>
+<p><strong>Strong fit (lead with ABNG):</strong> - Pharma / financial / healthcare ML with regulatory attestation needs - Academic groups publishing reproducibility-critical results - Tabular Bayesian regression at sizes prohibitive for classical GP</p>
+<p><strong>Moderate fit (consider ABNG alongside existing tools):</strong> - Production ML monitoring (drift detection + existing observability) - Active learning research where BLR uncertainty is sufficient - Scientific computing groups doing 1-D / 2-D PINNs</p>
+<p><strong>Poor fit (don’t reach for ABNG):</strong> - Deep learning, vision, NLP, audio — codebook routing doesn’t fit - Real-time inference / latency-sensitive serving — audit-chain overhead - Quick experimentation / prototyping — overkill</p>
+<p>The honest one-sentence summary: <strong>“ABNG is what you reach for when you need to prove what your model was trained on, with calibrated Bayesian uncertainty, and you can tolerate the audit-chain overhead.”</strong></p>
+<p>That’s a real market — but it’s a niche, not the mainstream. The work ahead — interpreter perf, cross-platform CI, real case studies — is what would graduate ABNG from “demonstrably works in tests” to “deployed in production somewhere that matters.”</p>
+<p>For now: experimental, but with clear value for the right user. If that’s you — you know who you are — get in touch.</p>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Note
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>ABNG lives at <a href="https://github.com/AdamEzzat1/CJC"><code>crates/cjc-abng/</code></a> in the CJC-Lang repository. The 13 demo files are under <code>tests/test_abng_*.rs</code> and <code>tests/abng_demos/</code>. The full test count is 960; the source is open.</p>
+</div>
+</div>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const disableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'prefetch';
+    }
+  }
+  const enableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'stylesheet';
+    }
+  }
+  const manageTransitions = (selector, allowTransitions) => {
+    const els = window.document.querySelectorAll(selector);
+    for (let i=0; i < els.length; i++) {
+      const el = els[i];
+      if (allowTransitions) {
+        el.classList.remove('notransition');
+      } else {
+        el.classList.add('notransition');
+      }
+    }
+  }
+  const toggleColorMode = (alternate) => {
+    // Switch the stylesheets
+    const alternateStylesheets = window.document.querySelectorAll('link.quarto-color-scheme.quarto-color-alternate');
+    manageTransitions('#quarto-margin-sidebar .nav-link', false);
+    if (alternate) {
+      enableStylesheet(alternateStylesheets);
+      for (const sheetNode of alternateStylesheets) {
+        if (sheetNode.id === "quarto-bootstrap") {
+          toggleBodyColorMode(sheetNode);
+        }
+      }
+    } else {
+      disableStylesheet(alternateStylesheets);
+      toggleBodyColorPrimary();
+    }
+    manageTransitions('#quarto-margin-sidebar .nav-link', true);
+    // Switch the toggles
+    const toggles = window.document.querySelectorAll('.quarto-color-scheme-toggle');
+    for (let i=0; i < toggles.length; i++) {
+      const toggle = toggles[i];
+      if (toggle) {
+        if (alternate) {
+          toggle.classList.add("alternate");     
+        } else {
+          toggle.classList.remove("alternate");
+        }
+      }
+    }
+    // Hack to workaround the fact that safari doesn't
+    // properly recolor the scrollbar when toggling (#1455)
+    if (navigator.userAgent.indexOf('Safari') > 0 && navigator.userAgent.indexOf('Chrome') == -1) {
+      manageTransitions("body", false);
+      window.scrollTo(0, 1);
+      setTimeout(() => {
+        window.scrollTo(0, 0);
+        manageTransitions("body", true);
+      }, 40);  
+    }
+  }
+  const isFileUrl = () => { 
+    return window.location.protocol === 'file:';
+  }
+  const hasAlternateSentinel = () => {  
+    let styleSentinel = getColorSchemeSentinel();
+    if (styleSentinel !== null) {
+      return styleSentinel === "alternate";
+    } else {
+      return false;
+    }
+  }
+  const setStyleSentinel = (alternate) => {
+    const value = alternate ? "alternate" : "default";
+    if (!isFileUrl()) {
+      window.localStorage.setItem("quarto-color-scheme", value);
+    } else {
+      localAlternateSentinel = value;
+    }
+  }
+  const getColorSchemeSentinel = () => {
+    if (!isFileUrl()) {
+      const storageValue = window.localStorage.getItem("quarto-color-scheme");
+      return storageValue != null ? storageValue : localAlternateSentinel;
+    } else {
+      return localAlternateSentinel;
+    }
+  }
+  let localAlternateSentinel = 'default';
+  // Dark / light mode switch
+  window.quartoToggleColorScheme = () => {
+    // Read the current dark / light value 
+    let toAlternate = !hasAlternateSentinel();
+    toggleColorMode(toAlternate);
+    setStyleSentinel(toAlternate);
+  };
+  // Ensure there is a toggle, if there isn't float one in the top right
+  if (window.document.querySelector('.quarto-color-scheme-toggle') === null) {
+    const a = window.document.createElement('a');
+    a.classList.add('top-right');
+    a.classList.add('quarto-color-scheme-toggle');
+    a.href = "";
+    a.onclick = function() { try { window.quartoToggleColorScheme(); } catch {} return false; };
+    const i = window.document.createElement("i");
+    i.classList.add('bi');
+    a.appendChild(i);
+    window.document.body.appendChild(a);
+  }
+  // Switch to dark mode if need be
+  if (hasAlternateSentinel()) {
+    toggleColorMode(true);
+  } else {
+    toggleColorMode(false);
+  }
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+      &nbsp;
+    </div>   
+    <div class="nav-footer-center">© 2026 Adam Ezzat. Built with <a href="https://quarto.org/">Quarto</a>.</div>
+    <div class="nav-footer-right">
+      &nbsp;
+    </div>
+  </div>
+</footer>
+
+
+
+<script src="../../../site_libs/quarto-html/zenscroll-min.js"></script>
+</body></html>
