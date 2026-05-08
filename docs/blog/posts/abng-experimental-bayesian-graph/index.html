@@ -23,6 +23,40 @@ ul.task-list li input[type="checkbox"] {
   margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
   vertical-align: middle;
 }
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
 </style>
 
 
@@ -66,6 +100,8 @@ ul.task-list li input[type="checkbox"] {
 <script src="../../../site_libs/quarto-diagram/mermaid-init.js"></script>
 <link href="../../../site_libs/quarto-diagram/mermaid.css" rel="stylesheet">
 
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
 
 </head>
 
@@ -136,64 +172,98 @@ ul.task-list li input[type="checkbox"] {
   <li><a href="#capability-1-per-state-bayesian-uncertainty" id="toc-capability-1-per-state-bayesian-uncertainty" class="nav-link" data-scroll-target="#capability-1-per-state-bayesian-uncertainty">Capability 1 — Per-state Bayesian uncertainty</a>
   <ul class="collapse">
   <li><a href="#what-this-demo-proves" id="toc-what-this-demo-proves" class="nav-link" data-scroll-target="#what-this-demo-proves">What this demo proves</a></li>
+  <li><a href="#the-math" id="toc-the-math" class="nav-link" data-scroll-target="#the-math">The math</a></li>
   <li><a href="#why-the-heat-equation" id="toc-why-the-heat-equation" class="nav-link" data-scroll-target="#why-the-heat-equation">Why the heat equation</a></li>
+  <li><a href="#code-sketch" id="toc-code-sketch" class="nav-link" data-scroll-target="#code-sketch">Code sketch</a></li>
+  <li><a href="#connection-to-existing-techniques" id="toc-connection-to-existing-techniques" class="nav-link" data-scroll-target="#connection-to-existing-techniques">Connection to existing techniques</a></li>
   <li><a href="#what-this-enables" id="toc-what-this-enables" class="nav-link" data-scroll-target="#what-this-enables">What this enables</a></li>
   </ul></li>
   <li><a href="#capability-2-per-leaf-bounded-scaling-gp-like-scalable" id="toc-capability-2-per-leaf-bounded-scaling-gp-like-scalable" class="nav-link" data-scroll-target="#capability-2-per-leaf-bounded-scaling-gp-like-scalable">Capability 2 — Per-leaf bounded scaling (GP-like, scalable)</a>
   <ul class="collapse">
   <li><a href="#what-this-demo-proves-1" id="toc-what-this-demo-proves-1" class="nav-link" data-scroll-target="#what-this-demo-proves-1">What this demo proves</a></li>
+  <li><a href="#the-math-cost-analysis" id="toc-the-math-cost-analysis" class="nav-link" data-scroll-target="#the-math-cost-analysis">The math (cost analysis)</a></li>
   <li><a href="#why-bilinear-regression-on-the-unit-square" id="toc-why-bilinear-regression-on-the-unit-square" class="nav-link" data-scroll-target="#why-bilinear-regression-on-the-unit-square">Why bilinear regression on the unit square</a></li>
+  <li><a href="#code-sketch-1" id="toc-code-sketch-1" class="nav-link" data-scroll-target="#code-sketch-1">Code sketch</a></li>
+  <li><a href="#connection-to-existing-techniques-1" id="toc-connection-to-existing-techniques-1" class="nav-link" data-scroll-target="#connection-to-existing-techniques-1">Connection to existing techniques</a></li>
   <li><a href="#what-this-enables-1" id="toc-what-this-enables-1" class="nav-link" data-scroll-target="#what-this-enables-1">What this enables</a></li>
   </ul></li>
   <li><a href="#capability-3-tamper-evident-training-history-audit-chain" id="toc-capability-3-tamper-evident-training-history-audit-chain" class="nav-link" data-scroll-target="#capability-3-tamper-evident-training-history-audit-chain">Capability 3 — Tamper-evident training history (audit chain)</a>
   <ul class="collapse">
   <li><a href="#what-every-demo-proves" id="toc-what-every-demo-proves" class="nav-link" data-scroll-target="#what-every-demo-proves">What every demo proves</a></li>
+  <li><a href="#the-threat-model" id="toc-the-threat-model" class="nav-link" data-scroll-target="#the-threat-model">The threat model</a></li>
+  <li><a href="#code-sketch-what-an-event-payload-looks-like" id="toc-code-sketch-what-an-event-payload-looks-like" class="nav-link" data-scroll-target="#code-sketch-what-an-event-payload-looks-like">Code sketch — what an event payload looks like</a></li>
+  <li><a href="#connection-to-existing-techniques-2" id="toc-connection-to-existing-techniques-2" class="nav-link" data-scroll-target="#connection-to-existing-techniques-2">Connection to existing techniques</a></li>
   <li><a href="#what-this-enables-2" id="toc-what-this-enables-2" class="nav-link" data-scroll-target="#what-this-enables-2">What this enables</a></li>
   </ul></li>
   <li><a href="#capability-4-cryptographic-dataset-attestation" id="toc-capability-4-cryptographic-dataset-attestation" class="nav-link" data-scroll-target="#capability-4-cryptographic-dataset-attestation">Capability 4 — Cryptographic dataset attestation</a>
   <ul class="collapse">
   <li><a href="#what-this-demo-proves-2" id="toc-what-this-demo-proves-2" class="nav-link" data-scroll-target="#what-this-demo-proves-2">What this demo proves</a></li>
+  <li><a href="#the-threat-model-and-why-three-signals-matter" id="toc-the-threat-model-and-why-three-signals-matter" class="nav-link" data-scroll-target="#the-threat-model-and-why-three-signals-matter">The threat model and why three signals matter</a></li>
   <li><a href="#why-a-synthetic-clinical-trial-workload" id="toc-why-a-synthetic-clinical-trial-workload" class="nav-link" data-scroll-target="#why-a-synthetic-clinical-trial-workload">Why a synthetic clinical-trial workload</a></li>
+  <li><a href="#code-sketch-2" id="toc-code-sketch-2" class="nav-link" data-scroll-target="#code-sketch-2">Code sketch</a></li>
+  <li><a href="#connection-to-existing-techniques-3" id="toc-connection-to-existing-techniques-3" class="nav-link" data-scroll-target="#connection-to-existing-techniques-3">Connection to existing techniques</a></li>
   <li><a href="#what-this-enables-3" id="toc-what-this-enables-3" class="nav-link" data-scroll-target="#what-this-enables-3">What this enables</a></li>
   </ul></li>
   <li><a href="#capability-5-ood-detection-composite" id="toc-capability-5-ood-detection-composite" class="nav-link" data-scroll-target="#capability-5-ood-detection-composite">Capability 5 — OOD detection composite</a>
   <ul class="collapse">
   <li><a href="#what-this-demo-proves-3" id="toc-what-this-demo-proves-3" class="nav-link" data-scroll-target="#what-this-demo-proves-3">What this demo proves</a></li>
+  <li><a href="#the-math-1" id="toc-the-math-1" class="nav-link" data-scroll-target="#the-math-1">The math</a></li>
   <li><a href="#why-deliberately-omit-one-child" id="toc-why-deliberately-omit-one-child" class="nav-link" data-scroll-target="#why-deliberately-omit-one-child">Why deliberately omit one child</a></li>
+  <li><a href="#code-sketch-3" id="toc-code-sketch-3" class="nav-link" data-scroll-target="#code-sketch-3">Code sketch</a></li>
+  <li><a href="#connection-to-existing-techniques-4" id="toc-connection-to-existing-techniques-4" class="nav-link" data-scroll-target="#connection-to-existing-techniques-4">Connection to existing techniques</a></li>
   <li><a href="#what-this-enables-4" id="toc-what-this-enables-4" class="nav-link" data-scroll-target="#what-this-enables-4">What this enables</a></li>
   </ul></li>
   <li><a href="#capability-6-adaptive-structural-triggers" id="toc-capability-6-adaptive-structural-triggers" class="nav-link" data-scroll-target="#capability-6-adaptive-structural-triggers">Capability 6 — Adaptive structural triggers</a>
   <ul class="collapse">
   <li><a href="#what-this-demo-proves-4" id="toc-what-this-demo-proves-4" class="nav-link" data-scroll-target="#what-this-demo-proves-4">What this demo proves</a></li>
+  <li><a href="#the-math-behind-the-merge-trigger" id="toc-the-math-behind-the-merge-trigger" class="nav-link" data-scroll-target="#the-math-behind-the-merge-trigger">The math behind the Merge trigger</a></li>
   <li><a href="#why-the-two-sibling-shared-signature-topology" id="toc-why-the-two-sibling-shared-signature-topology" class="nav-link" data-scroll-target="#why-the-two-sibling-shared-signature-topology">Why the two-sibling shared-signature topology</a></li>
+  <li><a href="#code-sketch-4" id="toc-code-sketch-4" class="nav-link" data-scroll-target="#code-sketch-4">Code sketch</a></li>
+  <li><a href="#connection-to-existing-techniques-5" id="toc-connection-to-existing-techniques-5" class="nav-link" data-scroll-target="#connection-to-existing-techniques-5">Connection to existing techniques</a></li>
   <li><a href="#what-this-enables-5" id="toc-what-this-enables-5" class="nav-link" data-scroll-target="#what-this-enables-5">What this enables</a></li>
   </ul></li>
   <li><a href="#capability-7-calibration-ece" id="toc-capability-7-calibration-ece" class="nav-link" data-scroll-target="#capability-7-calibration-ece">Capability 7 — Calibration / ECE</a>
   <ul class="collapse">
   <li><a href="#what-this-demo-proves-5" id="toc-what-this-demo-proves-5" class="nav-link" data-scroll-target="#what-this-demo-proves-5">What this demo proves</a></li>
+  <li><a href="#the-math-2" id="toc-the-math-2" class="nav-link" data-scroll-target="#the-math-2">The math</a></li>
   <li><a href="#why-flip-outcomes-as-the-miscalibration-model" id="toc-why-flip-outcomes-as-the-miscalibration-model" class="nav-link" data-scroll-target="#why-flip-outcomes-as-the-miscalibration-model">Why “flip outcomes” as the miscalibration model</a></li>
+  <li><a href="#code-sketch-5" id="toc-code-sketch-5" class="nav-link" data-scroll-target="#code-sketch-5">Code sketch</a></li>
+  <li><a href="#connection-to-existing-techniques-6" id="toc-connection-to-existing-techniques-6" class="nav-link" data-scroll-target="#connection-to-existing-techniques-6">Connection to existing techniques</a></li>
   <li><a href="#what-this-enables-6" id="toc-what-this-enables-6" class="nav-link" data-scroll-target="#what-this-enables-6">What this enables</a></li>
   </ul></li>
   <li><a href="#capability-8-distribution-drift-detection" id="toc-capability-8-distribution-drift-detection" class="nav-link" data-scroll-target="#capability-8-distribution-drift-detection">Capability 8 — Distribution-drift detection</a>
   <ul class="collapse">
   <li><a href="#what-this-demo-proves-6" id="toc-what-this-demo-proves-6" class="nav-link" data-scroll-target="#what-this-demo-proves-6">What this demo proves</a></li>
+  <li><a href="#the-math-3" id="toc-the-math-3" class="nav-link" data-scroll-target="#the-math-3">The math</a></li>
   <li><a href="#why-a-pure-mean-shift" id="toc-why-a-pure-mean-shift" class="nav-link" data-scroll-target="#why-a-pure-mean-shift">Why a pure mean shift</a></li>
+  <li><a href="#code-sketch-6" id="toc-code-sketch-6" class="nav-link" data-scroll-target="#code-sketch-6">Code sketch</a></li>
+  <li><a href="#connection-to-existing-techniques-7" id="toc-connection-to-existing-techniques-7" class="nav-link" data-scroll-target="#connection-to-existing-techniques-7">Connection to existing techniques</a></li>
   <li><a href="#what-this-enables-7" id="toc-what-this-enables-7" class="nav-link" data-scroll-target="#what-this-enables-7">What this enables</a></li>
   </ul></li>
   <li><a href="#capability-9-log-compaction" id="toc-capability-9-log-compaction" class="nav-link" data-scroll-target="#capability-9-log-compaction">Capability 9 — Log compaction</a>
   <ul class="collapse">
   <li><a href="#what-this-demo-proves-7" id="toc-what-this-demo-proves-7" class="nav-link" data-scroll-target="#what-this-demo-proves-7">What this demo proves</a></li>
+  <li><a href="#the-math-and-whats-deferred" id="toc-the-math-and-whats-deferred" class="nav-link" data-scroll-target="#the-math-and-whats-deferred">The math (and what’s deferred)</a></li>
+  <li><a href="#code-sketch-7" id="toc-code-sketch-7" class="nav-link" data-scroll-target="#code-sketch-7">Code sketch</a></li>
+  <li><a href="#connection-to-existing-techniques-8" id="toc-connection-to-existing-techniques-8" class="nav-link" data-scroll-target="#connection-to-existing-techniques-8">Connection to existing techniques</a></li>
   <li><a href="#what-this-enables-8" id="toc-what-this-enables-8" class="nav-link" data-scroll-target="#what-this-enables-8">What this enables</a></li>
   </ul></li>
   <li><a href="#capability-10-maturity-observability" id="toc-capability-10-maturity-observability" class="nav-link" data-scroll-target="#capability-10-maturity-observability">Capability 10 — Maturity observability</a>
   <ul class="collapse">
   <li><a href="#what-this-demo-proves-8" id="toc-what-this-demo-proves-8" class="nav-link" data-scroll-target="#what-this-demo-proves-8">What this demo proves</a></li>
+  <li><a href="#the-semantics" id="toc-the-semantics" class="nav-link" data-scroll-target="#the-semantics">The semantics</a></li>
+  <li><a href="#why-a-stable-observation-stream" id="toc-why-a-stable-observation-stream" class="nav-link" data-scroll-target="#why-a-stable-observation-stream">Why a stable observation stream</a></li>
+  <li><a href="#code-sketch-8" id="toc-code-sketch-8" class="nav-link" data-scroll-target="#code-sketch-8">Code sketch</a></li>
+  <li><a href="#connection-to-existing-techniques-9" id="toc-connection-to-existing-techniques-9" class="nav-link" data-scroll-target="#connection-to-existing-techniques-9">Connection to existing techniques</a></li>
   <li><a href="#what-this-enables-9" id="toc-what-this-enables-9" class="nav-link" data-scroll-target="#what-this-enables-9">What this enables</a></li>
   </ul></li>
   <li><a href="#capability-11-end-to-end-determinism" id="toc-capability-11-end-to-end-determinism" class="nav-link" data-scroll-target="#capability-11-end-to-end-determinism">Capability 11 — End-to-end determinism</a>
   <ul class="collapse">
   <li><a href="#what-every-demo-proves-1" id="toc-what-every-demo-proves-1" class="nav-link" data-scroll-target="#what-every-demo-proves-1">What every demo proves</a></li>
-  <li><a href="#why-this-is-hard-to-deliver-in-practice" id="toc-why-this-is-hard-to-deliver-in-practice" class="nav-link" data-scroll-target="#why-this-is-hard-to-deliver-in-practice">Why this is hard to deliver in practice</a></li>
+  <li><a href="#the-architectural-choices-that-make-this-work" id="toc-the-architectural-choices-that-make-this-work" class="nav-link" data-scroll-target="#the-architectural-choices-that-make-this-work">The architectural choices that make this work</a></li>
+  <li><a href="#what-this-means-for-ml-practitioners" id="toc-what-this-means-for-ml-practitioners" class="nav-link" data-scroll-target="#what-this-means-for-ml-practitioners">What this means for ML practitioners</a></li>
+  <li><a href="#connection-to-the-reproducibility-crisis-literature" id="toc-connection-to-the-reproducibility-crisis-literature" class="nav-link" data-scroll-target="#connection-to-the-reproducibility-crisis-literature">Connection to the reproducibility crisis literature</a></li>
+  <li><a href="#what-this-enables-10" id="toc-what-this-enables-10" class="nav-link" data-scroll-target="#what-this-enables-10">What this enables</a></li>
   </ul></li>
   <li><a href="#phase-0.5-in-numbers" id="toc-phase-0.5-in-numbers" class="nav-link" data-scroll-target="#phase-0.5-in-numbers">Phase 0.5 in numbers</a></li>
   <li><a href="#whats-next-and-why-interpreter-compiler-work-matters" id="toc-whats-next-and-why-interpreter-compiler-work-matters" class="nav-link" data-scroll-target="#whats-next-and-why-interpreter-compiler-work-matters">What’s next — and why interpreter / compiler work matters</a>
@@ -202,7 +272,6 @@ ul.task-list li input[type="checkbox"] {
   <li><a href="#performance-benchmarks" id="toc-performance-benchmarks" class="nav-link" data-scroll-target="#performance-benchmarks">Performance benchmarks</a></li>
   <li><a href="#compiler-interpreter-performance" id="toc-compiler-interpreter-performance" class="nav-link" data-scroll-target="#compiler-interpreter-performance">Compiler / interpreter performance</a></li>
   </ul></li>
-  <li><a href="#honest-aggregate" id="toc-honest-aggregate" class="nav-link" data-scroll-target="#honest-aggregate">Honest aggregate</a></li>
   </ul>
 </nav>
     </div>
@@ -259,7 +328,7 @@ ul.task-list li input[type="checkbox"] {
 </header>
 
 <div class="reading-time">
-🕑 ~22 min read
+🕑 ~32 min read
 </div>
 <div class="stats-row">
 <div class="stat">
@@ -352,21 +421,141 @@ ABNG is experimental
 <p>This is stronger than “average edge uncertainty exceeds average interior uncertainty” — it’s a <em>no-overlap</em> claim. After training, the worst-case interior point has lower uncertainty than the best-case edge point. The signal cleanly partitions evidence-rich vs evidence-poor regions of the input space.</p>
 <p>The fit-quality assertion (<code>abs_err_50 &lt; 0.05</code>) proves the mean <em>also</em> converges to the analytical solution. Without this, “leverage is uncertain at edges” would be vacuous — the mean could just be wrong everywhere.</p>
 </section>
+<section id="the-math" class="level3">
+<h3 class="anchored" data-anchor-id="the-math">The math</h3>
+<p>ABNG’s BLR uses a Normal-Inverse-Gamma (NIG) conjugate prior on <code>(w, σ²)</code>. Given a prior <code>(μ₀, Λ₀, a₀, b₀)</code> and a stream of observations <code>D = {(φᵢ, yᵢ)}</code>, the conjugate update yields a closed-form posterior:</p>
+<p><span class="math display">\[
+\begin{aligned}
+\Lambda_n &amp;= \Lambda_0 + \Phi^\top \Phi \\
+\mu_n &amp;= \Lambda_n^{-1}\,(\Lambda_0 \mu_0 + \Phi^\top y) \\
+a_n &amp;= a_0 + n/2 \\
+b_n &amp;= b_0 + \tfrac{1}{2}(y - \Phi\mu_n)^\top(y - \Phi\mu_n) + \tfrac{1}{2}(\mu_0 - \mu_n)^\top \Lambda_0\,(\mu_0 - \mu_n)
+\end{aligned}
+\]</span></p>
+<p>For a query point <code>x*</code>, the predictive distribution <code>p(y* | x*, D)</code> is a Student-t. ABNG returns its three sufficient ingredients as:</p>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Output</th>
+<th>Formula</th>
+<th>Interpretation</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>mean</code></td>
+<td><span class="math inline">\(\mu_n^\top \varphi(x^*)\)</span></td>
+<td>Posterior mean prediction (point estimate)</td>
+</tr>
+<tr class="even">
+<td><code>epistemic_leverage</code></td>
+<td><span class="math inline">\(\varphi(x^*)^\top \Lambda_n^{-1}\,\varphi(x^*)\)</span></td>
+<td>Variance contribution from posterior over <code>w</code> (model uncertainty)</td>
+</tr>
+<tr class="odd">
+<td><code>aleatoric_var</code></td>
+<td><span class="math inline">\(b_n / (a_n - 1)\)</span></td>
+<td>Observation-noise variance (data uncertainty)</td>
+</tr>
+</tbody>
+</table>
+<p>Two cleanly separated uncertainty channels. <strong><code>epistemic_leverage</code> shrinks as <code>ΦᵀΦ</code> accumulates</strong> — more data → tighter posterior over <code>w</code> → less model uncertainty. <strong><code>aleatoric_var</code> converges to the irreducible noise floor.</strong> A vanilla MLP collapses both into a single point estimate; ABNG keeps them factored.</p>
+</section>
 <section id="why-the-heat-equation" class="level3">
 <h3 class="anchored" data-anchor-id="why-the-heat-equation">Why the heat equation</h3>
-<p>The 1-D heat equation <code>∂u/∂t = α∂²u/∂x²</code> with Dirichlet BCs <code>u(0,t) = u(1,t) = 0</code> and IC <code>u(x,0) = sin(πx)</code> was chosen because it has a <strong>known closed-form analytical solution</strong>: <code>u(x,t) = exp(-α π² t) · sin(πx)</code>.</p>
-<p>That choice is load-bearing for the demo. The BLR feature basis is <code>[1, x, sin(πx), cos(πx)]</code> — the analytical solution <code>exp(-π²·0.1)·sin(πx)</code> is <em>exactly representable</em> as a single non-zero coefficient on the <code>sin(πx)</code> basis function. So with enough samples, the BLR posterior mean <em>must</em> converge to the truth. If it doesn’t, the BLR implementation is broken, not the test.</p>
-<p>The training schedule is <strong>deliberately asymmetric</strong>: 32 samples uniformly across <code>[0.25, 0.75]</code> (interior), 4 samples each in <code>[0, 0.25)</code> and <code>[0.75, 1]</code> (edges). Without this asymmetry, uniform training would give uniform uncertainty and the spatial-partition property would be invisible.</p>
+<p>The 1-D heat equation <code>∂u/∂t = α∂²u/∂x²</code> with Dirichlet BCs <code>u(0,t) = u(1,t) = 0</code> and IC <code>u(x,0) = sin(πx)</code> was chosen because it has a <strong>known closed-form analytical solution</strong>:</p>
+<p><span class="math display">\[u(x, t) = e^{-\alpha \pi^2 t} \sin(\pi x)\]</span></p>
+<p>That choice is load-bearing. The BLR feature basis is <code>[1, x, sin(πx), cos(πx)]</code> — the analytical solution <code>exp(-π²·0.1)·sin(πx)</code> is <em>exactly representable</em> as a single non-zero coefficient on the <code>sin(πx)</code> basis function. So with enough samples, the BLR posterior mean <em>must</em> converge to the truth. If it doesn’t, the BLR implementation is broken — not the test. This is the same trick statisticians use to validate Bayesian implementations: pick a problem where the truth is in the basis, and the posterior is a closed-form limit.</p>
+<p>The training schedule is <strong>deliberately asymmetric</strong>: 32 samples uniformly across <code>[0.25, 0.75]</code> (interior), 4 samples each in <code>[0, 0.25)</code> and <code>[0.75, 1]</code> (edges). Without this asymmetry, uniform training would give uniform leverage and the spatial-partition property would be invisible.</p>
+</section>
+<section id="code-sketch" class="level3">
+<h3 class="anchored" data-anchor-id="code-sketch">Code sketch</h3>
+<p>The PINN demo’s core loop, in CJC-Lang:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="kw">fn</span> pinn_features_2d(x<span class="op">:</span> <span class="dt">f64</span>) <span class="op">-&gt;</span> Tensor <span class="op">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>    Tensor<span class="op">.</span>from_vec([<span class="dv">1.0</span><span class="op">,</span> x<span class="op">,</span> sin(pi() <span class="op">*</span> x)<span class="op">,</span> cos(pi() <span class="op">*</span> x)]<span class="op">,</span> [<span class="dv">1</span><span class="op">,</span> <span class="dv">4</span>])</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="kw">fn</span> analytical_u(x<span class="op">:</span> <span class="dt">f64</span>) <span class="op">-&gt;</span> <span class="dt">f64</span> <span class="op">{</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> decay <span class="op">=</span> exp(<span class="op">-</span><span class="dv">0.9869604401089358</span>)<span class="op">;</span>  <span class="co">// exp(-π² · 0.1)</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    decay <span class="op">*</span> sin(pi() <span class="op">*</span> x)</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a><span class="kw">fn</span> train_one(g<span class="op">:</span> <span class="dt">i64</span><span class="op">,</span> x<span class="op">:</span> <span class="dt">f64</span>) <span class="op">{</span></span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> leaf <span class="op">=</span> route_leaf(g<span class="op">,</span> x)<span class="op">;</span>             <span class="co">// codebook descent</span></span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> phi <span class="op">=</span> pinn_features_2d(x)<span class="op">;</span></span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> y_val <span class="op">=</span> analytical_u(x)<span class="op">;</span>             <span class="co">// ground truth</span></span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> y <span class="op">=</span> Tensor<span class="op">.</span>from_vec([y_val]<span class="op">,</span> [<span class="dv">1</span>])<span class="op">;</span></span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>    abng_blr_update(g<span class="op">,</span> leaf<span class="op">,</span> phi<span class="op">,</span> y)<span class="op">;</span>        <span class="co">// NIG conjugate update</span></span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>    abng_observe(g<span class="op">,</span> leaf<span class="op">,</span> y_val)<span class="op">;</span></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>After training, a probe at <code>x = 0.5</code> returns <code>(mean ≈ 0.372, lev_low, ale_finite)</code> — <code>mean</code> matches <code>exp(-π²·0.1) · sin(π·0.5) = 0.372</code> to within <code>0.05</code>. A probe at <code>x = 0.05</code> returns <code>(mean ≈ small, lev_high, ale_finite)</code> — different leaf, less data, higher leverage.</p>
+</section>
+<section id="connection-to-existing-techniques" class="level3">
+<h3 class="anchored" data-anchor-id="connection-to-existing-techniques">Connection to existing techniques</h3>
+<table class="table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Technique</th>
+<th>Posterior representation</th>
+<th>Cost</th>
+<th>Decomposed epistemic/aleatoric?</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Gaussian Processes</strong></td>
+<td>Full posterior over functions</td>
+<td>O(n³) Cholesky</td>
+<td>Yes (kernel + likelihood noise)</td>
+</tr>
+<tr class="even">
+<td><strong>Deep ensembles</strong></td>
+<td>Variance across M trained nets</td>
+<td>M× training cost</td>
+<td>Approximately</td>
+</tr>
+<tr class="odd">
+<td><strong>MC dropout</strong></td>
+<td>Variational approx via dropout</td>
+<td>Cheap, biased</td>
+<td>No (entangled)</td>
+</tr>
+<tr class="even">
+<td><strong>Conformal prediction</strong></td>
+<td>Distribution-free intervals</td>
+<td>Cheap</td>
+<td>No</td>
+</tr>
+<tr class="odd">
+<td><strong>ABNG per-leaf BLR</strong></td>
+<td>Closed-form NIG posterior</td>
+<td>O(d²) per update</td>
+<td>Yes (clean factor)</td>
+</tr>
+</tbody>
+</table>
+<p>ABNG slots between GPs (full posterior, expensive) and conformal prediction (distribution-free, no decomposition). It’s most similar in spirit to <strong>Bayesian Additive Regression Trees (BART)</strong> — leaf-localized closed-form Bayesian fits — but with a quantile-codebook routing instead of stochastic tree growth, and a stronger determinism contract.</p>
 </section>
 <section id="what-this-enables" class="level3">
 <h3 class="anchored" data-anchor-id="what-this-enables">What this enables</h3>
 <ul>
-<li><strong>Active learning in scientific computing</strong> — query the BLR for uncertainty; sample where uncertainty is highest.</li>
-<li><strong>Uncertainty-aware PINNs</strong> — refuse to predict in regions where leverage exceeds a threshold; fall back to a higher-fidelity solver.</li>
-<li><strong>Uncertainty propagation</strong> — feed <code>(mean ± sqrt(aleatoric_var + epistemic_leverage))</code> into Monte Carlo / robust optimization pipelines.</li>
-<li><strong>Calibrated predictions out of the box</strong> — vanilla MLPs don’t say “I don’t know this region”; ABNG does, and you can route around it.</li>
+<li><strong>Active learning in scientific computing</strong> — query the BLR for <code>epistemic_leverage</code>; sample where it’s highest.</li>
+<li><strong>Uncertainty-aware PINNs</strong> — refuse to predict in regions where leverage exceeds a threshold; fall back to a higher-fidelity solver. This is what the PINN community has been chasing via deep ensembles or HMC for years.</li>
+<li><strong>Heteroskedastic regression done right</strong> — the aleatoric/epistemic split lets you tell “this region is intrinsically noisy” from “I haven’t seen enough of this region yet.”</li>
+<li><strong>Uncertainty propagation downstream</strong> — feed the Student-t predictive into Monte Carlo / robust optimization pipelines.</li>
 </ul>
-<p>The PINN literature has spent years adding Bayesian uncertainty to neural PDE solvers via MCMC, variational inference, or deep ensembles. ABNG provides this <strong>for free</strong> via the BLR posterior — no inference machinery beyond a closed-form Bayesian update.</p>
+<p>The PINN literature has long treated Bayesian uncertainty as expensive infrastructure (HMC, variational PINNs). ABNG provides this as a <strong>closed-form per-leaf posterior</strong> — no inference machinery beyond a Cholesky update.</p>
 <hr>
 </section>
 </section>
@@ -380,25 +569,164 @@ ABNG is experimental
 <li><strong><code>max(per_leaf_n_seen) &lt; 0.9 × N</code></strong> — no single leaf holds the entire dataset. Evidence is partitioned, not duplicated.</li>
 <li><strong><code>sum(per_leaf_n_seen) == N</code></strong> — every training point routes to exactly one leaf. No double-counting; no points lost.</li>
 <li><strong><code>max_per_leaf_bounded</code></strong> — the partitioning works as designed. (This is the <em>scalability</em> claim’s empirical foundation.)</li>
-<li><strong><code>trained_mse &lt; 0.5 × prior_mse</code></strong> — the BLR posterior actually <em>learns</em>. Without this, all the structure-of-the-graph properties would be vacuous.</li>
+<li><strong><code>trained_mse &lt; 0.5 × prior_mse</code></strong> — the BLR posterior actually <em>learns</em>. Without this, the structure-of-the-graph properties would be vacuous.</li>
 <li><strong><code>lev_shrinks_with_data</code></strong> — leverage at a fixed probe drops from a 16-pt-trained leaf to a 64-pt-trained leaf. GP-like uncertainty contraction reproduced.</li>
 </ol>
+</section>
+<section id="the-math-cost-analysis" class="level3">
+<h3 class="anchored" data-anchor-id="the-math-cost-analysis">The math (cost analysis)</h3>
+<p>ABNG’s per-leaf cost decomposes cleanly:</p>
+<table class="table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Operation</th>
+<th>Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Codebook descent</td>
+<td>O(<code>n_dims · log(n_bins)</code>)</td>
+</tr>
+<tr class="even">
+<td>BLR conjugate update at one leaf</td>
+<td>O(<code>d² · n_leaf</code>) (Cholesky-factor maintenance)</td>
+</tr>
+<tr class="odd">
+<td>Predictive at query point</td>
+<td>O(<code>d²</code>) (one Cholesky solve)</td>
+</tr>
+<tr class="even">
+<td>Aggregate cost across N points, L leaves</td>
+<td>O(<code>N · d²</code>) — <em>linear in N</em></td>
+</tr>
+</tbody>
+</table>
+<p>Compare to a <strong>classical GP</strong> on the same N points:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Operation</th>
+<th>Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Kernel matrix <code>K_NN</code></td>
+<td>O(<code>N²</code>) memory</td>
+</tr>
+<tr class="even">
+<td>Cholesky decomposition</td>
+<td><strong>O(<code>N³</code>)</strong> compute</td>
+</tr>
+<tr class="odd">
+<td>Predictive variance per query</td>
+<td>O(<code>N²</code>)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>ABNG is asymptotically O(N · d²) vs GP’s O(N³).</strong> For <code>d = 4</code> (the demo’s basis dim) and <code>N = 10⁴</code>: ABNG ≈ 1.6×10⁵ ops; GP ≈ 10¹² ops — seven orders of magnitude.</p>
+<p>The trade-off: ABNG’s leaves are independent — no global covariance structure. For workloads where local Bayesian behavior is sufficient (most tabular ML), this is a feature, not a bug.</p>
 </section>
 <section id="why-bilinear-regression-on-the-unit-square" class="level3">
 <h3 class="anchored" data-anchor-id="why-bilinear-regression-on-the-unit-square">Why bilinear regression on the unit square</h3>
 <p>The target is <code>y = 0.3 + 0.5x₁ + 0.4x₂ + 0.7·x₁·x₂</code>. Three deliberate choices:</p>
 <ul>
 <li><strong>Exactly fittable in the BLR feature basis</strong> <code>[1, x₁, x₂, x₁·x₂]</code>. With enough samples, BLR posterior mean → exact coefficients <code>[0.3, 0.5, 0.4, 0.7]</code>. This makes the MSE-reduction test <em>meaningful</em>: any residual MSE comes from sample efficiency, not from the model class being wrong.</li>
-<li><strong>2-D input with a routing dimension.</strong> The codebook routes by <code>x₁</code> (4 bins) and lets <code>x₂</code> become a within-leaf feature. This mirrors the canonical ABNG pattern: <em>use one dimension to partition the input space, regress on the rest within each leaf</em>.</li>
+<li><strong>2-D input with a routing dimension.</strong> The codebook routes by <code>x₁</code> (4 bins) and lets <code>x₂</code> become a within-leaf feature. This mirrors the canonical ABNG pattern: <em>use one dimension to partition the input space, regress on the rest within each leaf</em>. Common in production: route by <code>(time-of-day, geo-region)</code> and regress on the rest within each segment.</li>
 <li><strong>Unit square domain</strong> — predictable, no scaling tricks. Codebook boundaries <code>[0.25, 0.5, 0.75]</code> evenly partition <code>[0, 1]</code>.</li>
 </ul>
-<p>The 200-point training set is small enough to run quickly through the interpreter, large enough that the per-leaf BLR posteriors clearly converge.</p>
+</section>
+<section id="code-sketch-1" class="level3">
+<h3 class="anchored" data-anchor-id="code-sketch-1">Code sketch</h3>
+<div class="sourceCode" id="cb3"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">fn</span> build_tabular_graph(seed<span class="op">:</span> <span class="dt">i64</span>) <span class="op">-&gt;</span> <span class="dt">i64</span> <span class="op">{</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> g <span class="op">=</span> abng_new(seed)<span class="op">;</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> codebook <span class="op">=</span> Tensor<span class="op">.</span>from_vec([<span class="dv">0.25</span><span class="op">,</span> <span class="dv">0.5</span><span class="op">,</span> <span class="dv">0.75</span>]<span class="op">,</span> [<span class="dv">1</span><span class="op">,</span> <span class="dv">3</span>])<span class="op">;</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>    abng_set_codebook(g<span class="op">,</span> codebook)<span class="op">;</span>                          <span class="co">// 4 bins on x₁</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>    abng_set_leaf_head(g<span class="op">,</span> <span class="dv">2</span><span class="op">,</span> Tensor<span class="op">.</span>from_vec([<span class="dv">4.0</span>]<span class="op">,</span> [<span class="dv">1</span>])<span class="op">,</span> <span class="dv">1</span><span class="op">,</span> <span class="st">"tanh"</span>)<span class="op">;</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>    abng_set_blr_prior(g<span class="op">,</span> <span class="dv">2.0</span><span class="op">,</span> <span class="dv">1.0</span><span class="op">,</span> <span class="dv">0.5</span>)<span class="op">;</span>                    <span class="co">// NIG (a, b, σ_init)</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>    <span class="co">// ... add 4 children, one per codebook bin ...</span></span>
+<span id="cb3-8"><a href="#cb3-8" aria-hidden="true" tabindex="-1"></a>    g</span>
+<span id="cb3-9"><a href="#cb3-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb3-10"><a href="#cb3-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-11"><a href="#cb3-11" aria-hidden="true" tabindex="-1"></a><span class="kw">fn</span> train_one(g<span class="op">:</span> <span class="dt">i64</span><span class="op">,</span> x1<span class="op">:</span> <span class="dt">f64</span><span class="op">,</span> x2<span class="op">:</span> <span class="dt">f64</span>) <span class="op">{</span></span>
+<span id="cb3-12"><a href="#cb3-12" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> leaf <span class="op">=</span> route_for(g<span class="op">,</span> x1)<span class="op">;</span>                             <span class="co">// x₁ → prefix → leaf</span></span>
+<span id="cb3-13"><a href="#cb3-13" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> phi <span class="op">=</span> Tensor<span class="op">.</span>from_vec([<span class="dv">1.0</span><span class="op">,</span> x1<span class="op">,</span> x2<span class="op">,</span> x1 <span class="op">*</span> x2]<span class="op">,</span> [<span class="dv">1</span><span class="op">,</span> <span class="dv">4</span>])<span class="op">;</span></span>
+<span id="cb3-14"><a href="#cb3-14" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> y_val <span class="op">=</span> target(x1<span class="op">,</span> x2)<span class="op">;</span></span>
+<span id="cb3-15"><a href="#cb3-15" aria-hidden="true" tabindex="-1"></a>    abng_blr_update(g<span class="op">,</span> leaf<span class="op">,</span> phi<span class="op">,</span> Tensor<span class="op">.</span>from_vec([y_val]<span class="op">,</span> [<span class="dv">1</span>]))<span class="op">;</span></span>
+<span id="cb3-16"><a href="#cb3-16" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>After 200 training points, every leaf has its own BLR posterior with <code>mean → [0.3, 0.5, 0.4, 0.7]</code> and increasingly sharp leverage. Sum of <code>n_seen</code> across all four leaves equals exactly 200; the largest leaf holds well under 90% of points.</p>
+</section>
+<section id="connection-to-existing-techniques-1" class="level3">
+<h3 class="anchored" data-anchor-id="connection-to-existing-techniques-1">Connection to existing techniques</h3>
+<table class="table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Technique</th>
+<th>Routing</th>
+<th>Per-leaf model</th>
+<th>Scaling</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Classical GP</strong></td>
+<td>None (global)</td>
+<td>Kernel</td>
+<td>O(n³)</td>
+</tr>
+<tr class="even">
+<td><strong>Sparse GP / SVGP</strong></td>
+<td>Inducing points</td>
+<td>Kernel</td>
+<td>O(n·m²) for m inducing pts</td>
+</tr>
+<tr class="odd">
+<td><strong>Mondrian Forest</strong></td>
+<td>Stochastic tree splits</td>
+<td>Point estimate</td>
+<td>O(n·log n)</td>
+</tr>
+<tr class="even">
+<td><strong>BART</strong></td>
+<td>Stochastic tree splits</td>
+<td>Bayesian posterior</td>
+<td>O(n·log n) per tree</td>
+</tr>
+<tr class="odd">
+<td><strong>Locally-weighted regression</strong></td>
+<td>Distance-weighted</td>
+<td>Linear fit</td>
+<td>O(n) per query</td>
+</tr>
+<tr class="even">
+<td><strong>ABNG</strong></td>
+<td>Quantile codebook (deterministic)</td>
+<td>Closed-form NIG posterior</td>
+<td>O(N · d²)</td>
+</tr>
+</tbody>
+</table>
+<p>The closest analog is <strong>Mondrian Forests</strong> (Lakshminarayanan, Roy &amp; Teh 2014) — both partition the input space and fit per-leaf models. The differences: Mondrian uses stochastic splits and point estimates; ABNG uses deterministic quantile boundaries and full closed-form Bayesian posteriors. ABNG also adds the audit chain that Mondrian doesn’t have.</p>
 </section>
 <section id="what-this-enables-1" class="level3">
 <h3 class="anchored" data-anchor-id="what-this-enables-1">What this enables</h3>
-<p>The classical Gaussian Process scales <strong>O(n³)</strong> in training data because the kernel matrix is dense. At n ≈ 10⁴ training points a single GP fit takes minutes-to-hours; at n ≈ 10⁵ it’s infeasible without specialized approximations.</p>
-<p>ABNG’s per-leaf BLR is <strong>O(d²·n_leaf)</strong> per update, where <code>d</code> is the BLR feature dim (4 in this demo) and <code>n_leaf ≪ n</code>. Aggregate cost across N points: <strong>O(N · d²)</strong> — linear in N.</p>
-<p>The trade-off: ABNG’s leaves are independent, so you lose the <em>global</em> covariance structure a GP captures. For workloads where local Bayesian behavior is sufficient (most tabular ML), this is a feature, not a bug — and it’s what enables linear scaling.</p>
+<ul>
+<li><strong>Drop-in tabular Bayesian regression at GP-prohibitive sizes</strong> (n &gt; 10⁴ where dense Cholesky becomes painful)</li>
+<li><strong>Online / streaming learning</strong> — incremental BLR update is O(d²) per point, vs O(n²) incremental for classical GP rank-one updates</li>
+<li><strong>Snapshot-checkpointable Bayesian state</strong> — classical GPs don’t naturally serialize (you’d persist the full Cholesky factor + raw data); ABNG snapshots the entire posterior in one blob via the audit chain</li>
+<li><strong>Feature-engineered uncertainty quantification</strong> — the practitioner picks routing dimensions (time-of-day, region, customer segment) and the per-segment posteriors are independently calibrated</li>
+</ul>
 <div class="callout callout-style-default callout-warning callout-titled">
 <div class="callout-header d-flex align-content-center">
 <div class="callout-icon-container">
@@ -409,7 +737,7 @@ Warning
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p>The asymptotic claim is correct by construction (the math says so) but <strong>not yet benchmarked</strong> against a classical GP at realistic sizes. Before treating ABNG as a “GP killer,” wall-clock benchmarks at n ∈ {10³, 10⁴, 10⁵} need to be run.</p>
+<p>The asymptotic claim is correct by construction (the math says so) but <strong>not yet benchmarked</strong> against a classical GP at realistic sizes. Wall-clock benchmarks at n ∈ {10³, 10⁴, 10⁵} need to be run before treating ABNG as a “GP killer.”</p>
 </div>
 </div>
 <hr>
@@ -421,17 +749,89 @@ Warning
 <section id="what-every-demo-proves" class="level3">
 <h3 class="anchored" data-anchor-id="what-every-demo-proves">What every demo proves</h3>
 <p>Every state mutation in ABNG funnels through one chain step:</p>
-<pre><code>new_hash = sha256(previous_hash ‖ canonical_payload(event))</code></pre>
-<p>Every demo asserts <code>verify_chain == Ok</code> after training. For an n-event audit log, <code>verify_chain</code> walks the chain forward, recomputing <code>new_hash</code> at every step, and compares to the stored value. Any single byte changed in any payload would fail the recomputation at that event AND every subsequent event (cascade property).</p>
-<p>Across the 11 demos, this code path runs <strong>hundreds of times</strong>. The fact that <code>verify_chain == Ok</code> after every demo’s training session is the empirical proof the audit chain is sound under realistic workloads.</p>
+<p><span class="math display">\[
+\text{new\_hash} = \text{SHA-256}\bigl(\text{previous\_hash} \,\Vert\, \text{canonical\_payload}(\text{event})\bigr)
+\]</span></p>
+<p>Every demo asserts <code>verify_chain == Ok</code> after training. For an n-event audit log, <code>verify_chain</code> walks the chain forward, recomputing <code>new_hash</code> at every step from the <em>stored</em> previous hash and the <em>stored</em> canonical payload, and compares to the stored value. <strong>Any single byte changed in any payload would fail the recomputation at that event AND every subsequent event</strong> — a Merkle-style cascade.</p>
+<p>Across the 11 demos, this code path runs hundreds of times. The fact that <code>verify_chain == Ok</code> after every demo’s training session is the empirical proof the audit chain is sound under realistic workloads.</p>
+</section>
+<section id="the-threat-model" class="level3">
+<h3 class="anchored" data-anchor-id="the-threat-model">The threat model</h3>
+<p>The audit chain is designed against three concrete attacks:</p>
+<ol type="1">
+<li><strong>Post-hoc rewrite.</strong> Attacker modifies a historical training observation after the fact. Detection: the modified event’s <code>new_hash</code> no longer matches <code>sha256(previous_hash ‖ payload)</code>, AND every subsequent event’s stored <code>previous_hash</code> no longer matches the recomputed-from-modified value. <strong>Cascading detection.</strong></li>
+<li><strong>Event reordering.</strong> Attacker shuffles the order of training events. Detection: each event’s payload includes its <code>seq</code> number; reordering puts events at the wrong seq, breaking the per-event monotonic-seq invariant.</li>
+<li><strong>Event substitution.</strong> Attacker replaces one event with another that produces the same <code>new_hash</code>. Detection: SHA-256 collision resistance — finding two payloads with the same hash is computationally infeasible.</li>
+</ol>
+</section>
+<section id="code-sketch-what-an-event-payload-looks-like" class="level3">
+<h3 class="anchored" data-anchor-id="code-sketch-what-an-event-payload-looks-like">Code sketch — what an event payload looks like</h3>
+<pre class="text"><code>[seq u64 BE | epoch u64 BE | node_id u32 BE | kind tag u8 |
+ kind body (variable) |
+ stats_version u64 BE | stats_hash [u8; 32]]</code></pre>
+<p>For a <code>BeliefUpdate</code> event (the most common kind, fired on every <code>abng_observe</code>), the kind body is a single <code>value f64-bits BE</code> — 8 bytes. Total payload for a BeliefUpdate is <code>21 + 8 + 8 + 32 = 69 bytes</code>, hashed into the chain.</p>
+<p>The canonical encoding is <strong>byte-deterministic</strong>: big-endian on every numeric field, fixed sizes, no padding ambiguity. Two ABNG instances run with the same seed and observation order produce identical event payload bytes — and therefore identical chain hashes.</p>
+</section>
+<section id="connection-to-existing-techniques-2" class="level3">
+<h3 class="anchored" data-anchor-id="connection-to-existing-techniques-2">Connection to existing techniques</h3>
+<table class="table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Technique</th>
+<th>Hash-chain</th>
+<th>ML-aware</th>
+<th>Per-prediction lineage</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Git</strong></td>
+<td>Yes (DAG of commits)</td>
+<td>No</td>
+<td>No</td>
+</tr>
+<tr class="even">
+<td><strong>MLflow</strong></td>
+<td>No (timestamped log)</td>
+<td>Yes</td>
+<td>Manual</td>
+</tr>
+<tr class="odd">
+<td><strong>sigstore / in-toto</strong></td>
+<td>Yes (artifact attestation)</td>
+<td>No</td>
+<td>Per-artifact</td>
+</tr>
+<tr class="even">
+<td><strong>Blockchain ML provenance</strong></td>
+<td>Yes (full chain on-chain)</td>
+<td>Yes</td>
+<td>Yes, but expensive</td>
+</tr>
+<tr class="odd">
+<td><strong>ABNG audit chain</strong></td>
+<td>Yes (linear)</td>
+<td>Yes (every state mutation)</td>
+<td>Yes, baked in</td>
+</tr>
+</tbody>
+</table>
+<p>The closest analog is <strong>in-toto attestations</strong> in software supply-chain land — except in-toto is per-artifact (each release gets one attestation), while ABNG is <em>per-event</em> (every observation, every weight update).</p>
 </section>
 <section id="what-this-enables-2" class="level3">
 <h3 class="anchored" data-anchor-id="what-this-enables-2">What this enables</h3>
 <ul>
 <li><strong>Forensic post-incident analysis</strong> — “Was this model trained on the bad data?” Replay the chain, check.</li>
-<li><strong>Regulatory replay (FDA, SEC, HIPAA)</strong> — the model’s full training history is one cryptographically-linked blob.</li>
-<li><strong>Reproducibility</strong> — papers ship <code>(model.snap, dataset)</code> pairs; reviewers reproduce + verify chain.</li>
-<li><strong>ML supply chain</strong> — fine-tuning extends the chain; provenance of every weight is traceable.</li>
+<li><strong>Regulatory replay</strong> — the model’s full training history is one cryptographically-linked blob.</li>
+<li><strong>Reproducibility certification</strong> — papers ship <code>(model.snap, dataset)</code> pairs; reviewers reproduce + verify chain in one byte comparison.</li>
+<li><strong>ML supply chain attestation</strong> — fine-tuning extends the chain; provenance of every weight is traceable.</li>
+<li><strong>Insider-threat detection</strong> — anyone modifying historical events breaks every subsequent hash, visible to anyone running <code>verify_chain</code>.</li>
 </ul>
 <p>This is closer to Git’s content-addressed model than to traditional ML metadata stores. MLflow / Weights &amp; Biases give you <em>external</em> logs you have to trust; ABNG gives you a model artifact whose history is <strong>cryptographically self-attesting</strong>.</p>
 <hr>
@@ -442,22 +842,138 @@ Warning
 <p><strong>Demo:</strong> Lineage attestation with synthetic clinical-trial data (<code>tests/test_abng_lineage_attestation_cjcl.rs</code> + <code>lineage_source.rs</code>)</p>
 <section id="what-this-demo-proves-2" class="level3">
 <h3 class="anchored" data-anchor-id="what-this-demo-proves-2">What this demo proves</h3>
-<p>This is the strongest single capability in ABNG. The headline test (<code>lineage_attestation_three_signals_independent</code>) proves that tampering one row of a 64-row dataset (changing patient #17’s response from <code>0.525</code> to <code>0.999</code>) produces <strong>three independent SHA-256 divergences</strong>:</p>
+<p>The headline test (<code>lineage_attestation_three_signals_independent</code>) proves that tampering one row of a 64-row dataset (changing patient #17’s response from <code>0.525</code> to <code>0.999</code>) produces <strong>three independent SHA-256 divergences</strong>:</p>
 <ol type="1">
 <li><strong><code>chain_head</code> divergence</strong> — every audit event’s hash cascades from row 17 onward.</li>
 <li><strong>BLR <code>state_hash</code> divergence</strong> — the leaf where the tampered row routes has a different posterior.</li>
 <li><strong><code>provenance_stamp</code> divergence</strong> — the dataset fingerprint differs by construction.</li>
 </ol>
-<p>The “independent” qualifier is doing real work. Even if an attacker forged one signal (e.g., recomputed the chain to hide the change), the other two would still surface the tamper. <strong>Three independent failure modes is a stronger security claim than three correlated ones.</strong></p>
+<p>The “independent” qualifier is doing real work. Even if an attacker forged one signal (e.g., recomputed the chain to hide the change), the other two would still surface the tamper.</p>
+</section>
+<section id="the-threat-model-and-why-three-signals-matter" class="level3">
+<h3 class="anchored" data-anchor-id="the-threat-model-and-why-three-signals-matter">The threat model and why three signals matter</h3>
+<p>The classic attack against ML provenance is <strong>collusion</strong>: the attacker controls the training process, so they can produce a consistent-but-fake audit trail. Three independent signals raise the cost:</p>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Attack</th>
+<th>Defeats which signal?</th>
+<th>Defeats all three?</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Modify training data, recompute chain</td>
+<td>chain_head ✓</td>
+<td>No — BLR state diverges</td>
+</tr>
+<tr class="even">
+<td>Modify training data, retrain to match BLR state</td>
+<td>chain_head ✓, BLR state ✓</td>
+<td>No — provenance stamp diverges</td>
+</tr>
+<tr class="odd">
+<td>Modify training data, retrain, restamp with new fingerprint</td>
+<td>All three forgeable internally</td>
+<td>But: fingerprint is <em>publicly verifiable</em> against the dataset bytes</td>
+</tr>
+</tbody>
+</table>
+<p>The provenance stamp is <code>sha256(canonical_dataset_bytes)</code>. <strong>An auditor with the original dataset can recompute this themselves</strong> — the attacker can’t forge it without also forging the dataset (which is what we’re trying to detect in the first place). The chain and BLR state are internal consistency checks; the provenance stamp is the <em>external</em> binding to the dataset.</p>
 </section>
 <section id="why-a-synthetic-clinical-trial-workload" class="level3">
 <h3 class="anchored" data-anchor-id="why-a-synthetic-clinical-trial-workload">Why a synthetic clinical-trial workload</h3>
 <ul>
-<li><strong>Maps directly to a real industry threat model.</strong> “Lab A trains a model claiming approved dataset; attacker substitutes contaminated dataset” is the FDA model-attestation problem in one sentence. The two-graph structure (<code>g_a</code> trained on dataset_a, <code>g_b</code> on tampered dataset_b) literally executes this scenario.</li>
-<li><strong>64-row size is realistic for clinical-trial cohorts.</strong> Phase II trials often have &lt;200 patients per arm. Tampering a single patient’s outcome (1.5% of the dataset) is the <em>minimum-effort</em> attack.</li>
-<li><strong>Cubic dose-response curve</strong> <code>y = 0.2 + 0.6·dose + 0.1·dose²</code> is biologically plausible AND exactly fittable in the BLR feature basis <code>[1, dose, dose², dose³]</code>, giving us ground-truth assertions in addition to the security claims.</li>
+<li><strong>Maps directly to a real industry threat model.</strong> “Lab A trains a model claiming approved dataset; attacker substitutes contaminated dataset” is the FDA model-attestation problem in one sentence.</li>
+<li><strong>64-row size is realistic</strong> for Phase II clinical-trial cohorts (often &lt;200 patients per arm).</li>
+<li><strong>Cubic dose-response curve</strong> <code>y = 0.2 + 0.6·dose + 0.1·dose²</code> is biologically plausible AND exactly fittable in the BLR basis <code>[1, dose, dose², dose³]</code>, giving us ground-truth assertions in addition to the security claims.</li>
+<li><strong>Tamper at row 17 specifically</strong> because <code>dose=0.5</code> falls right at a codebook bin boundary — routing the tampered observation to a specific leaf, making the BLR <code>state_hash</code> divergence clearly attributable.</li>
 </ul>
-<p>The “tamper at row 17” choice is intentional: row 17’s <code>dose=0.5</code> falls right at a codebook bin boundary. This routes the tampered observation to a specific leaf, making the BLR <code>state_hash</code> divergence clearly attributable to one node’s posterior.</p>
+</section>
+<section id="code-sketch-2" class="level3">
+<h3 class="anchored" data-anchor-id="code-sketch-2">Code sketch</h3>
+<div class="sourceCode" id="cb5"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">fn</span> train_and_stamp(seed<span class="op">:</span> <span class="dt">i64</span><span class="op">,</span> rows<span class="op">:</span> <span class="bu">Any</span><span class="op">,</span> fingerprint<span class="op">:</span> <span class="dt">String</span>) <span class="op">-&gt;</span> <span class="dt">i64</span> <span class="op">{</span></span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> g <span class="op">=</span> build_lineage_graph(seed)<span class="op">;</span></span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>    abng_stamp_provenance(g<span class="op">,</span> <span class="dv">0</span><span class="op">,</span> fingerprint)<span class="op">;</span>                <span class="co">// sha256(dataset_bytes)</span></span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> n <span class="op">=</span> len(rows)<span class="op">;</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> i <span class="op">=</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">while</span> i <span class="op">&lt;</span> n <span class="op">{</span></span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a>        <span class="kw">let</span> row <span class="op">=</span> rows[i]<span class="op">;</span></span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>        <span class="kw">let</span> dose <span class="op">=</span> row[<span class="dv">0</span>]<span class="op">;</span></span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>        <span class="kw">let</span> resp <span class="op">=</span> row[<span class="dv">1</span>]<span class="op">;</span></span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>        <span class="kw">let</span> leaf <span class="op">=</span> route_leaf(g<span class="op">,</span> dose)<span class="op">;</span></span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>        <span class="kw">let</span> phi <span class="op">=</span> Tensor<span class="op">.</span>from_vec(</span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>            [<span class="dv">1.0</span><span class="op">,</span> dose<span class="op">,</span> dose <span class="op">*</span> dose<span class="op">,</span> dose <span class="op">*</span> dose <span class="op">*</span> dose]<span class="op">,</span> [<span class="dv">1</span><span class="op">,</span> <span class="dv">4</span>])<span class="op">;</span></span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>        abng_blr_update(g<span class="op">,</span> leaf<span class="op">,</span> phi<span class="op">,</span> Tensor<span class="op">.</span>from_vec([resp]<span class="op">,</span> [<span class="dv">1</span>]))<span class="op">;</span></span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a>        abng_observe(g<span class="op">,</span> leaf<span class="op">,</span> resp)<span class="op">;</span></span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>        i <span class="op">=</span> i <span class="op">+</span> <span class="dv">1</span><span class="op">;</span></span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a>    g</span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The two graphs <code>g_a</code> and <code>g_b</code> are built identically — only the row data and fingerprint differ. Comparing <code>(chain_head, blr_state_hash[node 3], provenance_stamp)</code> between them yields three different hashes.</p>
+</section>
+<section id="connection-to-existing-techniques-3" class="level3">
+<h3 class="anchored" data-anchor-id="connection-to-existing-techniques-3">Connection to existing techniques</h3>
+<table class="table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Technique</th>
+<th>Cryptographic</th>
+<th>ML-integrated</th>
+<th>Per-prediction</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>MLflow / W&amp;B logs</strong></td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr class="even">
+<td><strong>Sigstore / in-toto</strong></td>
+<td>Yes</td>
+<td>No (artifact-only)</td>
+<td>No</td>
+</tr>
+<tr class="odd">
+<td><strong>Datasheet for Datasets</strong> (Gebru et al.&nbsp;2018)</td>
+<td>No (process-only)</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr class="even">
+<td><strong>Model Cards</strong> (Mitchell et al.&nbsp;2019)</td>
+<td>No</td>
+<td>Yes</td>
+<td>No</td>
+</tr>
+<tr class="odd">
+<td><strong>MLOps governance frameworks</strong></td>
+<td>Variable</td>
+<td>Yes</td>
+<td>Manual</td>
+</tr>
+<tr class="even">
+<td><strong>ABNG provenance chain</strong></td>
+<td><strong>Yes</strong></td>
+<td><strong>Yes</strong></td>
+<td><strong>Yes (baked into predict_snap)</strong></td>
+</tr>
+</tbody>
+</table>
+<p>ABNG’s contribution is the <em>combination</em>: cryptographic, ML-integrated, AND per-prediction. None of the existing tools do all three in one artifact.</p>
 </section>
 <section id="what-this-enables-3" class="level3">
 <h3 class="anchored" data-anchor-id="what-this-enables-3">What this enables</h3>
@@ -475,23 +991,23 @@ Warning
 <tbody>
 <tr class="odd">
 <td><strong>FDA model attestation (pharma)</strong></td>
-<td>Lab runs trial → trains ABNG → stamps with <code>sha256(approved_dataset)</code>. Regulator: <code>cjcl abng explain --model X.snap pred.snap</code> checks all three signals</td>
+<td>Lab runs trial → trains ABNG → stamps with <code>sha256(approved_dataset)</code>. Regulator: <code>cjcl abng explain --model X.snap pred.snap</code> checks all three signals in one CLI invocation</td>
 </tr>
 <tr class="even">
 <td><strong>Financial model audit (SEC, Basel III)</strong></td>
-<td>“Prove this risk model used only data through model-validation cutoff”</td>
+<td>“Prove this risk model used only data through model-validation cutoff” — chain head + dataset fingerprint answer in one byte comparison</td>
 </tr>
 <tr class="odd">
 <td><strong>HIPAA-compliant healthcare ML</strong></td>
-<td>Patient-consent boundaries enforced cryptographically: stamp = <code>sha256(consent_set_v2)</code></td>
+<td>Patient-consent boundaries enforced cryptographically: stamp = <code>sha256(consent_set_v2_canonicalized)</code></td>
 </tr>
 <tr class="even">
-<td><strong>GDPR Article 22 right-to-explanation</strong></td>
-<td>“Show me the audit trail of training data that produced this decision about me”</td>
+<td><strong>GDPR Article 22</strong></td>
+<td>Right to explanation = “show me the audit trail of training data that produced this decision about me”</td>
 </tr>
 <tr class="odd">
 <td><strong>Academic reproducibility</strong></td>
-<td><code>paper.pdf + model.snap + dataset.csv</code> — anyone with all three can verify the paper’s claims byte-for-byte</td>
+<td><code>paper.pdf + model.snap + dataset.csv</code> — anyone with all three can verify byte-for-byte</td>
 </tr>
 <tr class="even">
 <td><strong>Insider-threat in ML supply chain</strong></td>
@@ -499,7 +1015,7 @@ Warning
 </tr>
 </tbody>
 </table>
-<p>Most ML provenance tools today are <em>external</em>: file-system audit logs, MLflow metadata, sigstore-style attestations. ABNG bakes provenance <em>inside</em> the model artifact. The closest analog isn’t an ML tool — it’s Git’s content-addressed history.</p>
+<p>The closest non-ABNG analog is <strong>in-toto-attested ML pipelines</strong> (an active research area, see Torres-Arias et al.&nbsp;2019). The difference: ABNG bakes attestation <em>inside</em> the model artifact, not as a sidecar.</p>
 <hr>
 </section>
 </section>
@@ -510,28 +1026,141 @@ Warning
 <h3 class="anchored" data-anchor-id="what-this-demo-proves-3">What this demo proves</h3>
 <p>The headline assertion is <strong>three-tier separation</strong>:</p>
 <pre><code>max(ood_score in dense bins)  &lt;  ood_score in sparse bin  &lt;  ood_score in routing-fall-off bin</code></pre>
-<p>Three evidence regimes are cleanly partitioned. The composite score is a function of three independent inputs:</p>
+<p>Three evidence regimes are cleanly partitioned. The composite is a function of three independent inputs.</p>
+</section>
+<section id="the-math-1" class="level3">
+<h3 class="anchored" data-anchor-id="the-math-1">The math</h3>
+<p>ABNG’s <code>ood_score</code> composites three signals:</p>
+<p><span class="math display">\[\text{ood}(x) = f\bigl(\text{density}(x),\ \text{epistemic\_z}(x),\ \text{prefix\_distance}(x)\bigr)\]</span></p>
+<p>where:</p>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Signal</th>
+<th>Formula</th>
+<th>What it detects</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>density(x)</code></td>
+<td><span class="math inline">\(1 - \exp(-d^2)\)</span> where <span class="math inline">\(d^2 = (x - \bar{\mu})^\top \text{diag}(\Sigma)^{-1}(x - \bar{\mu})\)</span></td>
+<td>Distance from training cluster mean (per-leaf)</td>
+</tr>
+<tr class="even">
+<td><code>epistemic_z(x)</code></td>
+<td><span class="math inline">\(\min(\varphi^\top \Lambda_n^{-1}\varphi / \mathbb{E}[\text{lev}], 1)\)</span></td>
+<td>Calibrated BLR uncertainty (per-leaf)</td>
+</tr>
+<tr class="odd">
+<td><code>prefix_distance(x)</code></td>
+<td><span class="math inline">\((\text{prefix\_max} - \text{matched\_prefix}) / \text{prefix\_max}\)</span></td>
+<td>Routing-failure rate (per-graph)</td>
+</tr>
+</tbody>
+</table>
+<p>The composite combines these into a single bounded <code>[0, 1]</code> score. Each signal catches a different OOD mode:</p>
 <ul>
-<li><strong>density_score</strong> — Mahalanobis-style distance from training points</li>
-<li><strong>epistemic_z</strong> — BLR’s leverage at the query phi</li>
-<li><strong>prefix_distance</strong> — <code>(prefix_max − matched_prefix) / prefix_max</code></li>
+<li><strong>Density</strong> catches inputs that fall <em>in</em> a known leaf but far from its training cluster.</li>
+<li><strong>Epistemic</strong> catches inputs where the BLR posterior says “I’m uncertain here.”</li>
+<li><strong>Prefix distance</strong> catches inputs that <em>don’t fit the codebook structure at all</em> — i.e.&nbsp;the descent fell off the tree because no child exists at that prefix byte.</li>
 </ul>
-<p>The demo exercises all three by <em>construction</em>: dense bins have low density_score AND low epistemic_z. The sparse bin has high density_score (few training points). The bin with no child has high prefix_distance (descent fell off the tree).</p>
 </section>
 <section id="why-deliberately-omit-one-child" class="level3">
 <h3 class="anchored" data-anchor-id="why-deliberately-omit-one-child">Why deliberately omit one child</h3>
-<p>A symmetric setup (children in all 4 bins, varying training density) would only exercise the density and epistemic signals — not prefix_distance. By deliberately <em>not</em> adding a child for bin 3, queries in bin 3 descend with <code>matched_prefix=0</code> and the prefix-distance contribution to the composite fires.</p>
-<p>The demo is asserting the <strong>composite</strong> works, not just individual signals. If it only varied density, you’d be left wondering whether the routing-distance contribution is real or just a docstring claim. The asymmetric child set proves it’s real.</p>
+<p>A symmetric setup (children in all 4 bins, varying training density) would only exercise the density and epistemic signals — not prefix_distance. By deliberately <em>not</em> adding a child for bin 3, queries in bin 3 descend with <code>matched_prefix=0</code>, and the prefix-distance contribution to the composite fires.</p>
+<p>The demo asserts the <strong>composite</strong> works, not just individual signals. If it only varied density, you’d be left wondering whether the routing-distance contribution is real or just a docstring claim. The asymmetric child set proves it’s real.</p>
+</section>
+<section id="code-sketch-3" class="level3">
+<h3 class="anchored" data-anchor-id="code-sketch-3">Code sketch</h3>
+<div class="sourceCode" id="cb7"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">fn</span> probe_ood(g<span class="op">:</span> <span class="dt">i64</span><span class="op">,</span> x<span class="op">:</span> <span class="dt">f64</span>) <span class="op">-&gt;</span> <span class="dt">f64</span> <span class="op">{</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> x_t <span class="op">=</span> Tensor<span class="op">.</span>from_vec([x]<span class="op">,</span> [<span class="dv">1</span>])<span class="op">;</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> prefix <span class="op">=</span> abng_encode_prefix(g<span class="op">,</span> x_t)<span class="op">;</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> evidence <span class="op">=</span> abng_descend(g<span class="op">,</span> prefix)<span class="op">;</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> matched <span class="op">=</span> int(evidence<span class="op">.</span>get([<span class="dv">0</span>]))<span class="op">;</span>      <span class="co">// matched_prefix</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> leaf <span class="op">=</span> int(evidence<span class="op">.</span>get([<span class="dv">1</span>]))<span class="op">;</span>         <span class="co">// resolved leaf id</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> phi <span class="op">=</span> features_1d(x)<span class="op">;</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>    abng_ood_score(g<span class="op">,</span> leaf<span class="op">,</span> phi<span class="op">,</span> matched<span class="op">,</span> <span class="dv">1</span>)   <span class="co">// composite [0, 1]</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb7-10"><a href="#cb7-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-11"><a href="#cb7-11" aria-hidden="true" tabindex="-1"></a><span class="co">// Build phase: add children for bins 0, 1, 2 — NOT bin 3.</span></span>
+<span id="cb7-12"><a href="#cb7-12" aria-hidden="true" tabindex="-1"></a>abng_add_node(g<span class="op">,</span> <span class="dv">0</span><span class="op">,</span> <span class="dv">0</span>)<span class="op">;</span>   <span class="co">// bin 0 child</span></span>
+<span id="cb7-13"><a href="#cb7-13" aria-hidden="true" tabindex="-1"></a>abng_add_node(g<span class="op">,</span> <span class="dv">0</span><span class="op">,</span> <span class="dv">1</span>)<span class="op">;</span>   <span class="co">// bin 1 child</span></span>
+<span id="cb7-14"><a href="#cb7-14" aria-hidden="true" tabindex="-1"></a>abng_add_node(g<span class="op">,</span> <span class="dv">0</span><span class="op">,</span> <span class="dv">2</span>)<span class="op">;</span>   <span class="co">// bin 2 child</span></span>
+<span id="cb7-15"><a href="#cb7-15" aria-hidden="true" tabindex="-1"></a><span class="co">// (no add_node for byte 3 — bin 3 queries descend with matched_prefix = 0)</span></span>
+<span id="cb7-16"><a href="#cb7-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb7-17"><a href="#cb7-17" aria-hidden="true" tabindex="-1"></a><span class="co">// Train density on bins 0 and 1 heavily, bin 2 lightly:</span></span>
+<span id="cb7-18"><a href="#cb7-18" aria-hidden="true" tabindex="-1"></a>train_leaf_density(g<span class="op">,</span> <span class="dv">1</span><span class="op">,</span> <span class="dv">0.125</span><span class="op">,</span> <span class="dv">32</span>)<span class="op">;</span>   <span class="co">// bin 0: dense</span></span>
+<span id="cb7-19"><a href="#cb7-19" aria-hidden="true" tabindex="-1"></a>train_leaf_density(g<span class="op">,</span> <span class="dv">2</span><span class="op">,</span> <span class="dv">0.375</span><span class="op">,</span> <span class="dv">32</span>)<span class="op">;</span>   <span class="co">// bin 1: dense</span></span>
+<span id="cb7-20"><a href="#cb7-20" aria-hidden="true" tabindex="-1"></a>train_leaf_density(g<span class="op">,</span> <span class="dv">3</span><span class="op">,</span> <span class="dv">0.625</span><span class="op">,</span> <span class="dv">4</span>)<span class="op">;</span>    <span class="co">// bin 2: sparse</span></span>
+<span id="cb7-21"><a href="#cb7-21" aria-hidden="true" tabindex="-1"></a><span class="co">// bin 3: no training (no leaf)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>After training, probing at <code>x = 0.10</code> (bin 0, dense) gives a low ood; <code>x = 0.40</code> (bin 1, dense) low; <code>x = 0.62</code> (bin 2, sparse) medium; <code>x = 0.90</code> (bin 3, no leaf) highest.</p>
+</section>
+<section id="connection-to-existing-techniques-4" class="level3">
+<h3 class="anchored" data-anchor-id="connection-to-existing-techniques-4">Connection to existing techniques</h3>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Technique</th>
+<th>OOD signal</th>
+<th>Bayesian-aware?</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Mahalanobis distance OOD</strong> (Lee et al.&nbsp;2018)</td>
+<td>Distance from class means</td>
+<td>No</td>
+</tr>
+<tr class="even">
+<td><strong>Energy-based OOD</strong> (Liu et al.&nbsp;2020)</td>
+<td>-logsumexp(logits)</td>
+<td>No</td>
+</tr>
+<tr class="odd">
+<td><strong>Deep ensemble disagreement</strong></td>
+<td>Variance across M models</td>
+<td>Approximately</td>
+</tr>
+<tr class="even">
+<td><strong>ODIN</strong> (Liang et al.&nbsp;2018)</td>
+<td>Temperature + input perturbation</td>
+<td>No</td>
+</tr>
+<tr class="odd">
+<td><strong>Conformal prediction p-values</strong></td>
+<td>Distribution-free coverage</td>
+<td>No</td>
+</tr>
+<tr class="even">
+<td><strong>ABNG composite</strong></td>
+<td>density + epistemic + routing</td>
+<td><strong>Yes (BLR posterior is principled)</strong></td>
+</tr>
+</tbody>
+</table>
+<p>The closest is <strong>Mahalanobis OOD</strong> — both compute a distance-from-training-cluster score. ABNG adds the routing-failure signal on top, which catches a class of inputs Mahalanobis can’t distinguish (in-cluster but topologically out-of-routing).</p>
 </section>
 <section id="what-this-enables-4" class="level3">
 <h3 class="anchored" data-anchor-id="what-this-enables-4">What this enables</h3>
 <ul>
-<li><strong>Self-driving / robotics</strong> — refuse to act on inputs unfamiliar to the training distribution; hand off to safe-mode.</li>
+<li><strong>Self-driving / robotics</strong> — abstain on inputs unfamiliar to the training distribution; hand off to safe-mode.</li>
 <li><strong>Medical diagnosis</strong> — don’t predict on patient profiles outside the training population.</li>
 <li><strong>Fraud detection</strong> — novel attack patterns trigger high OOD scores.</li>
 <li><strong>Active learning</strong> — high-OOD inputs are highest-value labeling candidates.</li>
+<li><strong>Safety-critical ML</strong> — defense-in-depth against distribution shift at <em>inference</em> time, not just monitoring.</li>
 </ul>
-<p>The ABNG composite is more nuanced than typical “OOD detection” approaches because it composes <strong>three orthogonal signals</strong>. A query can be OOD because (a) it’s far from training points (density), (b) the model is uncertain there (epistemic), or (c) it doesn’t fit the codebook structure at all (prefix). Each tells a different operational story.</p>
+<p>A query can be OOD because (a) it’s far from training points (density), (b) the model is uncertain there (epistemic), or (c) it doesn’t fit the codebook structure at all (prefix). Each tells a different operational story — and the composite collapses them into one actionable score.</p>
 <hr>
 </section>
 </section>
@@ -549,21 +1178,112 @@ Warning
 </ol>
 <p>That last point deserves emphasis. The Rust-side <code>decide_step_canary_tests.rs</code> locks <code>chain_head = d064fb08…7807</code>. The CJC-Lang demo, running through both AST eval AND MIR exec, produces the <em>same</em> hex. <strong>The same workload, expressed three different ways (direct Rust API, CJC-Lang AST, CJC-Lang MIR), produces bit-identical SHA-256 output through 23+ events.</strong></p>
 </section>
+<section id="the-math-behind-the-merge-trigger" class="level3">
+<h3 class="anchored" data-anchor-id="the-math-behind-the-merge-trigger">The math behind the Merge trigger</h3>
+<p><code>decide_step</code> evaluates each node against six trigger conditions in order: Compress → Merge → Split → Prune → Grow → Freeze. For the Merge trigger specifically, ABNG checks two conditions on a pair of siblings <code>(i, j)</code>:</p>
+<ol type="1">
+<li><p><strong>Signature similarity:</strong> Hamming distance of the 8-byte truncated SHA-256 signatures &lt; <code>tau_merge</code>. The signature is computed from a 4-channel Welford profile (prediction, uncertainty, calibration, routing). Similar profiles → similar signatures → low Hamming distance.</p></li>
+<li><p><strong>Posterior similarity (KL divergence):</strong> <span class="math display">\[
+\mathrm{KL}\bigl(\mathcal{N}(\mu_i, \Sigma_i)\,\|\,\mathcal{N}(\mu_j, \Sigma_j)\bigr) &lt; \text{kl\_merge}
+\]</span> where <code>(μᵢ, Σᵢ)</code> are the BLR posterior parameters at node <code>i</code>. This is the standard multivariate Gaussian KL.</p></li>
+</ol>
+<p>Both conditions must hold for Merge to fire. The Merge action then folds <code>j</code>’s observations into <code>i</code> via Chan/Golub/LeVeque parallel Welford merge — preserving the post-merge stats as if they’d been observed in series.</p>
+</section>
 <section id="why-the-two-sibling-shared-signature-topology" class="level3">
 <h3 class="anchored" data-anchor-id="why-the-two-sibling-shared-signature-topology">Why the two-sibling shared-signature topology</h3>
 <ul>
-<li><strong>It’s the canonical canary setup.</strong> Mirrors the Rust-side <code>decide_step_canary_tests</code> exactly — root + 2 children at keys 1 and 2, three observations at root, three decide_step calls. This lets the CJC-Lang demo serve as a <em>direct cross-pipeline determinism gate</em>.</li>
-<li><strong>Merge is the most reliably-triggered action.</strong> With identical training distributions on the two siblings, their signatures align. Decision-policy thresholds <code>tau_merge=0</code> (Hamming distance) and small <code>kl_merge</code> are satisfied immediately. Merge fires deterministically.</li>
+<li><strong>Mirrors the Rust-side <code>decide_step_canary</code> exactly</strong> — root + 2 children at keys 1 and 2, three observations at root (0.10, 0.25, 0.40), three decide_step calls. This lets the CJC-Lang demo serve as a <em>direct cross-pipeline determinism gate</em>.</li>
+<li><strong>Merge is the most reliably-triggered action.</strong> With identical training distributions on the two siblings, their signatures align trivially (Hamming distance = 0). Decision-policy thresholds <code>tau_merge=0</code> and <code>kl_merge=0.1</code> are satisfied immediately — KL between fresh-prior posteriors is exactly zero.</li>
 <li><strong>Small graph keeps the test fast</strong> — 4 nodes, 3 observations, 3 decide_step calls. Runs in milliseconds even through the AST interpreter.</li>
 </ul>
+</section>
+<section id="code-sketch-4" class="level3">
+<h3 class="anchored" data-anchor-id="code-sketch-4">Code sketch</h3>
+<div class="sourceCode" id="cb8"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">fn</span> main() <span class="op">{</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> g <span class="op">=</span> build_adaptive_graph(<span class="dv">42</span>)<span class="op">;</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    abng_observe(g<span class="op">,</span> <span class="dv">0</span><span class="op">,</span> <span class="dv">0.10</span>)<span class="op">;</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    abng_observe(g<span class="op">,</span> <span class="dv">0</span><span class="op">,</span> <span class="dv">0.25</span>)<span class="op">;</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    abng_observe(g<span class="op">,</span> <span class="dv">0</span><span class="op">,</span> <span class="dv">0.40</span>)<span class="op">;</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> i <span class="op">=</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>    <span class="cf">while</span> i <span class="op">&lt;</span> <span class="dv">3</span> <span class="op">{</span></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>        <span class="kw">let</span> counts <span class="op">=</span> abng_decide_step(g)<span class="op">;</span>    <span class="co">// [grow, split, merge, prune, compress, freeze]</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>        i <span class="op">=</span> i <span class="op">+</span> <span class="dv">1</span><span class="op">;</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> merge_count <span class="op">=</span> abng_action_count(g<span class="op">,</span> <span class="dv">2</span>)<span class="op">;</span>  <span class="co">// → 1</span></span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a>    print(<span class="st">"merge_count: "</span> <span class="op">+</span> to_string(merge_count))<span class="op">;</span></span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a>    print(<span class="st">"chain_head: "</span> <span class="op">+</span> abng_chain_head(g))<span class="op">;</span>  <span class="co">// → d064fb08…7807</span></span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="connection-to-existing-techniques-5" class="level3">
+<h3 class="anchored" data-anchor-id="connection-to-existing-techniques-5">Connection to existing techniques</h3>
+<table class="table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Technique</th>
+<th>Adaptive structure?</th>
+<th>Triggers</th>
+<th>Domain</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Mondrian Forests</strong> (Lakshminarayanan 2014)</td>
+<td>Yes (stochastic splits)</td>
+<td>Online</td>
+<td>Tabular</td>
+</tr>
+<tr class="even">
+<td><strong>Bayesian Additive Regression Trees</strong> (Chipman 2010)</td>
+<td>Yes (stochastic)</td>
+<td>Batch</td>
+<td>Tabular</td>
+</tr>
+<tr class="odd">
+<td><strong>Hoeffding Trees / VFDT</strong> (Domingos 2000)</td>
+<td>Yes (statistical)</td>
+<td>Streaming</td>
+<td>Tabular</td>
+</tr>
+<tr class="even">
+<td><strong>Concept-drift adaptive learners</strong> (ADWIN, Page-Hinkley)</td>
+<td>Yes (drift-triggered)</td>
+<td>Streaming</td>
+<td>Various</td>
+</tr>
+<tr class="odd">
+<td><strong>Neural Architecture Search</strong> (Zoph 2017)</td>
+<td>Yes (optimization-based)</td>
+<td>Offline</td>
+<td>Deep learning</td>
+</tr>
+<tr class="even">
+<td><strong>ABNG decide_step</strong></td>
+<td><strong>Yes (deterministic, audit-tracked)</strong></td>
+<td>Six action types</td>
+<td>Bayesian belief graphs</td>
+</tr>
+</tbody>
+</table>
+<p>The closest analog is <strong>Hoeffding Trees</strong> — both fire structural changes based on running statistics. The differences: Hoeffding Trees use Hoeffding-bound-based split tests; ABNG uses fixed thresholds on a 14-element decision-policy tensor. ABNG also adds the audit-chain integration that lets you <em>prove</em> what structural changes happened and when.</p>
 </section>
 <section id="what-this-enables-5" class="level3">
 <h3 class="anchored" data-anchor-id="what-this-enables-5">What this enables</h3>
 <ul>
-<li><strong>Self-organizing ML models</strong> — graph capacity scales with workload complexity.</li>
+<li><strong>Self-organizing ML models</strong> — graph capacity scales with workload complexity; no manual architecture design.</li>
 <li><strong>Streaming / online learning</strong> — non-stationary distributions cause Grow on new modes, Prune on dead branches.</li>
 <li><strong>Memory-efficient ML</strong> — Compress unused subtrees; Merge redundant leaves; Prune inactive nodes.</li>
-<li><strong>Continual learning</strong> — Freeze stable-signature subtrees while training others.</li>
+<li><strong>Hierarchical model distillation</strong> — stable subtrees can be Frozen and exported as compiled MLPs.</li>
+<li><strong>Continual learning without catastrophic forgetting</strong> — Freeze stable-signature subtrees while training others.</li>
+<li><strong>AutoML topology search</strong> — decision-policy thresholds are hyperparameters; the trigger ladder is the search algorithm.</li>
 </ul>
 <div class="callout callout-style-default callout-warning callout-titled">
 <div class="callout-header d-flex align-content-center">
@@ -615,13 +1335,100 @@ Warning
 </table>
 <p>The headline assertion <code>ece_a &lt; ece_b</code> separates the two cleanly. Plus the specific bounds: <code>ece_a &lt; 0.05</code> (well-calibrated achieves near-zero ECE) and <code>ece_b &gt; 0.5</code> (flipped outcomes produce huge ECE).</p>
 </section>
+<section id="the-math-2" class="level3">
+<h3 class="anchored" data-anchor-id="the-math-2">The math</h3>
+<p>ABNG uses standard 15-bin reliability-binning ECE (Naeini, Cooper, Hauskrecht 2015):</p>
+<p><span class="math display">\[
+\text{ECE} = \sum_{b=1}^{15} \frac{|B_b|}{N} \,\bigl|\,\text{accuracy}(B_b) - \text{confidence}(B_b)\,\bigr|
+\]</span></p>
+<p>where:</p>
+<ul>
+<li><code>B_b</code> is the set of predictions falling in bin <code>b</code> (15 equal-width bins on <code>[0, 1]</code>)</li>
+<li><code>accuracy(B_b)</code> = fraction of correct predictions in bin <code>b</code></li>
+<li><code>confidence(B_b)</code> = mean predicted probability in bin <code>b</code></li>
+<li><code>|B_b| / N</code> = bin’s empirical weight</li>
+</ul>
+<p>A perfectly calibrated model has <code>accuracy(B_b) = confidence(B_b)</code> for every populated bin → ECE = 0. The miscalibrated graph with flipped outcomes pushes accuracy ≈ 1 - confidence in each bin → ECE saturates near 0.8.</p>
+</section>
 <section id="why-flip-outcomes-as-the-miscalibration-model" class="level3">
 <h3 class="anchored" data-anchor-id="why-flip-outcomes-as-the-miscalibration-model">Why “flip outcomes” as the miscalibration model</h3>
 <ul>
-<li><strong>Flipping is the maximally-miscalibrated case.</strong> Predicting 90% confidence and being right 10% of the time is the worst possible outcome — confidence is <em>anti-correlated</em> with truth.</li>
-<li><strong>Same prediction distribution → isolates the calibration signal.</strong> Both graphs see the same <code>(p, y)</code> pairs <em>modulo y</em>. Any difference in ECE is attributable to outcomes, not predictions.</li>
-<li><strong>Three reliability bins</strong> (0.1, 0.5, 0.9) span low/mid/high probability range without requiring 100+ observations to populate every bin.</li>
+<li><strong>Maximum-ECE case.</strong> Predicting 90% confidence and being right 10% of the time is the worst possible outcome — confidence is <em>anti-correlated</em> with truth. This makes the test gate <code>ece_b &gt; 0.5</code> reliable; small numerical jitter doesn’t push the result close to the threshold.</li>
+<li><strong>Same prediction distribution → isolates the calibration signal.</strong> Both graphs see the same <code>(p, y)</code> pairs <em>modulo y</em>. Any difference in ECE is attributable to outcomes, not to predictions or to bin populations.</li>
+<li><strong>Three reliability bins (0.1, 0.5, 0.9)</strong> span low/mid/high probability range without requiring 100+ observations to populate every bin.</li>
 </ul>
+</section>
+<section id="code-sketch-5" class="level3">
+<h3 class="anchored" data-anchor-id="code-sketch-5">Code sketch</h3>
+<div class="sourceCode" id="cb9"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">fn</span> well_calibrated_run(g<span class="op">:</span> <span class="dt">i64</span><span class="op">,</span> node<span class="op">:</span> <span class="dt">i64</span>) <span class="op">{</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// For predicted_prob = 0.1: 1 positive, 9 negative (10% base rate).</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> i <span class="op">=</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    <span class="cf">while</span> i <span class="op">&lt;</span> <span class="dv">10</span> <span class="op">{</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> i <span class="op">&lt;</span> <span class="dv">1</span> <span class="op">{</span> abng_calibration_observe(g<span class="op">,</span> node<span class="op">,</span> <span class="dv">0.1</span><span class="op">,</span> <span class="cn">true</span>)<span class="op">;</span> <span class="op">}</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> i <span class="op">&gt;=</span> <span class="dv">1</span> <span class="op">{</span> abng_calibration_observe(g<span class="op">,</span> node<span class="op">,</span> <span class="dv">0.1</span><span class="op">,</span> <span class="cn">false</span>)<span class="op">;</span> <span class="op">}</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>        i <span class="op">=</span> i <span class="op">+</span> <span class="dv">1</span><span class="op">;</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>    <span class="co">// ... same pattern for p=0.5 (5/10) and p=0.9 (9/10) ...</span></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a><span class="kw">fn</span> miscalibrated_run(g<span class="op">:</span> <span class="dt">i64</span><span class="op">,</span> node<span class="op">:</span> <span class="dt">i64</span>) <span class="op">{</span></span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a>    <span class="co">// For predicted_prob = 0.1: 9 positive, 1 negative (FLIPPED).</span></span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a>    <span class="co">// For predicted_prob = 0.9: 1 positive, 9 negative (FLIPPED).</span></span>
+<span id="cb9-15"><a href="#cb9-15" aria-hidden="true" tabindex="-1"></a>    <span class="co">// ... see source for full pattern ...</span></span>
+<span id="cb9-16"><a href="#cb9-16" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb9-17"><a href="#cb9-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-18"><a href="#cb9-18" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> ece_a <span class="op">=</span> abng_calibration_ece(g_a<span class="op">,</span> <span class="dv">0</span>)<span class="op">;</span>     <span class="co">// &lt; 0.05</span></span>
+<span id="cb9-19"><a href="#cb9-19" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> ece_b <span class="op">=</span> abng_calibration_ece(g_b<span class="op">,</span> <span class="dv">0</span>)<span class="op">;</span>     <span class="co">// &gt; 0.5</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="connection-to-existing-techniques-6" class="level3">
+<h3 class="anchored" data-anchor-id="connection-to-existing-techniques-6">Connection to existing techniques</h3>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Technique</th>
+<th>Calibration</th>
+<th>Per-leaf?</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Platt scaling</strong> (Platt 1999)</td>
+<td>Post-hoc logistic regression on logits</td>
+<td>No (global)</td>
+</tr>
+<tr class="even">
+<td><strong>Isotonic regression</strong> (Zadrozny 2002)</td>
+<td>Monotonic piecewise-constant fit</td>
+<td>No (global)</td>
+</tr>
+<tr class="odd">
+<td><strong>Temperature scaling</strong> (Guo et al.&nbsp;2017)</td>
+<td>Single-parameter softmax rescale</td>
+<td>No (global)</td>
+</tr>
+<tr class="even">
+<td><strong>Beta calibration</strong> (Kull et al.&nbsp;2017)</td>
+<td>Beta distribution fit</td>
+<td>No (global)</td>
+</tr>
+<tr class="odd">
+<td><strong>Histogram binning</strong> (Zadrozny 2001)</td>
+<td>Per-bin frequency estimate</td>
+<td>Possible per-leaf</td>
+</tr>
+<tr class="even">
+<td><strong>ABNG calibration</strong></td>
+<td>15-bin reliability + ECE</td>
+<td><strong>Yes (per-node)</strong></td>
+</tr>
+</tbody>
+</table>
+<p>ABNG’s calibration is <strong>per-node</strong> — different leaves can be independently calibrated. This matters in practice: a model can be well-calibrated for European customers but miscalibrated for Asian customers (different leaves of the codebook). Per-leaf ECE makes this visible; global ECE would average it out.</p>
 </section>
 <section id="what-this-enables-6" class="level3">
 <h3 class="anchored" data-anchor-id="what-this-enables-6">What this enables</h3>
@@ -630,6 +1437,7 @@ Warning
 <li><strong>Threshold tuning</strong> — “should I act on predictions above 0.7?” depends on whether 0.7-bin predictions are actually correct 70% of the time.</li>
 <li><strong>Model selection in production</strong> — beyond accuracy/F1: ECE is the second-order quality metric.</li>
 <li><strong>Active learning targeting</strong> — high-ECE bins are evidence the model needs more training data in that probability range.</li>
+<li><strong>Per-segment calibration analysis</strong> — “is my model better calibrated for some user segments than others?” is answerable in one query.</li>
 </ul>
 <hr>
 </section>
@@ -646,13 +1454,112 @@ Warning
 <li><strong><code>drift_nonneg</code></strong> — both scores are non-negative (no NaN, no negative noise).</li>
 </ol>
 </section>
+<section id="the-math-3" class="level3">
+<h3 class="anchored" data-anchor-id="the-math-3">The math</h3>
+<p>ABNG’s drift detection is built on a streaming diagonal-Gaussian density tracker. For features <code>φ ∈ ℝᵈ</code>, the tracker maintains:</p>
+<ul>
+<li>Running mean: <code>μ̂</code> updated via Welford</li>
+<li>Running diagonal covariance: <code>Σ̂_diag</code> updated via Welford on <code>(φᵢ - μ̂)²</code></li>
+</ul>
+<p><code>freeze_drift_baseline(node)</code> snapshots <code>(μ̂_baseline, Σ̂_diag_baseline)</code> at a reference point (typically end of pre-deployment training). After freezing, <code>drift_score</code> measures the divergence between the current tracker and the frozen baseline:</p>
+<p><span class="math display">\[
+\text{drift\_score} = \bigl\|(\hat{\mu}_{\text{cur}} - \hat{\mu}_{\text{baseline}})\bigr\|^2_{\text{Mahal}} + \alpha \cdot \bigl\|\Sigma_{\text{cur,diag}} / \Sigma_{\text{baseline,diag}} - \mathbf{1}\bigr\|^2
+\]</span></p>
+<p>— a weighted combination of mean shift (under baseline covariance) and covariance ratio deviation. Pure mean shift (this demo’s case) gives a score dominated by the first term.</p>
+</section>
 <section id="why-a-pure-mean-shift" class="level3">
 <h3 class="anchored" data-anchor-id="why-a-pure-mean-shift">Why a pure mean shift</h3>
 <ul>
-<li><strong>Translation, not rescaling.</strong> The Mahalanobis-style distance the density tracker uses decomposes into mean-shift + covariance-shift contributions. By shifting only the mean, the test isolates that contribution cleanly.</li>
-<li><strong>0 to 0.8 is large enough to be unambiguous.</strong> Both distributions have ~0.01 jitter (effectively delta functions for density purposes); shifting the center by 0.8 is 80x the jitter — the drift signal saturates well above the floor.</li>
-<li><strong>Same density-tracker geometry.</strong> Both phases use the same dimension count (4-D features), same covariance scale, same batch sizes (16 each post-baseline). Only the location changes — isolating “distribution shifted” from confounders.</li>
+<li><strong>Translation, not rescaling</strong> isolates the mean-shift contribution to drift_score. A combined “scale and rotate” shift would test more, but the basic mean-shift case is the simplest sufficient demonstration.</li>
+<li><strong>0 to 0.8 is large enough to be unambiguous.</strong> Both distributions have ~0.01 jitter; shifting the center by 0.8 is 80x the jitter — the drift signal saturates well above the floor.</li>
+<li><strong>Same density-tracker geometry</strong> — same dimension count (4-D features), same covariance scale, same batch sizes (16 each post-baseline). Only the location changes.</li>
 </ul>
+</section>
+<section id="code-sketch-6" class="level3">
+<h3 class="anchored" data-anchor-id="code-sketch-6">Code sketch</h3>
+<div class="sourceCode" id="cb10"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> g <span class="op">=</span> build_drift_graph(<span class="dv">7</span>)<span class="op">;</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="co">// Phase 0: train baseline density on N(0, 0.01).</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> baseline_batch <span class="op">=</span> density_batch(<span class="dv">0.0</span><span class="op">,</span> <span class="dv">32</span>)<span class="op">;</span></span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>abng_density_observe(g<span class="op">,</span> <span class="dv">0</span><span class="op">,</span> baseline_batch)<span class="op">;</span></span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>abng_freeze_drift_baseline(g<span class="op">,</span> <span class="dv">0</span>)<span class="op">;</span>     <span class="co">// snapshot reference state</span></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a><span class="co">// Phase A: same distribution.</span></span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> same_batch <span class="op">=</span> density_batch(<span class="dv">0.0</span><span class="op">,</span> <span class="dv">16</span>)<span class="op">;</span></span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>abng_density_observe(g<span class="op">,</span> <span class="dv">0</span><span class="op">,</span> same_batch)<span class="op">;</span></span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> drift_low <span class="op">=</span> abng_drift_score(g<span class="op">,</span> <span class="dv">0</span>)<span class="op">;</span></span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a><span class="co">// Phase B: shifted distribution N(0.8, 0.01).</span></span>
+<span id="cb10-15"><a href="#cb10-15" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> shifted_batch <span class="op">=</span> density_batch(<span class="dv">0.8</span><span class="op">,</span> <span class="dv">16</span>)<span class="op">;</span></span>
+<span id="cb10-16"><a href="#cb10-16" aria-hidden="true" tabindex="-1"></a>abng_density_observe(g<span class="op">,</span> <span class="dv">0</span><span class="op">,</span> shifted_batch)<span class="op">;</span></span>
+<span id="cb10-17"><a href="#cb10-17" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> drift_high <span class="op">=</span> abng_drift_score(g<span class="op">,</span> <span class="dv">0</span>)<span class="op">;</span></span>
+<span id="cb10-18"><a href="#cb10-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-19"><a href="#cb10-19" aria-hidden="true" tabindex="-1"></a><span class="co">// drift_high &gt; 2 * drift_low (the demo's headline assertion)</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="connection-to-existing-techniques-7" class="level3">
+<h3 class="anchored" data-anchor-id="connection-to-existing-techniques-7">Connection to existing techniques</h3>
+<table class="table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Technique</th>
+<th>Statistic</th>
+<th>Streaming?</th>
+<th>Reference required</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Kolmogorov-Smirnov test</strong></td>
+<td>Max CDF difference</td>
+<td>No</td>
+<td>Yes</td>
+</tr>
+<tr class="even">
+<td><strong>Population Stability Index (PSI)</strong></td>
+<td>Discrete distribution distance</td>
+<td>No (batch)</td>
+<td>Yes</td>
+</tr>
+<tr class="odd">
+<td><strong>Maximum Mean Discrepancy</strong> (Gretton 2012)</td>
+<td>Kernel-based difference</td>
+<td>Possible</td>
+<td>Yes</td>
+</tr>
+<tr class="even">
+<td><strong>Page-Hinkley test</strong></td>
+<td>Change-point detection</td>
+<td>Yes</td>
+<td>Implicit</td>
+</tr>
+<tr class="odd">
+<td><strong>ADWIN</strong> (Bifet 2007)</td>
+<td>Adaptive windowing</td>
+<td>Yes</td>
+<td>None (auto-detect)</td>
+</tr>
+<tr class="even">
+<td><strong>DDM</strong> (Gama 2004)</td>
+<td>Drift Detection Method (error rate)</td>
+<td>Yes</td>
+<td>None</td>
+</tr>
+<tr class="odd">
+<td><strong>ABNG drift_score</strong></td>
+<td>Mahalanobis-style on density tracker</td>
+<td>Streaming</td>
+<td>Frozen baseline</td>
+</tr>
+</tbody>
+</table>
+<p>The closest analog is <strong>PSI</strong> (widely used in finance) — both compute a deviation-from-baseline distribution score. The differences: PSI is for discrete histograms; ABNG operates on continuous diagonal-Gaussian density. PSI is computed batch; ABNG accumulates streamingly via Welford.</p>
 </section>
 <section id="what-this-enables-7" class="level3">
 <h3 class="anchored" data-anchor-id="what-this-enables-7">What this enables</h3>
@@ -661,6 +1568,7 @@ Warning
 <li><strong>Continual learning auto-trigger</strong> — drift signal is the cue to incorporate new data into the model.</li>
 <li><strong>A/B test data validation</strong> — confirm the new dataset’s distribution matches the original before deploying a new model.</li>
 <li><strong>Sensor / pipeline integrity</strong> — detect upstream data-source switches, sensor drift, schema changes.</li>
+<li><strong>Customer-behavior modeling</strong> — recommender systems trained on Q1 data drifting against Q3 user behavior.</li>
 </ul>
 <hr>
 </section>
@@ -670,7 +1578,7 @@ Warning
 <p><strong>Demo:</strong> Multi-node observation stream + <code>compact_log</code> (<code>tests/test_abng_compact_log_cjcl.rs</code> + <code>compact_source.rs</code>)</p>
 <section id="what-this-demo-proves-7" class="level3">
 <h3 class="anchored" data-anchor-id="what-this-demo-proves-7">What this demo proves</h3>
-<p>Five training observations across three nodes (root + 2 children, each receives 1-2 observations), then <code>compact_log</code> fires:</p>
+<p>Five training observations across three nodes, then <code>compact_log</code> fires:</p>
 <ol type="1">
 <li><strong><code>emitted == 3</code></strong> — exactly one StatsSnapshot per touched node.</li>
 <li><strong><code>audit_grew_by_emitted</code></strong> — <code>audit_post == audit_pre + emitted</code>.</li>
@@ -678,12 +1586,82 @@ Warning
 <li><strong><code>verify_chain == Ok</code> post-compact</strong> — the new events don’t break integrity.</li>
 </ol>
 </section>
+<section id="the-math-and-whats-deferred" class="level3">
+<h3 class="anchored" data-anchor-id="the-math-and-whats-deferred">The math (and what’s deferred)</h3>
+<p><code>compact_log(g, until_seq)</code> walks events in <code>[0, until_seq)</code>, tracks the set of distinct node IDs touched, and for each emits one <code>StatsSnapshot</code> event whose payload is <code>(node_id, sha256(canonical_bytes(node.stats)))</code>.</p>
+<p>This sets up the <strong>read-side optimization</strong> that ships in a future phase: when <code>smart_replay</code> encounters a <code>StatsSnapshot</code>, it can:</p>
+<ol type="1">
+<li>Trust the snapshot’s <code>stats_hash</code> matches the node’s <code>canonical_bytes</code> (consistency check, shipped today).</li>
+<li>Skip the <code>node.observe(value)</code> mutation for subsequent <code>BeliefUpdate</code> events in the same node’s pre-snapshot range, since the snapshot subsumes their cumulative effect.</li>
+<li>Install the <code>stats</code> directly from the per-node section’s <code>canonical_bytes</code> instead of replaying from observations.</li>
+</ol>
+<p>The shipped layer is the <strong>marker emission</strong> + <strong>chain-integrity preservation</strong> + <strong>smart_replay consistency check</strong>. The cycle-saving fast-forward is Phase 0.6 work.</p>
+</section>
+<section id="code-sketch-7" class="level3">
+<h3 class="anchored" data-anchor-id="code-sketch-7">Code sketch</h3>
+<div class="sourceCode" id="cb11"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>abng_observe(g<span class="op">,</span> <span class="dv">0</span><span class="op">,</span> <span class="dv">0.1</span>)<span class="op">;</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>abng_observe(g<span class="op">,</span> <span class="dv">0</span><span class="op">,</span> <span class="dv">0.2</span>)<span class="op">;</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>abng_observe(g<span class="op">,</span> <span class="dv">1</span><span class="op">,</span> <span class="dv">0.5</span>)<span class="op">;</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>abng_observe(g<span class="op">,</span> <span class="dv">1</span><span class="op">,</span> <span class="dv">0.6</span>)<span class="op">;</span></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>abng_observe(g<span class="op">,</span> <span class="dv">2</span><span class="op">,</span> <span class="dv">0.9</span>)<span class="op">;</span></span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> audit_pre <span class="op">=</span> abng_audit_len(g)<span class="op">;</span>             <span class="co">// e.g. 8</span></span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> emitted <span class="op">=</span> abng_compact_log(g<span class="op">,</span> audit_pre)<span class="op">;</span>  <span class="co">// → 3 (3 touched nodes)</span></span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> audit_post <span class="op">=</span> abng_audit_len(g)<span class="op">;</span>            <span class="co">// 8 + 3 = 11</span></span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a>print(<span class="st">"verify_chain: "</span> <span class="op">+</span> to_string(abng_verify_chain(g)))<span class="op">;</span>  <span class="co">// → true</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="connection-to-existing-techniques-8" class="level3">
+<h3 class="anchored" data-anchor-id="connection-to-existing-techniques-8">Connection to existing techniques</h3>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Technique</th>
+<th>Mechanism</th>
+<th>Domain</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Database WAL compaction</strong></td>
+<td>Replace old WAL records with snapshot</td>
+<td>RDBMS</td>
+</tr>
+<tr class="even">
+<td><strong>LSM tree compaction</strong></td>
+<td>Merge sorted runs</td>
+<td>KV stores (RocksDB, Cassandra)</td>
+</tr>
+<tr class="odd">
+<td><strong>Chandy-Lamport snapshotting</strong></td>
+<td>Distributed-system state capture</td>
+<td>Distributed systems</td>
+</tr>
+<tr class="even">
+<td><strong>Checkpoint-restart</strong></td>
+<td>Periodic full-state save</td>
+<td>HPC, ML training</td>
+</tr>
+<tr class="odd">
+<td><strong>ABNG compact_log + StatsSnapshot</strong></td>
+<td>Event-log markers, hash-chain-integrated</td>
+<td>ML training audit logs</td>
+</tr>
+</tbody>
+</table>
+<p>The closest analog is <strong>WAL log compaction</strong> in databases — periodic snapshot points that let you truncate older log entries without losing recoverability. ABNG adds the chain-integrity property: the snapshot itself is a hash-linked event, so post-compaction you can still cryptographically verify nothing was tampered with.</p>
+</section>
 <section id="what-this-enables-8" class="level3">
 <h3 class="anchored" data-anchor-id="what-this-enables-8">What this enables</h3>
 <ul>
 <li><strong>Long-running training without log explosion</strong> — periodic compaction preserves checkpoints while bounding audit-log growth.</li>
 <li><strong>Snapshot-based debugging</strong> — each StatsSnapshot is a “save point” for forensic replay.</li>
 <li><strong>Foundation for the Phase 0.6 fast-forward optimization</strong> — smart-replay can fast-forward past observation runs by trusting the StatsSnapshot.</li>
+<li><strong>Distributed training checkpointing</strong> — workers compact-log periodically; central server replays the compact form.</li>
 </ul>
 <div class="callout callout-style-default callout-warning callout-titled">
 <div class="callout-header d-flex align-content-center">
@@ -695,7 +1673,7 @@ Warning
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p><strong>The full read-side optimization is deferred to a future phase.</strong> Today the marker layer ships with chain-integrity preservation; the cycle-saving “skip the observe” optimization that would make this user-visibly faster is Phase 0.6 work.</p>
+<p><strong>The cycle-saving optimization is deferred to Phase 0.6.</strong> Today the marker layer ships with chain-integrity preservation; the actual fast-forward that would make this user-visibly faster lands later.</p>
 </div>
 </div>
 <hr>
@@ -710,19 +1688,151 @@ Warning
 <ol type="1">
 <li><strong><code>sum_at_t0 == 0.0</code></strong> — fresh graph, all maturity flags are zero.</li>
 <li><strong><code>maturity_evolved</code></strong> — sum at T=1 strictly exceeds sum at T=0.</li>
-<li><strong><code>calib_binary</code> AND <code>unc_binary</code></strong> — positions [1] (calibration_stable) and [2] (uncertainty_stable) are strict 0/1 flags as documented.</li>
+<li><strong><code>calib_binary</code> AND <code>unc_binary</code></strong> — positions [1] (calibration_stable) and [2] (uncertainty_stable) are strict 0/1 flags.</li>
 <li><strong><code>samples_seen_nonneg</code></strong> — position [0] (samples_seen) is non-negative.</li>
 <li><strong><code>trust_in_range</code></strong> — position [3] (trust_level) is in <code>[0, 1]</code>.</li>
 </ol>
-<p>The maturity tensor turns out to be heterogeneous — a count, two binary flags, and a continuous trust level. Building this demo is what flushed out the API quirk; the docstring on <code>abng_node_maturity</code> describes it correctly but the behavior is easy to mis-assume.</p>
+</section>
+<section id="the-semantics" class="level3">
+<h3 class="anchored" data-anchor-id="the-semantics">The semantics</h3>
+<p><code>abng_node_maturity(g, node)</code> returns a 4-element f64 tensor:</p>
+<table class="table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Index</th>
+<th>Field</th>
+<th>Type</th>
+<th>Definition</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>0</td>
+<td><code>samples_seen</code></td>
+<td>non-negative count</td>
+<td>Total observations applied to this node</td>
+</tr>
+<tr class="even">
+<td>1</td>
+<td><code>calibration_stable</code></td>
+<td>binary 0/1</td>
+<td>True if 3-window ECE history’s <code>\|Δ\|</code> &lt; <code>ece_stability_max_delta</code></td>
+</tr>
+<tr class="odd">
+<td>2</td>
+<td><code>uncertainty_stable</code></td>
+<td>binary 0/1</td>
+<td>True if 3-window σ history shows ratio &lt; <code>sigma_stability_ratio</code></td>
+</tr>
+<tr class="even">
+<td>3</td>
+<td><code>trust_level</code></td>
+<td>continuous [0, 1]</td>
+<td>Composite trust score from signature stability + maturity flags</td>
+</tr>
+</tbody>
+</table>
+<p>The flags advance through <code>decide_step</code> calls plus the underlying <code>signature_stable_calls</code> counter that increments on consecutive matching signatures.</p>
+</section>
+<section id="why-a-stable-observation-stream" class="level3">
+<h3 class="anchored" data-anchor-id="why-a-stable-observation-stream">Why a stable observation stream</h3>
+<p>The maturity flags advance under two conditions:</p>
+<ul>
+<li><code>signature_stable_calls</code> increments when consecutive <code>decide_step</code> calls observe an unchanged signature</li>
+<li><code>samples_seen</code> simply counts observations</li>
+</ul>
+<p>By choosing identical observations (<code>abng_observe(g, n, 0.1)</code> repeatedly), the signature stays exactly identical across decide_step calls — the stability counter climbs deterministically. With 10 observations + 5 decide_step calls, at least the stability flags should flip.</p>
+<p>Realistic data (varying observations) would also work but with lower predictability — the signature might wobble enough that <code>signature_stable_calls</code> resets occasionally. The stable-stream choice makes the demo deterministic.</p>
+</section>
+<section id="code-sketch-8" class="level3">
+<h3 class="anchored" data-anchor-id="code-sketch-8">Code sketch</h3>
+<div class="sourceCode" id="cb12"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> g <span class="op">=</span> build_maturity_graph(<span class="dv">42</span>)<span class="op">;</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> mat0 <span class="op">=</span> abng_node_maturity(g<span class="op">,</span> <span class="dv">0</span>)<span class="op">;</span>  <span class="co">// [0, 0, 0, 0] — fresh</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> i <span class="op">=</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a><span class="cf">while</span> i <span class="op">&lt;</span> <span class="dv">10</span> <span class="op">{</span></span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>    abng_observe(g<span class="op">,</span> <span class="dv">0</span><span class="op">,</span> <span class="dv">0.1</span>)<span class="op">;</span></span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>    abng_observe(g<span class="op">,</span> <span class="dv">1</span><span class="op">,</span> <span class="dv">0.1</span>)<span class="op">;</span></span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a>    i <span class="op">=</span> i <span class="op">+</span> <span class="dv">1</span><span class="op">;</span></span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> j <span class="op">=</span> <span class="dv">0</span><span class="op">;</span></span>
+<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a><span class="cf">while</span> j <span class="op">&lt;</span> <span class="dv">5</span> <span class="op">{</span></span>
+<span id="cb12-13"><a href="#cb12-13" aria-hidden="true" tabindex="-1"></a>    abng_decide_step(g)<span class="op">;</span></span>
+<span id="cb12-14"><a href="#cb12-14" aria-hidden="true" tabindex="-1"></a>    j <span class="op">=</span> j <span class="op">+</span> <span class="dv">1</span><span class="op">;</span></span>
+<span id="cb12-15"><a href="#cb12-15" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb12-16"><a href="#cb12-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-17"><a href="#cb12-17" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> mat1 <span class="op">=</span> abng_node_maturity(g<span class="op">,</span> <span class="dv">0</span>)<span class="op">;</span></span>
+<span id="cb12-18"><a href="#cb12-18" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> r0 <span class="op">=</span> mat1<span class="op">.</span>get([<span class="dv">0</span>])<span class="op">;</span>  <span class="co">// samples_seen (count &gt; 0)</span></span>
+<span id="cb12-19"><a href="#cb12-19" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> r1 <span class="op">=</span> mat1<span class="op">.</span>get([<span class="dv">1</span>])<span class="op">;</span>  <span class="co">// calibration_stable (0 or 1)</span></span>
+<span id="cb12-20"><a href="#cb12-20" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> r2 <span class="op">=</span> mat1<span class="op">.</span>get([<span class="dv">2</span>])<span class="op">;</span>  <span class="co">// uncertainty_stable (0 or 1)</span></span>
+<span id="cb12-21"><a href="#cb12-21" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> r3 <span class="op">=</span> mat1<span class="op">.</span>get([<span class="dv">3</span>])<span class="op">;</span>  <span class="co">// trust_level (continuous [0, 1])</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="connection-to-existing-techniques-9" class="level3">
+<h3 class="anchored" data-anchor-id="connection-to-existing-techniques-9">Connection to existing techniques</h3>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Technique</th>
+<th>Convergence diagnostic</th>
+<th>Domain</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Gelman-Rubin R̂</strong></td>
+<td>Cross-chain variance ratio</td>
+<td>MCMC convergence</td>
+</tr>
+<tr class="even">
+<td><strong>Effective Sample Size (ESS)</strong></td>
+<td>Autocorrelation-based</td>
+<td>MCMC convergence</td>
+</tr>
+<tr class="odd">
+<td><strong>Validation-loss plateau detection</strong></td>
+<td>Loss derivative threshold</td>
+<td>Deep learning training</td>
+</tr>
+<tr class="even">
+<td><strong>EarlyStopping callback</strong></td>
+<td>Patience + monitor metric</td>
+<td>sklearn/keras training</td>
+</tr>
+<tr class="odd">
+<td><strong>ML monitoring stacks</strong> (Arize, WhyLabs)</td>
+<td>External time-series dashboards</td>
+<td>Production ML</td>
+</tr>
+<tr class="even">
+<td><strong>ABNG node_maturity</strong></td>
+<td>Per-node 4-tuple</td>
+<td>Bayesian belief graphs</td>
+</tr>
+</tbody>
+</table>
+<p>The closest analog in ML practice is <strong>EarlyStopping</strong> + production monitoring — both ask “has my model converged enough to deploy?” ABNG’s contribution: per-node granularity (you can see which leaves have stabilized) and cryptographic integrity (the maturity values are derived from the same audit-tracked state, not an external log).</p>
 </section>
 <section id="what-this-enables-9" class="level3">
 <h3 class="anchored" data-anchor-id="what-this-enables-9">What this enables</h3>
 <ul>
 <li><strong>Production ML monitoring dashboard</strong> — “has my model converged?” → check maturity per-node.</li>
-<li><strong>Auto-stop training</strong> — stop when maturity flags have all stabilized.</li>
+<li><strong>Auto-stop training</strong> — stop when maturity flags have all stabilized (avoid wasted compute).</li>
+<li><strong>Hyperparameter tuning</strong> — which learning rate makes flags settle fastest?</li>
 <li><strong>Convergence-failure debugging</strong> — which flag never reaches 1? — points at the failing component.</li>
 <li><strong>Production rollout gating</strong> — deploy-time check: only ship models where <code>calibration_stable == 1</code>.</li>
+<li><strong>Federated learning aggregation</strong> — aggregate worker updates only from nodes where maturity has stabilized.</li>
 </ul>
 <hr>
 </section>
@@ -735,15 +1845,80 @@ Warning
 <p>Every CJC-Lang demo runs through both <code>cjc-eval</code> (AST tree-walk) AND <code>cjc-mir-exec</code> (MIR register-machine), then asserts byte-equal printed output. Across the 13 ABNG demo files, this constitutes ~95 byte-equal parity assertions over a vocabulary of ~30 <code>abng_*</code> builtins.</p>
 <p>The strongest single instance: the <strong>adaptive triggers demo’s <code>chain_head</code> matches the Rust-side <code>decide_step_canary</code> byte-for-byte</strong> (<code>d064fb08…7807</code>). Same workload, three pipelines (direct Rust API + AST eval + MIR exec), bit-identical SHA-256 over 23+ audit events.</p>
 </section>
-<section id="why-this-is-hard-to-deliver-in-practice" class="level3">
-<h3 class="anchored" data-anchor-id="why-this-is-hard-to-deliver-in-practice">Why this is hard to deliver in practice</h3>
-<p>Three architectural choices that <em>make</em> this possible:</p>
+<section id="the-architectural-choices-that-make-this-work" class="level3">
+<h3 class="anchored" data-anchor-id="the-architectural-choices-that-make-this-work">The architectural choices that make this work</h3>
+<p>Three load-bearing decisions enforced across the workspace:</p>
+<ol type="1">
+<li><p><strong>Kahan compensated summation</strong> for all FP reductions (<code>KahanAccumulatorF64</code>). Naive <code>Σxᵢ</code> accumulates rounding error in O(n·ε); Kahan reduces this to O(ε). More importantly, <strong>Kahan is order-deterministic for fixed input order</strong> — no SIMD-introduced reordering, no FMA fusion. This is the single biggest source of “approximately deterministic” failure in standard ML stacks.</p></li>
+<li><p><strong><code>BTreeMap</code>/<code>BTreeSet</code> only</strong>, never <code>HashMap</code>. Hash maps with random hashing have iteration order that depends on the per-process seed — different runs can iterate in different orders, and any code that depends on iteration order (e.g., reduction loops) becomes non-deterministic. BTreeMap iterates in sorted key order, every time.</p></li>
+<li><p><strong><code>SplitMix64</code> with explicit seed threading</strong>. No thread-local randomness, no time-based seeds, no platform-specific entropy. Every random draw is reproducible from <code>(initial_seed, operation_history)</code>.</p></li>
+</ol>
+<p>These three choices aren’t aspirational — they’re enforced by the parity gates. If anyone introduces FMA in <code>cjc-runtime/linalg.rs</code> tomorrow, every parity test fails simultaneously with byte-divergent output.</p>
+</section>
+<section id="what-this-means-for-ml-practitioners" class="level3">
+<h3 class="anchored" data-anchor-id="what-this-means-for-ml-practitioners">What this means for ML practitioners</h3>
+<p>ML reproducibility is famously hard. A typical “deterministic” PyTorch model can produce different bytes across runs due to:</p>
 <ul>
-<li><strong>All FP arithmetic uses Kahan compensation</strong> — no FMA, no SIMD-introduced reordering, deterministic add-order semantics.</li>
-<li><strong>All maps are <code>BTreeMap</code></strong> — iteration order is sorted, never random. <code>HashMap</code> with random hashing would silently break determinism.</li>
-<li><strong>All RNG is <code>SplitMix64</code></strong> with explicit seed threading — no thread-local randomness, no time-based seeds, no platform-specific entropy.</li>
+<li>CUDA atomic ops (non-deterministic reduction order on GPU)</li>
+<li>cuDNN algorithm selection (can pick different kernels per run)</li>
+<li>Multi-threaded CPU reductions (thread-scheduling non-determinism)</li>
+<li>FMA fusion (compiler-dependent instruction selection)</li>
+<li>Hash-randomization in Python’s <code>dict</code></li>
 </ul>
-<p>Most ML stacks claim “deterministic with same seed” but produce subtly different bytes across runs. ABNG’s parity gates <em>prove</em> determinism every test run.</p>
+<p>Each of these has been a real production-incident root cause. ABNG’s parity gates <em>prove</em> the absence of these bugs every test run.</p>
+</section>
+<section id="connection-to-the-reproducibility-crisis-literature" class="level3">
+<h3 class="anchored" data-anchor-id="connection-to-the-reproducibility-crisis-literature">Connection to the reproducibility crisis literature</h3>
+<table class="table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Source</th>
+<th>Claim</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Pineau et al.&nbsp;2021, “Improving Reproducibility in ML Research”</strong></td>
+<td>Most ML papers can’t be reproduced even with the same code</td>
+</tr>
+<tr class="even">
+<td><strong>Hutson 2018, “Artificial intelligence faces reproducibility crisis”</strong></td>
+<td>Structural problem in the field</td>
+</tr>
+<tr class="odd">
+<td><strong>TensorFlow Determinism Project</strong> (<code>tf.config.experimental.enable_op_determinism</code>)</td>
+<td>Best-effort, with known gaps</td>
+</tr>
+<tr class="even">
+<td><strong>PyTorch determinism guide</strong></td>
+<td>Documents environmental flags; doesn’t guarantee bit-equality</td>
+</tr>
+<tr class="odd">
+<td><strong>ML reproducibility checklists</strong> (NeurIPS 2019+)</td>
+<td>Process-level requirements</td>
+</tr>
+<tr class="even">
+<td><strong>ABNG parity gates</strong></td>
+<td>Cryptographic byte-equality across pipelines</td>
+</tr>
+</tbody>
+</table>
+<p>ABNG’s contribution to this conversation: <strong>byte-equality is achievable</strong> if you commit to determinism-by-construction at every layer (no FMA, no random hash, no thread-local RNG). The parity gates <em>prove</em> it run by run.</p>
+</section>
+<section id="what-this-enables-10" class="level3">
+<h3 class="anchored" data-anchor-id="what-this-enables-10">What this enables</h3>
+<ul>
+<li><strong>Reproducibility</strong> — same seed → same model bytes; papers ship verifiable results.</li>
+<li><strong>Cross-platform deployment</strong> — train on Linux, deploy on Windows → byte-identical model (modulo cross-platform CI verification, which is the next piece of work).</li>
+<li><strong>Distributed training</strong> — deterministic operations enable provable consistency without per-step coordination.</li>
+<li><strong>Regulatory replay</strong> — regulator can re-run training and verify every byte.</li>
+<li><strong>CI / regression detection</strong> — byte-equal output makes test-failure debugging trivial — diff lines, not “it’s flaky.”</li>
+<li><strong>Differential testing across executor versions</strong> — new optimizer? Old vs new must produce same bytes for all valid programs.</li>
+</ul>
 <div class="callout callout-style-default callout-warning callout-titled">
 <div class="callout-header d-flex align-content-center">
 <div class="callout-icon-container">
@@ -754,7 +1929,7 @@ Warning
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p><strong>Cross-platform determinism is not yet verified.</strong> All canary hashes were computed on Windows. They <em>should</em> hold on Linux/macOS (Kahan, no FMA, BTreeMap), but this isn’t yet tested in CI.</p>
+<p><strong>Cross-platform determinism is not yet verified.</strong> All canary hashes were computed on Windows. They <em>should</em> hold on Linux/macOS (Kahan, no FMA, BTreeMap), but this isn’t yet tested in CI. Adding GitHub Actions CI that runs the suite on three platforms and compares the canaries is a one-day project — and one of the first items on the Phase 0.6 list.</p>
 </div>
 </div>
 <hr>
@@ -809,7 +1984,7 @@ Warning
 <p>Three things stand between current ABNG and production readiness:</p>
 <section id="cross-platform-determinism-ci" class="level3">
 <h3 class="anchored" data-anchor-id="cross-platform-determinism-ci">Cross-platform determinism CI</h3>
-<p>The locked canary hashes are Windows-only today. They <em>should</em> hold across platforms (the architecture is designed for it), but this is unverified. Adding GitHub Actions CI that runs the full test suite on Linux + macOS + Windows and compares the canaries is a one-day project that pays off forever — every future commit either preserves cross-platform determinism or fails CI loudly.</p>
+<p>The locked canary hashes are Windows-only today. They <em>should</em> hold across platforms (the architecture is designed for it), but this is unverified. Adding GitHub Actions CI that runs the full test suite on Linux + macOS + Windows and compares the locked canaries is a one-day project that pays off forever — every future commit either preserves cross-platform determinism or fails CI loudly.</p>
 </section>
 <section id="performance-benchmarks" class="level3">
 <h3 class="anchored" data-anchor-id="performance-benchmarks">Performance benchmarks</h3>
@@ -818,24 +1993,13 @@ Warning
 <section id="compiler-interpreter-performance" class="level3">
 <h3 class="anchored" data-anchor-id="compiler-interpreter-performance">Compiler / interpreter performance</h3>
 <p>This is the bigger long-term constraint. The CJC-Lang interpreter is currently 5–50× slower than direct Rust API access for ABNG demos. For research / experimentation that’s fine. For production ML training at scale, it’s a hard ceiling.</p>
-<p>The chess RL benchmark hit this wall directly — project memory: <em>“bottleneck is interpreter throughput, not ML algorithm design.”</em> Specific levers, in increasing order of effort:</p>
+<p>The chess RL benchmark hit this wall directly — the bottleneck for v2.5 was interpreter throughput, not ML algorithm design. Specific levers, in increasing order of effort:</p>
 <ul>
 <li><strong>MIR optimizer passes</strong> — current optimizer has CF + DCE; further passes (loop-invariant code motion, common subexpression elimination, function inlining) are weeks of work each.</li>
 <li><strong>Hot-path specialization in <code>cjc-runtime</code></strong> — ABNG already shows the pattern (75 native builtins for what users actually do). Has architectural cost: every native kernel is a feature you can’t compose out of simpler primitives.</li>
 <li><strong>AOT compilation</strong> — <code>cjcl compile foo.cjcl → foo.exe</code>. LLVM or Cranelift backend. Months of work but the only path that closes the perf gap meaningfully.</li>
 </ul>
 <p>Most likely sequencing: continue ABNG (Phase 0.6 work — smart-replay fast-forward, cross-platform CI, lineage case study) while landing incremental MIR optimizer + native-kernel work. AOT is a multi-month commitment that depends on whether CJC-Lang’s long-term identity is <em>research vehicle</em> or <em>production language</em>.</p>
-</section>
-</section>
-<section id="honest-aggregate" class="level2">
-<h2 class="anchored" data-anchor-id="honest-aggregate">Honest aggregate</h2>
-<p>ABNG is <strong>a 7/10 system if you have the niche problems it solves</strong>, and <strong>a 2/10 system if you don’t.</strong> The demos honestly bound where it’s useful:</p>
-<p><strong>Strong fit (lead with ABNG):</strong> - Pharma / financial / healthcare ML with regulatory attestation needs - Academic groups publishing reproducibility-critical results - Tabular Bayesian regression at sizes prohibitive for classical GP</p>
-<p><strong>Moderate fit (consider ABNG alongside existing tools):</strong> - Production ML monitoring (drift detection + existing observability) - Active learning research where BLR uncertainty is sufficient - Scientific computing groups doing 1-D / 2-D PINNs</p>
-<p><strong>Poor fit (don’t reach for ABNG):</strong> - Deep learning, vision, NLP, audio — codebook routing doesn’t fit - Real-time inference / latency-sensitive serving — audit-chain overhead - Quick experimentation / prototyping — overkill</p>
-<p>The honest one-sentence summary: <strong>“ABNG is what you reach for when you need to prove what your model was trained on, with calibrated Bayesian uncertainty, and you can tolerate the audit-chain overhead.”</strong></p>
-<p>That’s a real market — but it’s a niche, not the mainstream. The work ahead — interpreter perf, cross-platform CI, real case studies — is what would graduate ABNG from “demonstrably works in tests” to “deployed in production somewhere that matters.”</p>
-<p>For now: experimental, but with clear value for the right user. If that’s you — you know who you are — get in touch.</p>
 <div class="callout callout-style-default callout-note callout-titled">
 <div class="callout-header d-flex align-content-center">
 <div class="callout-icon-container">
@@ -851,6 +2015,7 @@ Note
 </div>
 
 
+</section>
 </section>
 
 </main> <!-- /main -->
