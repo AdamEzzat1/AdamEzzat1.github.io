@@ -8,7 +8,7 @@ categories: [CJC-Lang, ABNG, Bayesian, determinism, attestation, experimental]
 description: "ABNG (Adaptive Belief Network Graph) is an experimental cjc-abng crate exposing 75 abng_* builtins to CJC-Lang. This post walks through eleven distinct capabilities — eleven demos, six in CJC-Lang source — and what each one actually proves. Plus the honest gaps: ABNG is still experimental, the interpreter is a known bottleneck, and there's compiler/interpreter work ahead before this becomes production-grade."
 ---
 
-<div class="reading-time">&#128337; ~22 min read</div>
+<div class="reading-time">&#128337; ~32 min read</div>
 
 <div class="stats-row">
 <div class="stat"><span class="number">75</span><span class="stat-label">abng_* builtins</span></div>
@@ -81,22 +81,85 @@ This is stronger than "average edge uncertainty exceeds average interior uncerta
 
 The fit-quality assertion (`abs_err_50 < 0.05`) proves the mean *also* converges to the analytical solution. Without this, "leverage is uncertain at edges" would be vacuous — the mean could just be wrong everywhere.
 
+### The math
+
+ABNG's BLR uses a Normal-Inverse-Gamma (NIG) conjugate prior on `(w, σ²)`. Given a prior `(μ₀, Λ₀, a₀, b₀)` and a stream of observations `D = {(φᵢ, yᵢ)}`, the conjugate update yields a closed-form posterior:
+
+$$
+\begin{aligned}
+\Lambda_n &= \Lambda_0 + \Phi^\top \Phi \\
+\mu_n &= \Lambda_n^{-1}\,(\Lambda_0 \mu_0 + \Phi^\top y) \\
+a_n &= a_0 + n/2 \\
+b_n &= b_0 + \tfrac{1}{2}(y - \Phi\mu_n)^\top(y - \Phi\mu_n) + \tfrac{1}{2}(\mu_0 - \mu_n)^\top \Lambda_0\,(\mu_0 - \mu_n)
+\end{aligned}
+$$
+
+For a query point `x*`, the predictive distribution `p(y* | x*, D)` is a Student-t. ABNG returns its three sufficient ingredients as:
+
+| Output | Formula | Interpretation |
+|---|---|---|
+| `mean` | $\mu_n^\top \varphi(x^*)$ | Posterior mean prediction (point estimate) |
+| `epistemic_leverage` | $\varphi(x^*)^\top \Lambda_n^{-1}\,\varphi(x^*)$ | Variance contribution from posterior over `w` (model uncertainty) |
+| `aleatoric_var` | $b_n / (a_n - 1)$ | Observation-noise variance (data uncertainty) |
+
+Two cleanly separated uncertainty channels. **`epistemic_leverage` shrinks as `ΦᵀΦ` accumulates** — more data → tighter posterior over `w` → less model uncertainty. **`aleatoric_var` converges to the irreducible noise floor.** A vanilla MLP collapses both into a single point estimate; ABNG keeps them factored.
+
 ### Why the heat equation
 
-The 1-D heat equation `∂u/∂t = α∂²u/∂x²` with Dirichlet BCs `u(0,t) = u(1,t) = 0` and IC `u(x,0) = sin(πx)` was chosen because it has a **known closed-form analytical solution**: `u(x,t) = exp(-α π² t) · sin(πx)`.
+The 1-D heat equation `∂u/∂t = α∂²u/∂x²` with Dirichlet BCs `u(0,t) = u(1,t) = 0` and IC `u(x,0) = sin(πx)` was chosen because it has a **known closed-form analytical solution**:
 
-That choice is load-bearing for the demo. The BLR feature basis is `[1, x, sin(πx), cos(πx)]` — the analytical solution `exp(-π²·0.1)·sin(πx)` is *exactly representable* as a single non-zero coefficient on the `sin(πx)` basis function. So with enough samples, the BLR posterior mean *must* converge to the truth. If it doesn't, the BLR implementation is broken, not the test.
+$$u(x, t) = e^{-\alpha \pi^2 t} \sin(\pi x)$$
 
-The training schedule is **deliberately asymmetric**: 32 samples uniformly across `[0.25, 0.75]` (interior), 4 samples each in `[0, 0.25)` and `[0.75, 1]` (edges). Without this asymmetry, uniform training would give uniform uncertainty and the spatial-partition property would be invisible.
+That choice is load-bearing. The BLR feature basis is `[1, x, sin(πx), cos(πx)]` — the analytical solution `exp(-π²·0.1)·sin(πx)` is *exactly representable* as a single non-zero coefficient on the `sin(πx)` basis function. So with enough samples, the BLR posterior mean *must* converge to the truth. If it doesn't, the BLR implementation is broken — not the test. This is the same trick statisticians use to validate Bayesian implementations: pick a problem where the truth is in the basis, and the posterior is a closed-form limit.
+
+The training schedule is **deliberately asymmetric**: 32 samples uniformly across `[0.25, 0.75]` (interior), 4 samples each in `[0, 0.25)` and `[0.75, 1]` (edges). Without this asymmetry, uniform training would give uniform leverage and the spatial-partition property would be invisible.
+
+### Code sketch
+
+The PINN demo's core loop, in CJC-Lang:
+
+```rust
+fn pinn_features_2d(x: f64) -> Tensor {
+    Tensor.from_vec([1.0, x, sin(pi() * x), cos(pi() * x)], [1, 4])
+}
+
+fn analytical_u(x: f64) -> f64 {
+    let decay = exp(-0.9869604401089358);  // exp(-π² · 0.1)
+    decay * sin(pi() * x)
+}
+
+fn train_one(g: i64, x: f64) {
+    let leaf = route_leaf(g, x);             // codebook descent
+    let phi = pinn_features_2d(x);
+    let y_val = analytical_u(x);             // ground truth
+    let y = Tensor.from_vec([y_val], [1]);
+    abng_blr_update(g, leaf, phi, y);        // NIG conjugate update
+    abng_observe(g, leaf, y_val);
+}
+```
+
+After training, a probe at `x = 0.5` returns `(mean ≈ 0.372, lev_low, ale_finite)` — `mean` matches `exp(-π²·0.1) · sin(π·0.5) = 0.372` to within `0.05`. A probe at `x = 0.05` returns `(mean ≈ small, lev_high, ale_finite)` — different leaf, less data, higher leverage.
+
+### Connection to existing techniques
+
+| Technique | Posterior representation | Cost | Decomposed epistemic/aleatoric? |
+|---|---|---|---|
+| **Gaussian Processes** | Full posterior over functions | O(n³) Cholesky | Yes (kernel + likelihood noise) |
+| **Deep ensembles** | Variance across M trained nets | M× training cost | Approximately |
+| **MC dropout** | Variational approx via dropout | Cheap, biased | No (entangled) |
+| **Conformal prediction** | Distribution-free intervals | Cheap | No |
+| **ABNG per-leaf BLR** | Closed-form NIG posterior | O(d²) per update | Yes (clean factor) |
+
+ABNG slots between GPs (full posterior, expensive) and conformal prediction (distribution-free, no decomposition). It's most similar in spirit to **Bayesian Additive Regression Trees (BART)** — leaf-localized closed-form Bayesian fits — but with a quantile-codebook routing instead of stochastic tree growth, and a stronger determinism contract.
 
 ### What this enables
 
-- **Active learning in scientific computing** — query the BLR for uncertainty; sample where uncertainty is highest.
-- **Uncertainty-aware PINNs** — refuse to predict in regions where leverage exceeds a threshold; fall back to a higher-fidelity solver.
-- **Uncertainty propagation** — feed `(mean ± sqrt(aleatoric_var + epistemic_leverage))` into Monte Carlo / robust optimization pipelines.
-- **Calibrated predictions out of the box** — vanilla MLPs don't say "I don't know this region"; ABNG does, and you can route around it.
+- **Active learning in scientific computing** — query the BLR for `epistemic_leverage`; sample where it's highest.
+- **Uncertainty-aware PINNs** — refuse to predict in regions where leverage exceeds a threshold; fall back to a higher-fidelity solver. This is what the PINN community has been chasing via deep ensembles or HMC for years.
+- **Heteroskedastic regression done right** — the aleatoric/epistemic split lets you tell "this region is intrinsically noisy" from "I haven't seen enough of this region yet."
+- **Uncertainty propagation downstream** — feed the Student-t predictive into Monte Carlo / robust optimization pipelines.
 
-The PINN literature has spent years adding Bayesian uncertainty to neural PDE solvers via MCMC, variational inference, or deep ensembles. ABNG provides this **for free** via the BLR posterior — no inference machinery beyond a closed-form Bayesian update.
+The PINN literature has long treated Bayesian uncertainty as expensive infrastructure (HMC, variational PINNs). ABNG provides this as a **closed-form per-leaf posterior** — no inference machinery beyond a Cholesky update.
 
 ---
 
@@ -111,29 +174,85 @@ Five distinct properties asserted as separate tests:
 1. **`max(per_leaf_n_seen) < 0.9 × N`** — no single leaf holds the entire dataset. Evidence is partitioned, not duplicated.
 2. **`sum(per_leaf_n_seen) == N`** — every training point routes to exactly one leaf. No double-counting; no points lost.
 3. **`max_per_leaf_bounded`** — the partitioning works as designed. (This is the *scalability* claim's empirical foundation.)
-4. **`trained_mse < 0.5 × prior_mse`** — the BLR posterior actually *learns*. Without this, all the structure-of-the-graph properties would be vacuous.
+4. **`trained_mse < 0.5 × prior_mse`** — the BLR posterior actually *learns*. Without this, the structure-of-the-graph properties would be vacuous.
 5. **`lev_shrinks_with_data`** — leverage at a fixed probe drops from a 16-pt-trained leaf to a 64-pt-trained leaf. GP-like uncertainty contraction reproduced.
+
+### The math (cost analysis)
+
+ABNG's per-leaf cost decomposes cleanly:
+
+| Operation | Cost |
+|---|---|
+| Codebook descent | O(`n_dims · log(n_bins)`) |
+| BLR conjugate update at one leaf | O(`d² · n_leaf`) (Cholesky-factor maintenance) |
+| Predictive at query point | O(`d²`) (one Cholesky solve) |
+| Aggregate cost across N points, L leaves | O(`N · d²`) — *linear in N* |
+
+Compare to a **classical GP** on the same N points:
+
+| Operation | Cost |
+|---|---|
+| Kernel matrix `K_NN` | O(`N²`) memory |
+| Cholesky decomposition | **O(`N³`)** compute |
+| Predictive variance per query | O(`N²`) |
+
+**ABNG is asymptotically O(N · d²) vs GP's O(N³).** For `d = 4` (the demo's basis dim) and `N = 10⁴`: ABNG ≈ 1.6×10⁵ ops; GP ≈ 10¹² ops — seven orders of magnitude.
+
+The trade-off: ABNG's leaves are independent — no global covariance structure. For workloads where local Bayesian behavior is sufficient (most tabular ML), this is a feature, not a bug.
 
 ### Why bilinear regression on the unit square
 
 The target is `y = 0.3 + 0.5x₁ + 0.4x₂ + 0.7·x₁·x₂`. Three deliberate choices:
 
 - **Exactly fittable in the BLR feature basis** `[1, x₁, x₂, x₁·x₂]`. With enough samples, BLR posterior mean → exact coefficients `[0.3, 0.5, 0.4, 0.7]`. This makes the MSE-reduction test *meaningful*: any residual MSE comes from sample efficiency, not from the model class being wrong.
-- **2-D input with a routing dimension.** The codebook routes by `x₁` (4 bins) and lets `x₂` become a within-leaf feature. This mirrors the canonical ABNG pattern: *use one dimension to partition the input space, regress on the rest within each leaf*.
+- **2-D input with a routing dimension.** The codebook routes by `x₁` (4 bins) and lets `x₂` become a within-leaf feature. This mirrors the canonical ABNG pattern: *use one dimension to partition the input space, regress on the rest within each leaf*. Common in production: route by `(time-of-day, geo-region)` and regress on the rest within each segment.
 - **Unit square domain** — predictable, no scaling tricks. Codebook boundaries `[0.25, 0.5, 0.75]` evenly partition `[0, 1]`.
 
-The 200-point training set is small enough to run quickly through the interpreter, large enough that the per-leaf BLR posteriors clearly converge.
+### Code sketch
+
+```rust
+fn build_tabular_graph(seed: i64) -> i64 {
+    let g = abng_new(seed);
+    let codebook = Tensor.from_vec([0.25, 0.5, 0.75], [1, 3]);
+    abng_set_codebook(g, codebook);                          // 4 bins on x₁
+    abng_set_leaf_head(g, 2, Tensor.from_vec([4.0], [1]), 1, "tanh");
+    abng_set_blr_prior(g, 2.0, 1.0, 0.5);                    // NIG (a, b, σ_init)
+    // ... add 4 children, one per codebook bin ...
+    g
+}
+
+fn train_one(g: i64, x1: f64, x2: f64) {
+    let leaf = route_for(g, x1);                             // x₁ → prefix → leaf
+    let phi = Tensor.from_vec([1.0, x1, x2, x1 * x2], [1, 4]);
+    let y_val = target(x1, x2);
+    abng_blr_update(g, leaf, phi, Tensor.from_vec([y_val], [1]));
+}
+```
+
+After 200 training points, every leaf has its own BLR posterior with `mean → [0.3, 0.5, 0.4, 0.7]` and increasingly sharp leverage. Sum of `n_seen` across all four leaves equals exactly 200; the largest leaf holds well under 90% of points.
+
+### Connection to existing techniques
+
+| Technique | Routing | Per-leaf model | Scaling |
+|---|---|---|---|
+| **Classical GP** | None (global) | Kernel | O(n³) |
+| **Sparse GP / SVGP** | Inducing points | Kernel | O(n·m²) for m inducing pts |
+| **Mondrian Forest** | Stochastic tree splits | Point estimate | O(n·log n) |
+| **BART** | Stochastic tree splits | Bayesian posterior | O(n·log n) per tree |
+| **Locally-weighted regression** | Distance-weighted | Linear fit | O(n) per query |
+| **ABNG** | Quantile codebook (deterministic) | Closed-form NIG posterior | O(N · d²) |
+
+The closest analog is **Mondrian Forests** (Lakshminarayanan, Roy & Teh 2014) — both partition the input space and fit per-leaf models. The differences: Mondrian uses stochastic splits and point estimates; ABNG uses deterministic quantile boundaries and full closed-form Bayesian posteriors. ABNG also adds the audit chain that Mondrian doesn't have.
 
 ### What this enables
 
-The classical Gaussian Process scales **O(n³)** in training data because the kernel matrix is dense. At n ≈ 10⁴ training points a single GP fit takes minutes-to-hours; at n ≈ 10⁵ it's infeasible without specialized approximations.
-
-ABNG's per-leaf BLR is **O(d²·n_leaf)** per update, where `d` is the BLR feature dim (4 in this demo) and `n_leaf ≪ n`. Aggregate cost across N points: **O(N · d²)** — linear in N.
-
-The trade-off: ABNG's leaves are independent, so you lose the *global* covariance structure a GP captures. For workloads where local Bayesian behavior is sufficient (most tabular ML), this is a feature, not a bug — and it's what enables linear scaling.
+- **Drop-in tabular Bayesian regression at GP-prohibitive sizes** (n > 10⁴ where dense Cholesky becomes painful)
+- **Online / streaming learning** — incremental BLR update is O(d²) per point, vs O(n²) incremental for classical GP rank-one updates
+- **Snapshot-checkpointable Bayesian state** — classical GPs don't naturally serialize (you'd persist the full Cholesky factor + raw data); ABNG snapshots the entire posterior in one blob via the audit chain
+- **Feature-engineered uncertainty quantification** — the practitioner picks routing dimensions (time-of-day, region, customer segment) and the per-segment posteriors are independently calibrated
 
 ::: {.callout-warning}
-The asymptotic claim is correct by construction (the math says so) but **not yet benchmarked** against a classical GP at realistic sizes. Before treating ABNG as a "GP killer," wall-clock benchmarks at n ∈ {10³, 10⁴, 10⁵} need to be run.
+The asymptotic claim is correct by construction (the math says so) but **not yet benchmarked** against a classical GP at realistic sizes. Wall-clock benchmarks at n ∈ {10³, 10⁴, 10⁵} need to be run before treating ABNG as a "GP killer."
 :::
 
 ---
@@ -146,20 +265,53 @@ The asymptotic claim is correct by construction (the math says so) but **not yet
 
 Every state mutation in ABNG funnels through one chain step:
 
-```
-new_hash = sha256(previous_hash ‖ canonical_payload(event))
+$$
+\text{new\_hash} = \text{SHA-256}\bigl(\text{previous\_hash} \,\Vert\, \text{canonical\_payload}(\text{event})\bigr)
+$$
+
+Every demo asserts `verify_chain == Ok` after training. For an n-event audit log, `verify_chain` walks the chain forward, recomputing `new_hash` at every step from the *stored* previous hash and the *stored* canonical payload, and compares to the stored value. **Any single byte changed in any payload would fail the recomputation at that event AND every subsequent event** — a Merkle-style cascade.
+
+Across the 11 demos, this code path runs hundreds of times. The fact that `verify_chain == Ok` after every demo's training session is the empirical proof the audit chain is sound under realistic workloads.
+
+### The threat model
+
+The audit chain is designed against three concrete attacks:
+
+1. **Post-hoc rewrite.** Attacker modifies a historical training observation after the fact. Detection: the modified event's `new_hash` no longer matches `sha256(previous_hash ‖ payload)`, AND every subsequent event's stored `previous_hash` no longer matches the recomputed-from-modified value. **Cascading detection.**
+2. **Event reordering.** Attacker shuffles the order of training events. Detection: each event's payload includes its `seq` number; reordering puts events at the wrong seq, breaking the per-event monotonic-seq invariant.
+3. **Event substitution.** Attacker replaces one event with another that produces the same `new_hash`. Detection: SHA-256 collision resistance — finding two payloads with the same hash is computationally infeasible.
+
+### Code sketch — what an event payload looks like
+
+```text
+[seq u64 BE | epoch u64 BE | node_id u32 BE | kind tag u8 |
+ kind body (variable) |
+ stats_version u64 BE | stats_hash [u8; 32]]
 ```
 
-Every demo asserts `verify_chain == Ok` after training. For an n-event audit log, `verify_chain` walks the chain forward, recomputing `new_hash` at every step, and compares to the stored value. Any single byte changed in any payload would fail the recomputation at that event AND every subsequent event (cascade property).
+For a `BeliefUpdate` event (the most common kind, fired on every `abng_observe`), the kind body is a single `value f64-bits BE` — 8 bytes. Total payload for a BeliefUpdate is `21 + 8 + 8 + 32 = 69 bytes`, hashed into the chain.
 
-Across the 11 demos, this code path runs **hundreds of times**. The fact that `verify_chain == Ok` after every demo's training session is the empirical proof the audit chain is sound under realistic workloads.
+The canonical encoding is **byte-deterministic**: big-endian on every numeric field, fixed sizes, no padding ambiguity. Two ABNG instances run with the same seed and observation order produce identical event payload bytes — and therefore identical chain hashes.
+
+### Connection to existing techniques
+
+| Technique | Hash-chain | ML-aware | Per-prediction lineage |
+|---|---|---|---|
+| **Git** | Yes (DAG of commits) | No | No |
+| **MLflow** | No (timestamped log) | Yes | Manual |
+| **sigstore / in-toto** | Yes (artifact attestation) | No | Per-artifact |
+| **Blockchain ML provenance** | Yes (full chain on-chain) | Yes | Yes, but expensive |
+| **ABNG audit chain** | Yes (linear) | Yes (every state mutation) | Yes, baked in |
+
+The closest analog is **in-toto attestations** in software supply-chain land — except in-toto is per-artifact (each release gets one attestation), while ABNG is *per-event* (every observation, every weight update).
 
 ### What this enables
 
 - **Forensic post-incident analysis** — "Was this model trained on the bad data?" Replay the chain, check.
-- **Regulatory replay (FDA, SEC, HIPAA)** — the model's full training history is one cryptographically-linked blob.
-- **Reproducibility** — papers ship `(model.snap, dataset)` pairs; reviewers reproduce + verify chain.
-- **ML supply chain** — fine-tuning extends the chain; provenance of every weight is traceable.
+- **Regulatory replay** — the model's full training history is one cryptographically-linked blob.
+- **Reproducibility certification** — papers ship `(model.snap, dataset)` pairs; reviewers reproduce + verify chain in one byte comparison.
+- **ML supply chain attestation** — fine-tuning extends the chain; provenance of every weight is traceable.
+- **Insider-threat detection** — anyone modifying historical events breaks every subsequent hash, visible to anyone running `verify_chain`.
 
 This is closer to Git's content-addressed model than to traditional ML metadata stores. MLflow / Weights & Biases give you *external* logs you have to trust; ABNG gives you a model artifact whose history is **cryptographically self-attesting**.
 
@@ -171,34 +323,83 @@ This is closer to Git's content-addressed model than to traditional ML metadata 
 
 ### What this demo proves
 
-This is the strongest single capability in ABNG. The headline test (`lineage_attestation_three_signals_independent`) proves that tampering one row of a 64-row dataset (changing patient #17's response from `0.525` to `0.999`) produces **three independent SHA-256 divergences**:
+The headline test (`lineage_attestation_three_signals_independent`) proves that tampering one row of a 64-row dataset (changing patient #17's response from `0.525` to `0.999`) produces **three independent SHA-256 divergences**:
 
 1. **`chain_head` divergence** — every audit event's hash cascades from row 17 onward.
 2. **BLR `state_hash` divergence** — the leaf where the tampered row routes has a different posterior.
 3. **`provenance_stamp` divergence** — the dataset fingerprint differs by construction.
 
-The "independent" qualifier is doing real work. Even if an attacker forged one signal (e.g., recomputed the chain to hide the change), the other two would still surface the tamper. **Three independent failure modes is a stronger security claim than three correlated ones.**
+The "independent" qualifier is doing real work. Even if an attacker forged one signal (e.g., recomputed the chain to hide the change), the other two would still surface the tamper.
+
+### The threat model and why three signals matter
+
+The classic attack against ML provenance is **collusion**: the attacker controls the training process, so they can produce a consistent-but-fake audit trail. Three independent signals raise the cost:
+
+| Attack | Defeats which signal? | Defeats all three? |
+|---|---|---|
+| Modify training data, recompute chain | chain_head ✓ | No — BLR state diverges |
+| Modify training data, retrain to match BLR state | chain_head ✓, BLR state ✓ | No — provenance stamp diverges |
+| Modify training data, retrain, restamp with new fingerprint | All three forgeable internally | But: fingerprint is *publicly verifiable* against the dataset bytes |
+
+The provenance stamp is `sha256(canonical_dataset_bytes)`. **An auditor with the original dataset can recompute this themselves** — the attacker can't forge it without also forging the dataset (which is what we're trying to detect in the first place). The chain and BLR state are internal consistency checks; the provenance stamp is the *external* binding to the dataset.
 
 ### Why a synthetic clinical-trial workload
 
-- **Maps directly to a real industry threat model.** "Lab A trains a model claiming approved dataset; attacker substitutes contaminated dataset" is the FDA model-attestation problem in one sentence. The two-graph structure (`g_a` trained on dataset_a, `g_b` on tampered dataset_b) literally executes this scenario.
-- **64-row size is realistic for clinical-trial cohorts.** Phase II trials often have <200 patients per arm. Tampering a single patient's outcome (1.5% of the dataset) is the *minimum-effort* attack.
-- **Cubic dose-response curve** `y = 0.2 + 0.6·dose + 0.1·dose²` is biologically plausible AND exactly fittable in the BLR feature basis `[1, dose, dose², dose³]`, giving us ground-truth assertions in addition to the security claims.
+- **Maps directly to a real industry threat model.** "Lab A trains a model claiming approved dataset; attacker substitutes contaminated dataset" is the FDA model-attestation problem in one sentence.
+- **64-row size is realistic** for Phase II clinical-trial cohorts (often <200 patients per arm).
+- **Cubic dose-response curve** `y = 0.2 + 0.6·dose + 0.1·dose²` is biologically plausible AND exactly fittable in the BLR basis `[1, dose, dose², dose³]`, giving us ground-truth assertions in addition to the security claims.
+- **Tamper at row 17 specifically** because `dose=0.5` falls right at a codebook bin boundary — routing the tampered observation to a specific leaf, making the BLR `state_hash` divergence clearly attributable.
 
-The "tamper at row 17" choice is intentional: row 17's `dose=0.5` falls right at a codebook bin boundary. This routes the tampered observation to a specific leaf, making the BLR `state_hash` divergence clearly attributable to one node's posterior.
+### Code sketch
+
+```rust
+fn train_and_stamp(seed: i64, rows: Any, fingerprint: String) -> i64 {
+    let g = build_lineage_graph(seed);
+    abng_stamp_provenance(g, 0, fingerprint);                // sha256(dataset_bytes)
+    let n = len(rows);
+    let i = 0;
+    while i < n {
+        let row = rows[i];
+        let dose = row[0];
+        let resp = row[1];
+        let leaf = route_leaf(g, dose);
+        let phi = Tensor.from_vec(
+            [1.0, dose, dose * dose, dose * dose * dose], [1, 4]);
+        abng_blr_update(g, leaf, phi, Tensor.from_vec([resp], [1]));
+        abng_observe(g, leaf, resp);
+        i = i + 1;
+    }
+    g
+}
+```
+
+The two graphs `g_a` and `g_b` are built identically — only the row data and fingerprint differ. Comparing `(chain_head, blr_state_hash[node 3], provenance_stamp)` between them yields three different hashes.
+
+### Connection to existing techniques
+
+| Technique | Cryptographic | ML-integrated | Per-prediction |
+|---|---|---|---|
+| **MLflow / W&B logs** | No | Yes | No |
+| **Sigstore / in-toto** | Yes | No (artifact-only) | No |
+| **Datasheet for Datasets** (Gebru et al. 2018) | No (process-only) | Yes | No |
+| **Model Cards** (Mitchell et al. 2019) | No | Yes | No |
+| **MLOps governance frameworks** | Variable | Yes | Manual |
+| **ABNG provenance chain** | **Yes** | **Yes** | **Yes (baked into predict_snap)** |
+
+ABNG's contribution is the *combination*: cryptographic, ML-integrated, AND per-prediction. None of the existing tools do all three in one artifact.
 
 ### What this enables
 
 | Use case | Concrete flow |
 |---|---|
-| **FDA model attestation (pharma)** | Lab runs trial → trains ABNG → stamps with `sha256(approved_dataset)`. Regulator: `cjcl abng explain --model X.snap pred.snap` checks all three signals |
-| **Financial model audit (SEC, Basel III)** | "Prove this risk model used only data through model-validation cutoff" |
-| **HIPAA-compliant healthcare ML** | Patient-consent boundaries enforced cryptographically: stamp = `sha256(consent_set_v2)` |
-| **GDPR Article 22 right-to-explanation** | "Show me the audit trail of training data that produced this decision about me" |
-| **Academic reproducibility** | `paper.pdf + model.snap + dataset.csv` — anyone with all three can verify the paper's claims byte-for-byte |
+| **FDA model attestation (pharma)** | Lab runs trial → trains ABNG → stamps with `sha256(approved_dataset)`. Regulator: `cjcl abng explain --model X.snap pred.snap` checks all three signals in one CLI invocation |
+| **Financial model audit (SEC, Basel III)** | "Prove this risk model used only data through model-validation cutoff" — chain head + dataset fingerprint answer in one byte comparison |
+| **HIPAA-compliant healthcare ML** | Patient-consent boundaries enforced cryptographically: stamp = `sha256(consent_set_v2_canonicalized)` |
+| **GDPR Article 22** | Right to explanation = "show me the audit trail of training data that produced this decision about me" |
+| **Academic reproducibility** | `paper.pdf + model.snap + dataset.csv` — anyone with all three can verify byte-for-byte |
 | **Insider-threat in ML supply chain** | Attacker who fine-tunes a base model on contaminated data CAN'T hide the audit-chain extension |
 
-Most ML provenance tools today are *external*: file-system audit logs, MLflow metadata, sigstore-style attestations. ABNG bakes provenance *inside* the model artifact. The closest analog isn't an ML tool — it's Git's content-addressed history.
+The closest non-ABNG analog is **in-toto-attested ML pipelines** (an active research area, see Torres-Arias et al. 2019). The difference: ABNG bakes attestation *inside* the model artifact, not as a sidecar.
 
 ---
 
@@ -214,28 +415,84 @@ The headline assertion is **three-tier separation**:
 max(ood_score in dense bins)  <  ood_score in sparse bin  <  ood_score in routing-fall-off bin
 ```
 
-Three evidence regimes are cleanly partitioned. The composite score is a function of three independent inputs:
+Three evidence regimes are cleanly partitioned. The composite is a function of three independent inputs.
 
-- **density_score** — Mahalanobis-style distance from training points
-- **epistemic_z** — BLR's leverage at the query phi
-- **prefix_distance** — `(prefix_max − matched_prefix) / prefix_max`
+### The math
 
-The demo exercises all three by *construction*: dense bins have low density_score AND low epistemic_z. The sparse bin has high density_score (few training points). The bin with no child has high prefix_distance (descent fell off the tree).
+ABNG's `ood_score` composites three signals:
+
+$$\text{ood}(x) = f\bigl(\text{density}(x),\ \text{epistemic\_z}(x),\ \text{prefix\_distance}(x)\bigr)$$
+
+where:
+
+| Signal | Formula | What it detects |
+|---|---|---|
+| `density(x)` | $1 - \exp(-d^2)$ where $d^2 = (x - \bar{\mu})^\top \text{diag}(\Sigma)^{-1}(x - \bar{\mu})$ | Distance from training cluster mean (per-leaf) |
+| `epistemic_z(x)` | $\min(\varphi^\top \Lambda_n^{-1}\varphi / \mathbb{E}[\text{lev}], 1)$ | Calibrated BLR uncertainty (per-leaf) |
+| `prefix_distance(x)` | $(\text{prefix\_max} - \text{matched\_prefix}) / \text{prefix\_max}$ | Routing-failure rate (per-graph) |
+
+The composite combines these into a single bounded `[0, 1]` score. Each signal catches a different OOD mode:
+
+- **Density** catches inputs that fall *in* a known leaf but far from its training cluster.
+- **Epistemic** catches inputs where the BLR posterior says "I'm uncertain here."
+- **Prefix distance** catches inputs that *don't fit the codebook structure at all* — i.e. the descent fell off the tree because no child exists at that prefix byte.
 
 ### Why deliberately omit one child
 
-A symmetric setup (children in all 4 bins, varying training density) would only exercise the density and epistemic signals — not prefix_distance. By deliberately *not* adding a child for bin 3, queries in bin 3 descend with `matched_prefix=0` and the prefix-distance contribution to the composite fires.
+A symmetric setup (children in all 4 bins, varying training density) would only exercise the density and epistemic signals — not prefix_distance. By deliberately *not* adding a child for bin 3, queries in bin 3 descend with `matched_prefix=0`, and the prefix-distance contribution to the composite fires.
 
-The demo is asserting the **composite** works, not just individual signals. If it only varied density, you'd be left wondering whether the routing-distance contribution is real or just a docstring claim. The asymmetric child set proves it's real.
+The demo asserts the **composite** works, not just individual signals. If it only varied density, you'd be left wondering whether the routing-distance contribution is real or just a docstring claim. The asymmetric child set proves it's real.
+
+### Code sketch
+
+```rust
+fn probe_ood(g: i64, x: f64) -> f64 {
+    let x_t = Tensor.from_vec([x], [1]);
+    let prefix = abng_encode_prefix(g, x_t);
+    let evidence = abng_descend(g, prefix);
+    let matched = int(evidence.get([0]));      // matched_prefix
+    let leaf = int(evidence.get([1]));         // resolved leaf id
+    let phi = features_1d(x);
+    abng_ood_score(g, leaf, phi, matched, 1)   // composite [0, 1]
+}
+
+// Build phase: add children for bins 0, 1, 2 — NOT bin 3.
+abng_add_node(g, 0, 0);   // bin 0 child
+abng_add_node(g, 0, 1);   // bin 1 child
+abng_add_node(g, 0, 2);   // bin 2 child
+// (no add_node for byte 3 — bin 3 queries descend with matched_prefix = 0)
+
+// Train density on bins 0 and 1 heavily, bin 2 lightly:
+train_leaf_density(g, 1, 0.125, 32);   // bin 0: dense
+train_leaf_density(g, 2, 0.375, 32);   // bin 1: dense
+train_leaf_density(g, 3, 0.625, 4);    // bin 2: sparse
+// bin 3: no training (no leaf)
+```
+
+After training, probing at `x = 0.10` (bin 0, dense) gives a low ood; `x = 0.40` (bin 1, dense) low; `x = 0.62` (bin 2, sparse) medium; `x = 0.90` (bin 3, no leaf) highest.
+
+### Connection to existing techniques
+
+| Technique | OOD signal | Bayesian-aware? |
+|---|---|---|
+| **Mahalanobis distance OOD** (Lee et al. 2018) | Distance from class means | No |
+| **Energy-based OOD** (Liu et al. 2020) | -logsumexp(logits) | No |
+| **Deep ensemble disagreement** | Variance across M models | Approximately |
+| **ODIN** (Liang et al. 2018) | Temperature + input perturbation | No |
+| **Conformal prediction p-values** | Distribution-free coverage | No |
+| **ABNG composite** | density + epistemic + routing | **Yes (BLR posterior is principled)** |
+
+The closest is **Mahalanobis OOD** — both compute a distance-from-training-cluster score. ABNG adds the routing-failure signal on top, which catches a class of inputs Mahalanobis can't distinguish (in-cluster but topologically out-of-routing).
 
 ### What this enables
 
-- **Self-driving / robotics** — refuse to act on inputs unfamiliar to the training distribution; hand off to safe-mode.
+- **Self-driving / robotics** — abstain on inputs unfamiliar to the training distribution; hand off to safe-mode.
 - **Medical diagnosis** — don't predict on patient profiles outside the training population.
 - **Fraud detection** — novel attack patterns trigger high OOD scores.
 - **Active learning** — high-OOD inputs are highest-value labeling candidates.
+- **Safety-critical ML** — defense-in-depth against distribution shift at *inference* time, not just monitoring.
 
-The ABNG composite is more nuanced than typical "OOD detection" approaches because it composes **three orthogonal signals**. A query can be OOD because (a) it's far from training points (density), (b) the model is uncertain there (epistemic), or (c) it doesn't fit the codebook structure at all (prefix). Each tells a different operational story.
+A query can be OOD because (a) it's far from training points (density), (b) the model is uncertain there (epistemic), or (c) it doesn't fit the codebook structure at all (prefix). Each tells a different operational story — and the composite collapses them into one actionable score.
 
 ---
 
@@ -254,18 +511,69 @@ After running `abng_decide_step` three times on a graph with two sibling childre
 
 That last point deserves emphasis. The Rust-side `decide_step_canary_tests.rs` locks `chain_head = d064fb08…7807`. The CJC-Lang demo, running through both AST eval AND MIR exec, produces the *same* hex. **The same workload, expressed three different ways (direct Rust API, CJC-Lang AST, CJC-Lang MIR), produces bit-identical SHA-256 output through 23+ events.**
 
+### The math behind the Merge trigger
+
+`decide_step` evaluates each node against six trigger conditions in order: Compress → Merge → Split → Prune → Grow → Freeze. For the Merge trigger specifically, ABNG checks two conditions on a pair of siblings `(i, j)`:
+
+1. **Signature similarity:** Hamming distance of the 8-byte truncated SHA-256 signatures < `tau_merge`. The signature is computed from a 4-channel Welford profile (prediction, uncertainty, calibration, routing). Similar profiles → similar signatures → low Hamming distance.
+
+2. **Posterior similarity (KL divergence):**
+$$
+\mathrm{KL}\bigl(\mathcal{N}(\mu_i, \Sigma_i)\,\|\,\mathcal{N}(\mu_j, \Sigma_j)\bigr) < \text{kl\_merge}
+$$
+where `(μᵢ, Σᵢ)` are the BLR posterior parameters at node `i`. This is the standard multivariate Gaussian KL.
+
+Both conditions must hold for Merge to fire. The Merge action then folds `j`'s observations into `i` via Chan/Golub/LeVeque parallel Welford merge — preserving the post-merge stats as if they'd been observed in series.
+
 ### Why the two-sibling shared-signature topology
 
-- **It's the canonical canary setup.** Mirrors the Rust-side `decide_step_canary_tests` exactly — root + 2 children at keys 1 and 2, three observations at root, three decide_step calls. This lets the CJC-Lang demo serve as a *direct cross-pipeline determinism gate*.
-- **Merge is the most reliably-triggered action.** With identical training distributions on the two siblings, their signatures align. Decision-policy thresholds `tau_merge=0` (Hamming distance) and small `kl_merge` are satisfied immediately. Merge fires deterministically.
+- **Mirrors the Rust-side `decide_step_canary` exactly** — root + 2 children at keys 1 and 2, three observations at root (0.10, 0.25, 0.40), three decide_step calls. This lets the CJC-Lang demo serve as a *direct cross-pipeline determinism gate*.
+- **Merge is the most reliably-triggered action.** With identical training distributions on the two siblings, their signatures align trivially (Hamming distance = 0). Decision-policy thresholds `tau_merge=0` and `kl_merge=0.1` are satisfied immediately — KL between fresh-prior posteriors is exactly zero.
 - **Small graph keeps the test fast** — 4 nodes, 3 observations, 3 decide_step calls. Runs in milliseconds even through the AST interpreter.
+
+### Code sketch
+
+```rust
+fn main() {
+    let g = build_adaptive_graph(42);
+
+    abng_observe(g, 0, 0.10);
+    abng_observe(g, 0, 0.25);
+    abng_observe(g, 0, 0.40);
+
+    let i = 0;
+    while i < 3 {
+        let counts = abng_decide_step(g);    // [grow, split, merge, prune, compress, freeze]
+        i = i + 1;
+    }
+
+    let merge_count = abng_action_count(g, 2);  // → 1
+    print("merge_count: " + to_string(merge_count));
+    print("chain_head: " + abng_chain_head(g));  // → d064fb08…7807
+}
+```
+
+### Connection to existing techniques
+
+| Technique | Adaptive structure? | Triggers | Domain |
+|---|---|---|---|
+| **Mondrian Forests** (Lakshminarayanan 2014) | Yes (stochastic splits) | Online | Tabular |
+| **Bayesian Additive Regression Trees** (Chipman 2010) | Yes (stochastic) | Batch | Tabular |
+| **Hoeffding Trees / VFDT** (Domingos 2000) | Yes (statistical) | Streaming | Tabular |
+| **Concept-drift adaptive learners** (ADWIN, Page-Hinkley) | Yes (drift-triggered) | Streaming | Various |
+| **Neural Architecture Search** (Zoph 2017) | Yes (optimization-based) | Offline | Deep learning |
+| **ABNG decide_step** | **Yes (deterministic, audit-tracked)** | Six action types | Bayesian belief graphs |
+
+The closest analog is **Hoeffding Trees** — both fire structural changes based on running statistics. The differences: Hoeffding Trees use Hoeffding-bound-based split tests; ABNG uses fixed thresholds on a 14-element decision-policy tensor. ABNG also adds the audit-chain integration that lets you *prove* what structural changes happened and when.
 
 ### What this enables
 
-- **Self-organizing ML models** — graph capacity scales with workload complexity.
+- **Self-organizing ML models** — graph capacity scales with workload complexity; no manual architecture design.
 - **Streaming / online learning** — non-stationary distributions cause Grow on new modes, Prune on dead branches.
 - **Memory-efficient ML** — Compress unused subtrees; Merge redundant leaves; Prune inactive nodes.
-- **Continual learning** — Freeze stable-signature subtrees while training others.
+- **Hierarchical model distillation** — stable subtrees can be Frozen and exported as compiled MLPs.
+- **Continual learning without catastrophic forgetting** — Freeze stable-signature subtrees while training others.
+- **AutoML topology search** — decision-policy thresholds are hyperparameters; the trigger ladder is the search algorithm.
 
 ::: {.callout-warning}
 **Honest caveat:** the demo proves **Merge** fires deterministically. The other five trigger types (Grow, Split, Prune, Compress, Freeze) are tested at the primitive level but not demonstrated firing in a realistic workload. The "graph adapts to workload complexity" claim is half-substantiated by current demos. Closing this gap is straightforward (more demos with engineered workloads that fire each trigger type) but not yet shipped.
@@ -288,11 +596,65 @@ Two graphs receive 30 calibration observations each. Same predicted probabilitie
 
 The headline assertion `ece_a < ece_b` separates the two cleanly. Plus the specific bounds: `ece_a < 0.05` (well-calibrated achieves near-zero ECE) and `ece_b > 0.5` (flipped outcomes produce huge ECE).
 
+### The math
+
+ABNG uses standard 15-bin reliability-binning ECE (Naeini, Cooper, Hauskrecht 2015):
+
+$$
+\text{ECE} = \sum_{b=1}^{15} \frac{|B_b|}{N} \,\bigl|\,\text{accuracy}(B_b) - \text{confidence}(B_b)\,\bigr|
+$$
+
+where:
+
+- `B_b` is the set of predictions falling in bin `b` (15 equal-width bins on `[0, 1]`)
+- `accuracy(B_b)` = fraction of correct predictions in bin `b`
+- `confidence(B_b)` = mean predicted probability in bin `b`
+- `|B_b| / N` = bin's empirical weight
+
+A perfectly calibrated model has `accuracy(B_b) = confidence(B_b)` for every populated bin → ECE = 0. The miscalibrated graph with flipped outcomes pushes accuracy ≈ 1 - confidence in each bin → ECE saturates near 0.8.
+
 ### Why "flip outcomes" as the miscalibration model
 
-- **Flipping is the maximally-miscalibrated case.** Predicting 90% confidence and being right 10% of the time is the worst possible outcome — confidence is *anti-correlated* with truth.
-- **Same prediction distribution → isolates the calibration signal.** Both graphs see the same `(p, y)` pairs *modulo y*. Any difference in ECE is attributable to outcomes, not predictions.
-- **Three reliability bins** (0.1, 0.5, 0.9) span low/mid/high probability range without requiring 100+ observations to populate every bin.
+- **Maximum-ECE case.** Predicting 90% confidence and being right 10% of the time is the worst possible outcome — confidence is *anti-correlated* with truth. This makes the test gate `ece_b > 0.5` reliable; small numerical jitter doesn't push the result close to the threshold.
+- **Same prediction distribution → isolates the calibration signal.** Both graphs see the same `(p, y)` pairs *modulo y*. Any difference in ECE is attributable to outcomes, not to predictions or to bin populations.
+- **Three reliability bins (0.1, 0.5, 0.9)** span low/mid/high probability range without requiring 100+ observations to populate every bin.
+
+### Code sketch
+
+```rust
+fn well_calibrated_run(g: i64, node: i64) {
+    // For predicted_prob = 0.1: 1 positive, 9 negative (10% base rate).
+    let i = 0;
+    while i < 10 {
+        if i < 1 { abng_calibration_observe(g, node, 0.1, true); }
+        if i >= 1 { abng_calibration_observe(g, node, 0.1, false); }
+        i = i + 1;
+    }
+    // ... same pattern for p=0.5 (5/10) and p=0.9 (9/10) ...
+}
+
+fn miscalibrated_run(g: i64, node: i64) {
+    // For predicted_prob = 0.1: 9 positive, 1 negative (FLIPPED).
+    // For predicted_prob = 0.9: 1 positive, 9 negative (FLIPPED).
+    // ... see source for full pattern ...
+}
+
+let ece_a = abng_calibration_ece(g_a, 0);     // < 0.05
+let ece_b = abng_calibration_ece(g_b, 0);     // > 0.5
+```
+
+### Connection to existing techniques
+
+| Technique | Calibration | Per-leaf? |
+|---|---|---|
+| **Platt scaling** (Platt 1999) | Post-hoc logistic regression on logits | No (global) |
+| **Isotonic regression** (Zadrozny 2002) | Monotonic piecewise-constant fit | No (global) |
+| **Temperature scaling** (Guo et al. 2017) | Single-parameter softmax rescale | No (global) |
+| **Beta calibration** (Kull et al. 2017) | Beta distribution fit | No (global) |
+| **Histogram binning** (Zadrozny 2001) | Per-bin frequency estimate | Possible per-leaf |
+| **ABNG calibration** | 15-bin reliability + ECE | **Yes (per-node)** |
+
+ABNG's calibration is **per-node** — different leaves can be independently calibrated. This matters in practice: a model can be well-calibrated for European customers but miscalibrated for Asian customers (different leaves of the codebook). Per-leaf ECE makes this visible; global ECE would average it out.
 
 ### What this enables
 
@@ -300,6 +662,7 @@ The headline assertion `ece_a < ece_b` separates the two cleanly. Plus the speci
 - **Threshold tuning** — "should I act on predictions above 0.7?" depends on whether 0.7-bin predictions are actually correct 70% of the time.
 - **Model selection in production** — beyond accuracy/F1: ECE is the second-order quality metric.
 - **Active learning targeting** — high-ECE bins are evidence the model needs more training data in that probability range.
+- **Per-segment calibration analysis** — "is my model better calibrated for some user segments than others?" is answerable in one query.
 
 ---
 
@@ -315,11 +678,64 @@ A three-phase workload: train baseline, freeze, observe under same distribution,
 2. **`meaningful_shift`** — `drift_score(post-shift) > 2 × drift_score(same-dist)`. Catches a regression where drift detection becomes noisy.
 3. **`drift_nonneg`** — both scores are non-negative (no NaN, no negative noise).
 
+### The math
+
+ABNG's drift detection is built on a streaming diagonal-Gaussian density tracker. For features `φ ∈ ℝᵈ`, the tracker maintains:
+
+- Running mean: `μ̂` updated via Welford
+- Running diagonal covariance: `Σ̂_diag` updated via Welford on `(φᵢ - μ̂)²`
+
+`freeze_drift_baseline(node)` snapshots `(μ̂_baseline, Σ̂_diag_baseline)` at a reference point (typically end of pre-deployment training). After freezing, `drift_score` measures the divergence between the current tracker and the frozen baseline:
+
+$$
+\text{drift\_score} = \bigl\|(\hat{\mu}_{\text{cur}} - \hat{\mu}_{\text{baseline}})\bigr\|^2_{\text{Mahal}} + \alpha \cdot \bigl\|\Sigma_{\text{cur,diag}} / \Sigma_{\text{baseline,diag}} - \mathbf{1}\bigr\|^2
+$$
+
+— a weighted combination of mean shift (under baseline covariance) and covariance ratio deviation. Pure mean shift (this demo's case) gives a score dominated by the first term.
+
 ### Why a pure mean shift
 
-- **Translation, not rescaling.** The Mahalanobis-style distance the density tracker uses decomposes into mean-shift + covariance-shift contributions. By shifting only the mean, the test isolates that contribution cleanly.
-- **0 to 0.8 is large enough to be unambiguous.** Both distributions have ~0.01 jitter (effectively delta functions for density purposes); shifting the center by 0.8 is 80x the jitter — the drift signal saturates well above the floor.
-- **Same density-tracker geometry.** Both phases use the same dimension count (4-D features), same covariance scale, same batch sizes (16 each post-baseline). Only the location changes — isolating "distribution shifted" from confounders.
+- **Translation, not rescaling** isolates the mean-shift contribution to drift_score. A combined "scale and rotate" shift would test more, but the basic mean-shift case is the simplest sufficient demonstration.
+- **0 to 0.8 is large enough to be unambiguous.** Both distributions have ~0.01 jitter; shifting the center by 0.8 is 80x the jitter — the drift signal saturates well above the floor.
+- **Same density-tracker geometry** — same dimension count (4-D features), same covariance scale, same batch sizes (16 each post-baseline). Only the location changes.
+
+### Code sketch
+
+```rust
+let g = build_drift_graph(7);
+
+// Phase 0: train baseline density on N(0, 0.01).
+let baseline_batch = density_batch(0.0, 32);
+abng_density_observe(g, 0, baseline_batch);
+
+abng_freeze_drift_baseline(g, 0);     // snapshot reference state
+
+// Phase A: same distribution.
+let same_batch = density_batch(0.0, 16);
+abng_density_observe(g, 0, same_batch);
+let drift_low = abng_drift_score(g, 0);
+
+// Phase B: shifted distribution N(0.8, 0.01).
+let shifted_batch = density_batch(0.8, 16);
+abng_density_observe(g, 0, shifted_batch);
+let drift_high = abng_drift_score(g, 0);
+
+// drift_high > 2 * drift_low (the demo's headline assertion)
+```
+
+### Connection to existing techniques
+
+| Technique | Statistic | Streaming? | Reference required |
+|---|---|---|---|
+| **Kolmogorov-Smirnov test** | Max CDF difference | No | Yes |
+| **Population Stability Index (PSI)** | Discrete distribution distance | No (batch) | Yes |
+| **Maximum Mean Discrepancy** (Gretton 2012) | Kernel-based difference | Possible | Yes |
+| **Page-Hinkley test** | Change-point detection | Yes | Implicit |
+| **ADWIN** (Bifet 2007) | Adaptive windowing | Yes | None (auto-detect) |
+| **DDM** (Gama 2004) | Drift Detection Method (error rate) | Yes | None |
+| **ABNG drift_score** | Mahalanobis-style on density tracker | Streaming | Frozen baseline |
+
+The closest analog is **PSI** (widely used in finance) — both compute a deviation-from-baseline distribution score. The differences: PSI is for discrete histograms; ABNG operates on continuous diagonal-Gaussian density. PSI is computed batch; ABNG accumulates streamingly via Welford.
 
 ### What this enables
 
@@ -327,6 +743,7 @@ A three-phase workload: train baseline, freeze, observe under same distribution,
 - **Continual learning auto-trigger** — drift signal is the cue to incorporate new data into the model.
 - **A/B test data validation** — confirm the new dataset's distribution matches the original before deploying a new model.
 - **Sensor / pipeline integrity** — detect upstream data-source switches, sensor drift, schema changes.
+- **Customer-behavior modeling** — recommender systems trained on Q1 data drifting against Q3 user behavior.
 
 ---
 
@@ -336,21 +753,61 @@ A three-phase workload: train baseline, freeze, observe under same distribution,
 
 ### What this demo proves
 
-Five training observations across three nodes (root + 2 children, each receives 1-2 observations), then `compact_log` fires:
+Five training observations across three nodes, then `compact_log` fires:
 
 1. **`emitted == 3`** — exactly one StatsSnapshot per touched node.
 2. **`audit_grew_by_emitted`** — `audit_post == audit_pre + emitted`.
 3. **`chain_advanced`** — chain_head changed (events were properly chain-linked).
 4. **`verify_chain == Ok` post-compact** — the new events don't break integrity.
 
+### The math (and what's deferred)
+
+`compact_log(g, until_seq)` walks events in `[0, until_seq)`, tracks the set of distinct node IDs touched, and for each emits one `StatsSnapshot` event whose payload is `(node_id, sha256(canonical_bytes(node.stats)))`.
+
+This sets up the **read-side optimization** that ships in a future phase: when `smart_replay` encounters a `StatsSnapshot`, it can:
+
+1. Trust the snapshot's `stats_hash` matches the node's `canonical_bytes` (consistency check, shipped today).
+2. Skip the `node.observe(value)` mutation for subsequent `BeliefUpdate` events in the same node's pre-snapshot range, since the snapshot subsumes their cumulative effect.
+3. Install the `stats` directly from the per-node section's `canonical_bytes` instead of replaying from observations.
+
+The shipped layer is the **marker emission** + **chain-integrity preservation** + **smart_replay consistency check**. The cycle-saving fast-forward is Phase 0.6 work.
+
+### Code sketch
+
+```rust
+abng_observe(g, 0, 0.1);
+abng_observe(g, 0, 0.2);
+abng_observe(g, 1, 0.5);
+abng_observe(g, 1, 0.6);
+abng_observe(g, 2, 0.9);
+
+let audit_pre = abng_audit_len(g);             // e.g. 8
+let emitted = abng_compact_log(g, audit_pre);  // → 3 (3 touched nodes)
+let audit_post = abng_audit_len(g);            // 8 + 3 = 11
+print("verify_chain: " + to_string(abng_verify_chain(g)));  // → true
+```
+
+### Connection to existing techniques
+
+| Technique | Mechanism | Domain |
+|---|---|---|
+| **Database WAL compaction** | Replace old WAL records with snapshot | RDBMS |
+| **LSM tree compaction** | Merge sorted runs | KV stores (RocksDB, Cassandra) |
+| **Chandy-Lamport snapshotting** | Distributed-system state capture | Distributed systems |
+| **Checkpoint-restart** | Periodic full-state save | HPC, ML training |
+| **ABNG compact_log + StatsSnapshot** | Event-log markers, hash-chain-integrated | ML training audit logs |
+
+The closest analog is **WAL log compaction** in databases — periodic snapshot points that let you truncate older log entries without losing recoverability. ABNG adds the chain-integrity property: the snapshot itself is a hash-linked event, so post-compaction you can still cryptographically verify nothing was tampered with.
+
 ### What this enables
 
 - **Long-running training without log explosion** — periodic compaction preserves checkpoints while bounding audit-log growth.
 - **Snapshot-based debugging** — each StatsSnapshot is a "save point" for forensic replay.
 - **Foundation for the Phase 0.6 fast-forward optimization** — smart-replay can fast-forward past observation runs by trusting the StatsSnapshot.
+- **Distributed training checkpointing** — workers compact-log periodically; central server replays the compact form.
 
 ::: {.callout-warning}
-**The full read-side optimization is deferred to a future phase.** Today the marker layer ships with chain-integrity preservation; the cycle-saving "skip the observe" optimization that would make this user-visibly faster is Phase 0.6 work.
+**The cycle-saving optimization is deferred to Phase 0.6.** Today the marker layer ships with chain-integrity preservation; the actual fast-forward that would make this user-visibly faster lands later.
 :::
 
 ---
@@ -365,18 +822,81 @@ Read `abng_node_maturity` at two timepoints: fresh graph (T=0) and after 10 stab
 
 1. **`sum_at_t0 == 0.0`** — fresh graph, all maturity flags are zero.
 2. **`maturity_evolved`** — sum at T=1 strictly exceeds sum at T=0.
-3. **`calib_binary` AND `unc_binary`** — positions [1] (calibration_stable) and [2] (uncertainty_stable) are strict 0/1 flags as documented.
+3. **`calib_binary` AND `unc_binary`** — positions [1] (calibration_stable) and [2] (uncertainty_stable) are strict 0/1 flags.
 4. **`samples_seen_nonneg`** — position [0] (samples_seen) is non-negative.
 5. **`trust_in_range`** — position [3] (trust_level) is in `[0, 1]`.
 
-The maturity tensor turns out to be heterogeneous — a count, two binary flags, and a continuous trust level. Building this demo is what flushed out the API quirk; the docstring on `abng_node_maturity` describes it correctly but the behavior is easy to mis-assume.
+### The semantics
+
+`abng_node_maturity(g, node)` returns a 4-element f64 tensor:
+
+| Index | Field | Type | Definition |
+|---|---|---|---|
+| 0 | `samples_seen` | non-negative count | Total observations applied to this node |
+| 1 | `calibration_stable` | binary 0/1 | True if 3-window ECE history's `\|Δ\|` < `ece_stability_max_delta` |
+| 2 | `uncertainty_stable` | binary 0/1 | True if 3-window σ history shows ratio < `sigma_stability_ratio` |
+| 3 | `trust_level` | continuous [0, 1] | Composite trust score from signature stability + maturity flags |
+
+The flags advance through `decide_step` calls plus the underlying `signature_stable_calls` counter that increments on consecutive matching signatures.
+
+### Why a stable observation stream
+
+The maturity flags advance under two conditions:
+
+- `signature_stable_calls` increments when consecutive `decide_step` calls observe an unchanged signature
+- `samples_seen` simply counts observations
+
+By choosing identical observations (`abng_observe(g, n, 0.1)` repeatedly), the signature stays exactly identical across decide_step calls — the stability counter climbs deterministically. With 10 observations + 5 decide_step calls, at least the stability flags should flip.
+
+Realistic data (varying observations) would also work but with lower predictability — the signature might wobble enough that `signature_stable_calls` resets occasionally. The stable-stream choice makes the demo deterministic.
+
+### Code sketch
+
+```rust
+let g = build_maturity_graph(42);
+
+let mat0 = abng_node_maturity(g, 0);  // [0, 0, 0, 0] — fresh
+
+let i = 0;
+while i < 10 {
+    abng_observe(g, 0, 0.1);
+    abng_observe(g, 1, 0.1);
+    i = i + 1;
+}
+let j = 0;
+while j < 5 {
+    abng_decide_step(g);
+    j = j + 1;
+}
+
+let mat1 = abng_node_maturity(g, 0);
+let r0 = mat1.get([0]);  // samples_seen (count > 0)
+let r1 = mat1.get([1]);  // calibration_stable (0 or 1)
+let r2 = mat1.get([2]);  // uncertainty_stable (0 or 1)
+let r3 = mat1.get([3]);  // trust_level (continuous [0, 1])
+```
+
+### Connection to existing techniques
+
+| Technique | Convergence diagnostic | Domain |
+|---|---|---|
+| **Gelman-Rubin R̂** | Cross-chain variance ratio | MCMC convergence |
+| **Effective Sample Size (ESS)** | Autocorrelation-based | MCMC convergence |
+| **Validation-loss plateau detection** | Loss derivative threshold | Deep learning training |
+| **EarlyStopping callback** | Patience + monitor metric | sklearn/keras training |
+| **ML monitoring stacks** (Arize, WhyLabs) | External time-series dashboards | Production ML |
+| **ABNG node_maturity** | Per-node 4-tuple | Bayesian belief graphs |
+
+The closest analog in ML practice is **EarlyStopping** + production monitoring — both ask "has my model converged enough to deploy?" ABNG's contribution: per-node granularity (you can see which leaves have stabilized) and cryptographic integrity (the maturity values are derived from the same audit-tracked state, not an external log).
 
 ### What this enables
 
 - **Production ML monitoring dashboard** — "has my model converged?" → check maturity per-node.
-- **Auto-stop training** — stop when maturity flags have all stabilized.
+- **Auto-stop training** — stop when maturity flags have all stabilized (avoid wasted compute).
+- **Hyperparameter tuning** — which learning rate makes flags settle fastest?
 - **Convergence-failure debugging** — which flag never reaches 1? — points at the failing component.
 - **Production rollout gating** — deploy-time check: only ship models where `calibration_stable == 1`.
+- **Federated learning aggregation** — aggregate worker updates only from nodes where maturity has stabilized.
 
 ---
 
@@ -390,18 +910,54 @@ Every CJC-Lang demo runs through both `cjc-eval` (AST tree-walk) AND `cjc-mir-ex
 
 The strongest single instance: the **adaptive triggers demo's `chain_head` matches the Rust-side `decide_step_canary` byte-for-byte** (`d064fb08…7807`). Same workload, three pipelines (direct Rust API + AST eval + MIR exec), bit-identical SHA-256 over 23+ audit events.
 
-### Why this is hard to deliver in practice
+### The architectural choices that make this work
 
-Three architectural choices that *make* this possible:
+Three load-bearing decisions enforced across the workspace:
 
-- **All FP arithmetic uses Kahan compensation** — no FMA, no SIMD-introduced reordering, deterministic add-order semantics.
-- **All maps are `BTreeMap`** — iteration order is sorted, never random. `HashMap` with random hashing would silently break determinism.
-- **All RNG is `SplitMix64`** with explicit seed threading — no thread-local randomness, no time-based seeds, no platform-specific entropy.
+1. **Kahan compensated summation** for all FP reductions (`KahanAccumulatorF64`). Naive `Σxᵢ` accumulates rounding error in O(n·ε); Kahan reduces this to O(ε). More importantly, **Kahan is order-deterministic for fixed input order** — no SIMD-introduced reordering, no FMA fusion. This is the single biggest source of "approximately deterministic" failure in standard ML stacks.
 
-Most ML stacks claim "deterministic with same seed" but produce subtly different bytes across runs. ABNG's parity gates *prove* determinism every test run.
+2. **`BTreeMap`/`BTreeSet` only**, never `HashMap`. Hash maps with random hashing have iteration order that depends on the per-process seed — different runs can iterate in different orders, and any code that depends on iteration order (e.g., reduction loops) becomes non-deterministic. BTreeMap iterates in sorted key order, every time.
+
+3. **`SplitMix64` with explicit seed threading**. No thread-local randomness, no time-based seeds, no platform-specific entropy. Every random draw is reproducible from `(initial_seed, operation_history)`.
+
+These three choices aren't aspirational — they're enforced by the parity gates. If anyone introduces FMA in `cjc-runtime/linalg.rs` tomorrow, every parity test fails simultaneously with byte-divergent output.
+
+### What this means for ML practitioners
+
+ML reproducibility is famously hard. A typical "deterministic" PyTorch model can produce different bytes across runs due to:
+
+- CUDA atomic ops (non-deterministic reduction order on GPU)
+- cuDNN algorithm selection (can pick different kernels per run)
+- Multi-threaded CPU reductions (thread-scheduling non-determinism)
+- FMA fusion (compiler-dependent instruction selection)
+- Hash-randomization in Python's `dict`
+
+Each of these has been a real production-incident root cause. ABNG's parity gates *prove* the absence of these bugs every test run.
+
+### Connection to the reproducibility crisis literature
+
+| Source | Claim |
+|---|---|
+| **Pineau et al. 2021, "Improving Reproducibility in ML Research"** | Most ML papers can't be reproduced even with the same code |
+| **Hutson 2018, "Artificial intelligence faces reproducibility crisis"** | Structural problem in the field |
+| **TensorFlow Determinism Project** (`tf.config.experimental.enable_op_determinism`) | Best-effort, with known gaps |
+| **PyTorch determinism guide** | Documents environmental flags; doesn't guarantee bit-equality |
+| **ML reproducibility checklists** (NeurIPS 2019+) | Process-level requirements |
+| **ABNG parity gates** | Cryptographic byte-equality across pipelines |
+
+ABNG's contribution to this conversation: **byte-equality is achievable** if you commit to determinism-by-construction at every layer (no FMA, no random hash, no thread-local RNG). The parity gates *prove* it run by run.
+
+### What this enables
+
+- **Reproducibility** — same seed → same model bytes; papers ship verifiable results.
+- **Cross-platform deployment** — train on Linux, deploy on Windows → byte-identical model (modulo cross-platform CI verification, which is the next piece of work).
+- **Distributed training** — deterministic operations enable provable consistency without per-step coordination.
+- **Regulatory replay** — regulator can re-run training and verify every byte.
+- **CI / regression detection** — byte-equal output makes test-failure debugging trivial — diff lines, not "it's flaky."
+- **Differential testing across executor versions** — new optimizer? Old vs new must produce same bytes for all valid programs.
 
 ::: {.callout-warning}
-**Cross-platform determinism is not yet verified.** All canary hashes were computed on Windows. They *should* hold on Linux/macOS (Kahan, no FMA, BTreeMap), but this isn't yet tested in CI.
+**Cross-platform determinism is not yet verified.** All canary hashes were computed on Windows. They *should* hold on Linux/macOS (Kahan, no FMA, BTreeMap), but this isn't yet tested in CI. Adding GitHub Actions CI that runs the suite on three platforms and compares the canaries is a one-day project — and one of the first items on the Phase 0.6 list.
 :::
 
 ---
@@ -429,7 +985,7 @@ Three things stand between current ABNG and production readiness:
 
 ### Cross-platform determinism CI
 
-The locked canary hashes are Windows-only today. They *should* hold across platforms (the architecture is designed for it), but this is unverified. Adding GitHub Actions CI that runs the full test suite on Linux + macOS + Windows and compares the canaries is a one-day project that pays off forever — every future commit either preserves cross-platform determinism or fails CI loudly.
+The locked canary hashes are Windows-only today. They *should* hold across platforms (the architecture is designed for it), but this is unverified. Adding GitHub Actions CI that runs the full test suite on Linux + macOS + Windows and compares the locked canaries is a one-day project that pays off forever — every future commit either preserves cross-platform determinism or fails CI loudly.
 
 ### Performance benchmarks
 
@@ -439,38 +995,13 @@ The "linear scaling" claim for ABNG vs classical GP is *correct* asymptotically 
 
 This is the bigger long-term constraint. The CJC-Lang interpreter is currently 5–50× slower than direct Rust API access for ABNG demos. For research / experimentation that's fine. For production ML training at scale, it's a hard ceiling.
 
-The chess RL benchmark hit this wall directly — project memory: *"bottleneck is interpreter throughput, not ML algorithm design."* Specific levers, in increasing order of effort:
+The chess RL benchmark hit this wall directly — the bottleneck for v2.5 was interpreter throughput, not ML algorithm design. Specific levers, in increasing order of effort:
 
 - **MIR optimizer passes** — current optimizer has CF + DCE; further passes (loop-invariant code motion, common subexpression elimination, function inlining) are weeks of work each.
 - **Hot-path specialization in `cjc-runtime`** — ABNG already shows the pattern (75 native builtins for what users actually do). Has architectural cost: every native kernel is a feature you can't compose out of simpler primitives.
 - **AOT compilation** — `cjcl compile foo.cjcl → foo.exe`. LLVM or Cranelift backend. Months of work but the only path that closes the perf gap meaningfully.
 
 Most likely sequencing: continue ABNG (Phase 0.6 work — smart-replay fast-forward, cross-platform CI, lineage case study) while landing incremental MIR optimizer + native-kernel work. AOT is a multi-month commitment that depends on whether CJC-Lang's long-term identity is *research vehicle* or *production language*.
-
-## Honest aggregate
-
-ABNG is **a 7/10 system if you have the niche problems it solves**, and **a 2/10 system if you don't.** The demos honestly bound where it's useful:
-
-**Strong fit (lead with ABNG):**
-- Pharma / financial / healthcare ML with regulatory attestation needs
-- Academic groups publishing reproducibility-critical results
-- Tabular Bayesian regression at sizes prohibitive for classical GP
-
-**Moderate fit (consider ABNG alongside existing tools):**
-- Production ML monitoring (drift detection + existing observability)
-- Active learning research where BLR uncertainty is sufficient
-- Scientific computing groups doing 1-D / 2-D PINNs
-
-**Poor fit (don't reach for ABNG):**
-- Deep learning, vision, NLP, audio — codebook routing doesn't fit
-- Real-time inference / latency-sensitive serving — audit-chain overhead
-- Quick experimentation / prototyping — overkill
-
-The honest one-sentence summary: **"ABNG is what you reach for when you need to prove what your model was trained on, with calibrated Bayesian uncertainty, and you can tolerate the audit-chain overhead."**
-
-That's a real market — but it's a niche, not the mainstream. The work ahead — interpreter perf, cross-platform CI, real case studies — is what would graduate ABNG from "demonstrably works in tests" to "deployed in production somewhere that matters."
-
-For now: experimental, but with clear value for the right user. If that's you — you know who you are — get in touch.
 
 ::: {.callout-note}
 ABNG lives at [`crates/cjc-abng/`](https://github.com/AdamEzzat1/CJC) in the CJC-Lang repository. The 13 demo files are under `tests/test_abng_*.rs` and `tests/abng_demos/`. The full test count is 960; the source is open.
