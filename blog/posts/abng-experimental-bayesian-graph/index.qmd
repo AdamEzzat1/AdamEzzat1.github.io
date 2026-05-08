@@ -27,6 +27,21 @@ ABNG is an **experimental** addition to CJC-Lang shipping in the `cjc-abng` crat
 ABNG is a research-grade addition to CJC-Lang. The capabilities described here are *demonstrated* by tests, but not yet *productized*: there are no benchmarks against industry baselines, no cross-platform CI verification of the determinism canaries, and no real-world case study of someone using ABNG to attest a deployed model. Treat this as a progress report, not a production recommendation. The "what's still missing" section at the end is honest about the gaps.
 :::
 
+::: {.callout-important}
+## On data scale: these demos prove "the capability works", not "it works at scale"
+
+**Every demo in this post uses small datasets — between 3 and 200 training samples per scenario.** The choice was deliberate: the goal is to prove each capability is real (not vacuous), under enough data to make the assertion meaningful, in a workload small enough that every test runs in milliseconds and produces a locked SHA-256 canary.
+
+What this means concretely:
+
+- **The capabilities are demonstrated at the scale tested.** Where I claim the BLR posterior converges to the analytical solution, I trained on tens of samples, not thousands.
+- **Performance at production scale (n > 10⁴) is not yet benchmarked.** The asymptotic claims (e.g., per-leaf BLR is O(N · d²) vs classical GP's O(N³)) are correct *by construction* — the math says so — but no demo has wall-clock measurements at large N.
+- **The demos are reproducibility gates, not load tests.** They lock determinism canaries; they don't prove ABNG handles realistic ML-training dataset sizes.
+- **Each demo's data scale is named explicitly** in its "Why this workload" subsection below — read those if you want to know exactly what level of evidence backs each claim.
+
+Wall-clock benchmarks at n ∈ {10³, 10⁴, 10⁵, 10⁶} and a large-dataset case study are explicitly listed as next steps in the "What's next" section. Until those land, every claim in this post should be read as **"proven at small scale, theoretically expected to hold at larger scale, empirically unverified at production scale."**
+:::
+
 ## What is ABNG?
 
 ABNG — Adaptive Belief Network Graph — is a `cjc-abng` crate that lives alongside the existing CJC-Lang workspace. The goal: provide ML primitives that go beyond "fit some weights to data" by adding three orthogonal axes:
@@ -113,6 +128,8 @@ $$u(x, t) = e^{-\alpha \pi^2 t} \sin(\pi x)$$
 That choice is load-bearing. The BLR feature basis is `[1, x, sin(πx), cos(πx)]` — the analytical solution `exp(-π²·0.1)·sin(πx)` is *exactly representable* as a single non-zero coefficient on the `sin(πx)` basis function. So with enough samples, the BLR posterior mean *must* converge to the truth. If it doesn't, the BLR implementation is broken — not the test. This is the same trick statisticians use to validate Bayesian implementations: pick a problem where the truth is in the basis, and the posterior is a closed-form limit.
 
 The training schedule is **deliberately asymmetric**: 32 samples uniformly across `[0.25, 0.75]` (interior), 4 samples each in `[0, 0.25)` and `[0.75, 1]` (edges). Without this asymmetry, uniform training would give uniform leverage and the spatial-partition property would be invisible.
+
+**Data scale:** 40 training samples total (32 interior + 8 edge), 5 probe points. Enough to demonstrate the spatial-partition property; *not* enough to claim ABNG matches state-of-the-art Bayesian PINN methods on realistic PDE problems. Validating against PINN benchmarks (NS equations, 2-D Burgers) at 10⁴+ collocation points is future work.
 
 ### Code sketch
 
@@ -208,6 +225,8 @@ The target is `y = 0.3 + 0.5x₁ + 0.4x₂ + 0.7·x₁·x₂`. Three deliberate 
 - **2-D input with a routing dimension.** The codebook routes by `x₁` (4 bins) and lets `x₂` become a within-leaf feature. This mirrors the canonical ABNG pattern: *use one dimension to partition the input space, regress on the rest within each leaf*. Common in production: route by `(time-of-day, geo-region)` and regress on the rest within each segment.
 - **Unit square domain** — predictable, no scaling tricks. Codebook boundaries `[0.25, 0.5, 0.75]` evenly partition `[0, 1]`.
 
+**Data scale:** Two trained graphs (16-point and 64-point training sets) plus a 200-point graph for the per-leaf-bound check; 32 held-out test queries for MSE comparison. The asymptotic claim "ABNG O(N · d²) beats classical GP O(N³)" is *correct* by construction but **not yet wall-clock-benchmarked** at scales where it matters (n ≥ 10⁴). Without those numbers this is a "promising primitive," not a measured speedup vs. e.g. SVGP / sklearn's GaussianProcessRegressor / GPy.
+
 ### Code sketch
 
 ```rust
@@ -281,6 +300,8 @@ The audit chain is designed against three concrete attacks:
 2. **Event reordering.** Attacker shuffles the order of training events. Detection: each event's payload includes its `seq` number; reordering puts events at the wrong seq, breaking the per-event monotonic-seq invariant.
 3. **Event substitution.** Attacker replaces one event with another that produces the same `new_hash`. Detection: SHA-256 collision resistance — finding two payloads with the same hash is computationally infeasible.
 
+**Data scale:** Universal property — every demo's audit log (3 to ~110 events, depending on workload) gets verified. The largest audit log in the test suite is the PINN demo's 110-event chain post-asymmetric training. The cryptographic argument scales independently of dataset size: SHA-256 chain verification is O(log(events)) per check and the security guarantees come from the hash function itself, not from the workload. So this is the one capability where "small data demos suffice" is a load-bearing claim, not a hedge.
+
 ### Code sketch — what an event payload looks like
 
 ```text
@@ -349,6 +370,8 @@ The provenance stamp is `sha256(canonical_dataset_bytes)`. **An auditor with the
 - **64-row size is realistic** for Phase II clinical-trial cohorts (often <200 patients per arm).
 - **Cubic dose-response curve** `y = 0.2 + 0.6·dose + 0.1·dose²` is biologically plausible AND exactly fittable in the BLR basis `[1, dose, dose², dose³]`, giving us ground-truth assertions in addition to the security claims.
 - **Tamper at row 17 specifically** because `dose=0.5` falls right at a codebook bin boundary — routing the tampered observation to a specific leaf, making the BLR `state_hash` divergence clearly attributable.
+
+**Data scale:** Two graphs trained on 16-row datasets each (the CJC-Lang version of the demo uses 16 rows for interpreter speed; the Rust-side version uses 64). Tampering one row out of 16 — or one out of 64 — is the *minimum-effort* attack. A 1.5%-of-dataset perturbation is the strongest test possible: if even this is detectable, larger tampers are detected a fortiori. Scale-up to 10⁴ - 10⁶ row clinical-trial datasets is straightforward (the cryptographic argument is dataset-size-invariant) but **not yet validated end-to-end** with a real anonymized clinical-trial corpus.
 
 ### Code sketch
 
@@ -443,6 +466,8 @@ A symmetric setup (children in all 4 bins, varying training density) would only 
 
 The demo asserts the **composite** works, not just individual signals. If it only varied density, you'd be left wondering whether the routing-distance contribution is real or just a docstring claim. The asymmetric child set proves it's real.
 
+**Data scale:** 32 dense observations per bin on bins 0 and 1, 4 sparse on bin 2, 0 on bin 3 (no leaf) — 68 total density observations. 4 probe queries (one per bin). Sufficient to demonstrate the three-tier separation property; insufficient to characterize behavior under realistic ML inputs (e.g., 1024-D image embeddings, NLP token vectors). OOD detection on high-D unstructured inputs is **fundamentally outside** the codebook-routing paradigm — ABNG's OOD score requires structured input where the codebook can produce a meaningful prefix encoding.
+
 ### Code sketch
 
 ```rust
@@ -530,6 +555,8 @@ Both conditions must hold for Merge to fire. The Merge action then folds `j`'s o
 - **Mirrors the Rust-side `decide_step_canary` exactly** — root + 2 children at keys 1 and 2, three observations at root (0.10, 0.25, 0.40), three decide_step calls. This lets the CJC-Lang demo serve as a *direct cross-pipeline determinism gate*.
 - **Merge is the most reliably-triggered action.** With identical training distributions on the two siblings, their signatures align trivially (Hamming distance = 0). Decision-policy thresholds `tau_merge=0` and `kl_merge=0.1` are satisfied immediately — KL between fresh-prior posteriors is exactly zero.
 - **Small graph keeps the test fast** — 4 nodes, 3 observations, 3 decide_step calls. Runs in milliseconds even through the AST interpreter.
+
+**Data scale:** 3 observations + 3 decide_step calls, on a 4-node graph. This is **deliberately the smallest demo in the entire suite** — its job is to prove the trigger semantics fire deterministically and that the chain_head matches the Rust-side canary byte-for-byte. It's *not* a demonstration that ABNG-driven structural adaptation is competitive against e.g. Mondrian Forests on 10⁵-row tabular benchmarks. That comparison is genuine future work — engineering a Grow-firing or Split-firing workload at scale, then measuring vs. baseline tree learners.
 
 ### Code sketch
 
@@ -619,6 +646,8 @@ A perfectly calibrated model has `accuracy(B_b) = confidence(B_b)` for every pop
 - **Same prediction distribution → isolates the calibration signal.** Both graphs see the same `(p, y)` pairs *modulo y*. Any difference in ECE is attributable to outcomes, not to predictions or to bin populations.
 - **Three reliability bins (0.1, 0.5, 0.9)** span low/mid/high probability range without requiring 100+ observations to populate every bin.
 
+**Data scale:** 30 calibration observations per graph (2 graphs total = 60 observations). This is the **minimum sufficient** sample size to make the three-bin reliability statistics non-trivially populated and the ECE separation `ece_a < 0.05 < 0.5 < ece_b` reliable. It does *not* validate calibration on actual classification tasks (image classifiers, transformer logits, etc.) — those workloads have thousands of (p, y) pairs and 10-100 calibration buckets. Per-leaf ECE on a real classifier is straightforward future work.
+
 ### Code sketch
 
 ```rust
@@ -698,6 +727,8 @@ $$
 - **Translation, not rescaling** isolates the mean-shift contribution to drift_score. A combined "scale and rotate" shift would test more, but the basic mean-shift case is the simplest sufficient demonstration.
 - **0 to 0.8 is large enough to be unambiguous.** Both distributions have ~0.01 jitter; shifting the center by 0.8 is 80x the jitter — the drift signal saturates well above the floor.
 - **Same density-tracker geometry** — same dimension count (4-D features), same covariance scale, same batch sizes (16 each post-baseline). Only the location changes.
+
+**Data scale:** 32 baseline samples + 16 same-distribution + 16 shifted = 64 density observations total, on a single node. This proves the `drift_score` machinery responds correctly to a controlled mean shift; it does **not** characterize behavior under realistic concept drift (gradual drift, abrupt drift, recurring drift, periodic shift). Production ML drift detection is typically validated on streaming corpora with millions of points across months of real customer behavior — that's a workload-grade benchmark, not a research demo, and it's explicitly future work.
 
 ### Code sketch
 
@@ -787,6 +818,8 @@ let audit_post = abng_audit_len(g);            // 8 + 3 = 11
 print("verify_chain: " + to_string(abng_verify_chain(g)));  // → true
 ```
 
+**Data scale:** 5 observations across 3 nodes (smallest in the suite). This proves the marker emission is deterministic and chain-integrity-preserving. The interesting scale claim — "compact_log + smart-replay can fast-forward replay of a 10⁶-event audit log" — is **deferred** to Phase 0.6 along with the actual cycle-saving optimization.
+
 ### Connection to existing techniques
 
 | Technique | Mechanism | Domain |
@@ -849,6 +882,8 @@ The maturity flags advance under two conditions:
 By choosing identical observations (`abng_observe(g, n, 0.1)` repeatedly), the signature stays exactly identical across decide_step calls — the stability counter climbs deterministically. With 10 observations + 5 decide_step calls, at least the stability flags should flip.
 
 Realistic data (varying observations) would also work but with lower predictability — the signature might wobble enough that `signature_stable_calls` resets occasionally. The stable-stream choice makes the demo deterministic.
+
+**Data scale:** 10 observations + 5 decide_step calls. Deliberately tiny — the workload exists to prove "maturity flags evolve from 0 → 1 under stable training," not to characterize maturity dynamics under realistic noisy ML training. A real production-monitoring deployment would observe maturity over thousands of decide_step calls across hours/days of training.
 
 ### Code sketch
 
@@ -987,9 +1022,22 @@ Three things stand between current ABNG and production readiness:
 
 The locked canary hashes are Windows-only today. They *should* hold across platforms (the architecture is designed for it), but this is unverified. Adding GitHub Actions CI that runs the full test suite on Linux + macOS + Windows and compares the locked canaries is a one-day project that pays off forever — every future commit either preserves cross-platform determinism or fails CI loudly.
 
-### Performance benchmarks
+### Performance benchmarks at scale
 
-The "linear scaling" claim for ABNG vs classical GP is *correct* asymptotically but **not yet benchmarked** at realistic dataset sizes. Without `n ∈ {10³, 10⁴, 10⁵}` wall-clock numbers, this is a "promising primitive" not a "GP killer."
+This is the biggest single gap between the current state and production readiness, and it deserves emphasis: **none of the demos in this post test ABNG at production-scale data.** Sample sizes range from 3 (adaptive triggers) to 200 (tabular GP-like). Every demo runs in milliseconds. That's an asset for test-suite reproducibility but a liability for the "ABNG works at scale" story.
+
+What's specifically *not* yet validated:
+
+| Scale claim | Status |
+|---|---|
+| "ABNG O(N · d²) beats classical GP O(N³)" | Correct by construction, **never wall-clock-benchmarked vs SVGP / sklearn / GPy** at n ∈ {10³, 10⁴, 10⁵, 10⁶} |
+| "Per-leaf BLR posterior converges to truth on real PDE problems" | Demonstrated on 1-D heat eq with 40 samples; **never on 2-D Burgers / Navier-Stokes at 10⁴ collocation points** |
+| "Lineage attestation works on real anonymized clinical-trial data" | Demonstrated on 16-row synthetic; **never on a real Phase II/III trial corpus** |
+| "Drift detection catches realistic concept drift" | Demonstrated on a controlled mean shift; **never on production streaming data** |
+| "OOD score generalizes to high-D embeddings" | Demonstrated on 4-D codebook-routed inputs; **fundamentally outside scope for unstructured high-D inputs** |
+| "Per-leaf calibration scales to real classifiers" | Demonstrated on 30 synthetic (p, y) pairs; **never on real classifier outputs at 10³+ predictions** |
+
+Closing these gaps is the bulk of Phase 0.6 + 0.7 work. Each is a real deliverable: pick a benchmark dataset / workload, write the wall-clock measurement code, run it, ship the numbers. Until that's done, ABNG is empirically demonstrated at small scale and *theoretically expected* to hold at larger scale.
 
 ### Compiler / interpreter performance
 
