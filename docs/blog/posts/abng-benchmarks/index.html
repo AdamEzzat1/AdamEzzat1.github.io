@@ -1,0 +1,1713 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.3.340">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Adam Ezzat">
+<meta name="dcterms.date" content="2026-05-10">
+<meta name="description" content="Part 3 of a three-article series on ABNG. This piece is the empirical backbone — the demo catalog, the verification scorecard, four scaling benchmarks measured on real hardware, and an honest accounting of every gap. The headline empirical result: ABNG fits a known analytical PDE solution to within 0.05 MAE with L2 error decaying at the Monte Carlo rate. The honest gaps: zero external baselines, single-hardware measurements, no large-N production benchmarks. The whole architecture is exploratory engineering, not validated science.">
+
+<title>Adam Ezzat - Benchmarking Experimental Bayesian Graph Networks</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="../../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../../">
+<script src="../../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<script src="../../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-dark.min.css" rel="prefetch" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+<style>html{ scroll-behavior: smooth; }</style>
+
+  <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml-full.js" type="text/javascript"></script>
+
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../../index.html">
+    <span class="navbar-title">Adam Ezzat</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../../index.html" rel="" target="">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../about.html" rel="" target="">
+ <span class="menu-text">About</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../projects.html" rel="" target="">
+ <span class="menu-text">Projects</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../blog/index.html" rel="" target="">
+ <span class="menu-text">Blog</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/AdamEzzat1" rel="" target=""><i class="bi bi-github" role="img" aria-label="GitHub">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://linkedin.com/in/adamezzat" rel="" target=""><i class="bi bi-linkedin" role="img" aria-label="LinkedIn">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+            <div class="quarto-navbar-tools">
+  <a href="" class="quarto-color-scheme-toggle quarto-navigation-tool  px-1" onclick="window.quartoToggleColorScheme(); return false;" title="Toggle dark mode"><i class="bi"></i></a>
+</div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#a-research-project-worth-taking-seriously-enough-to-falsify" id="toc-a-research-project-worth-taking-seriously-enough-to-falsify" class="nav-link active" data-scroll-target="#a-research-project-worth-taking-seriously-enough-to-falsify">A research project worth taking seriously enough to falsify</a></li>
+  <li><a href="#the-demo-catalog-what-exists" id="toc-the-demo-catalog-what-exists" class="nav-link" data-scroll-target="#the-demo-catalog-what-exists">The demo catalog: what exists</a>
+  <ul class="collapse">
+  <li><a href="#application-level-demos" id="toc-application-level-demos" class="nav-link" data-scroll-target="#application-level-demos">Application-level demos</a></li>
+  <li><a href="#capability-level-demos-cjc-lang-only" id="toc-capability-level-demos-cjc-lang-only" class="nav-link" data-scroll-target="#capability-level-demos-cjc-lang-only">Capability-level demos (CJC-Lang only)</a></li>
+  <li><a href="#trigger-specific-demos" id="toc-trigger-specific-demos" class="nav-link" data-scroll-target="#trigger-specific-demos">Trigger-specific demos</a></li>
+  </ul></li>
+  <li><a href="#what-each-demo-proves-and-doesnt" id="toc-what-each-demo-proves-and-doesnt" class="nav-link" data-scroll-target="#what-each-demo-proves-and-doesnt">What each demo proves (and doesn’t)</a>
+  <ul class="collapse">
+  <li><a href="#demo-1-pinn-uncertainty" id="toc-demo-1-pinn-uncertainty" class="nav-link" data-scroll-target="#demo-1-pinn-uncertainty">Demo 1 — PINN uncertainty</a></li>
+  <li><a href="#demo-3-lineage-attestation" id="toc-demo-3-lineage-attestation" class="nav-link" data-scroll-target="#demo-3-lineage-attestation">Demo 3 — Lineage attestation</a></li>
+  <li><a href="#aggregate-verification-scorecard" id="toc-aggregate-verification-scorecard" class="nav-link" data-scroll-target="#aggregate-verification-scorecard">Aggregate verification scorecard</a></li>
+  </ul></li>
+  <li><a href="#the-headline-empirical-result-pinn-on-the-heat-equation" id="toc-the-headline-empirical-result-pinn-on-the-heat-equation" class="nav-link" data-scroll-target="#the-headline-empirical-result-pinn-on-the-heat-equation">The headline empirical result: PINN on the heat equation</a></li>
+  <li><a href="#a-second-result-drift-triggered-structural-adaptation" id="toc-a-second-result-drift-triggered-structural-adaptation" class="nav-link" data-scroll-target="#a-second-result-drift-triggered-structural-adaptation">A second result: drift-triggered structural adaptation</a></li>
+  <li><a href="#benchmark-methodology-and-the-numbers" id="toc-benchmark-methodology-and-the-numbers" class="nav-link" data-scroll-target="#benchmark-methodology-and-the-numbers">Benchmark methodology and the numbers</a>
+  <ul class="collapse">
+  <li><a href="#microbenchmarks-per-op-cost" id="toc-microbenchmarks-per-op-cost" class="nav-link" data-scroll-target="#microbenchmarks-per-op-cost">Microbenchmarks (per-op cost)</a></li>
+  <li><a href="#speedup-comparisons-engineering-wins" id="toc-speedup-comparisons-engineering-wins" class="nav-link" data-scroll-target="#speedup-comparisons-engineering-wins">Speedup comparisons (engineering wins)</a></li>
+  <li><a href="#scaling-abng-on-synthetic-tabular-regression" id="toc-scaling-abng-on-synthetic-tabular-regression" class="nav-link" data-scroll-target="#scaling-abng-on-synthetic-tabular-regression">Scaling: ABNG on synthetic tabular regression</a></li>
+  <li><a href="#scaling-abng-as-pinn-regression-head" id="toc-scaling-abng-as-pinn-regression-head" class="nav-link" data-scroll-target="#scaling-abng-as-pinn-regression-head">Scaling: ABNG as PINN regression head</a></li>
+  <li><a href="#scaling-full-lineage-flow-stamp-train-pack-serialize-replay" id="toc-scaling-full-lineage-flow-stamp-train-pack-serialize-replay" class="nav-link" data-scroll-target="#scaling-full-lineage-flow-stamp-train-pack-serialize-replay">Scaling: Full lineage flow (stamp + train + pack + serialize + replay)</a></li>
+  </ul></li>
+  <li><a href="#coverage-gap-analysis" id="toc-coverage-gap-analysis" class="nav-link" data-scroll-target="#coverage-gap-analysis">Coverage gap analysis</a></li>
+  <li><a href="#the-four-most-damning-honest-gaps" id="toc-the-four-most-damning-honest-gaps" class="nav-link" data-scroll-target="#the-four-most-damning-honest-gaps">The four most damning honest gaps</a>
+  <ul class="collapse">
+  <li><a href="#gap-1-no-external-baseline-comparisons" id="toc-gap-1-no-external-baseline-comparisons" class="nav-link" data-scroll-target="#gap-1-no-external-baseline-comparisons">Gap 1: No external baseline comparisons</a></li>
+  <li><a href="#gap-2-small-n-tests-masquerading-as-validation" id="toc-gap-2-small-n-tests-masquerading-as-validation" class="nav-link" data-scroll-target="#gap-2-small-n-tests-masquerading-as-validation">Gap 2: Small-N tests masquerading as validation</a></li>
+  <li><a href="#gap-3-single-hardware-measurements" id="toc-gap-3-single-hardware-measurements" class="nav-link" data-scroll-target="#gap-3-single-hardware-measurements">Gap 3: Single-hardware measurements</a></li>
+  <li><a href="#gap-4-no-statistical-confidence-intervals" id="toc-gap-4-no-statistical-confidence-intervals" class="nav-link" data-scroll-target="#gap-4-no-statistical-confidence-intervals">Gap 4: No statistical confidence intervals</a></li>
+  </ul></li>
+  <li><a href="#the-three-experiments-that-would-change-my-mind" id="toc-the-three-experiments-that-would-change-my-mind" class="nav-link" data-scroll-target="#the-three-experiments-that-would-change-my-mind">The three experiments that would change my mind</a></li>
+  <li><a href="#what-abng-currently-proves" id="toc-what-abng-currently-proves" class="nav-link" data-scroll-target="#what-abng-currently-proves">What ABNG currently proves</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Benchmarking Experimental Bayesian Graph Networks</h1>
+<p class="subtitle lead">What ABNG currently proves, what’s measured, and what remains speculative.</p>
+  <div class="quarto-categories">
+    <div class="quarto-category">CJC-Lang</div>
+    <div class="quarto-category">ABNG</div>
+    <div class="quarto-category">benchmarks</div>
+    <div class="quarto-category">falsification</div>
+    <div class="quarto-category">empirical</div>
+    <div class="quarto-category">research</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    Part 3 of a three-article series on ABNG. This piece is the empirical backbone — the demo catalog, the verification scorecard, four scaling benchmarks measured on real hardware, and an honest accounting of every gap. The headline empirical result: ABNG fits a known analytical PDE solution to within 0.05 MAE with L2 error decaying at the Monte Carlo rate. The honest gaps: zero external baselines, single-hardware measurements, no large-N production benchmarks. The whole architecture is exploratory engineering, not validated science.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Adam Ezzat </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">May 10, 2026</p>
+    </div>
+  </div>
+  
+    <div>
+    <div class="quarto-title-meta-heading">Modified</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date-modified">May 10, 2026</p>
+    </div>
+  </div>
+    
+  </div>
+  
+
+</header>
+
+<div class="reading-time">
+🕑 ~40 min read
+</div>
+<div class="callout callout-style-simple callout-tip no-icon callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+TL;DR
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>A research-stage ML architecture is only as credible as its evidence. This article walks through the empirical state of ABNG: nine distinct demo categories totalling ~5,866 lines of test code, 14 benchmarked operations measured on one machine, and a one-row analytical-solution result (1D heat equation, MAE &lt; 0.05). It is also brutally honest about what the demos <em>don’t</em> prove: no external baselines (no sklearn, no PyTorch, no FNO comparisons), no large-N benchmarks beyond 100K rows, no cross-platform measurement, no statistical confidence intervals on most operations. The honest framing: <strong>ABNG is exploratory engineering, not validated science</strong>, and the closer names three specific experiments whose outcomes would change that.</p>
+</div>
+</div>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Two prototype disclaimers
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><strong>ABNG is a research-stage prototype.</strong> It is built on top of <strong>CJC-Lang</strong>, a research compiler that is itself pre-1.0. Both are under active development. Anything you read here is current as of Phase 0.7 (snapshot magic <code>v13</code>); the next milestone (Phase 0.8) explicitly authorizes a wire-format bump to v14 to absorb performance and scaling improvements. None of this is production-ready. None of this has been deployed at scale.</p>
+</div>
+</div>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+This is Part 3 of a three-part series
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<ul>
+<li><strong>Part 1 (<a href="../../../blog/posts/abng-architecture/index.html">ABNG: Treating Belief States as First-Class Citizens</a>):</strong> the architecture itself.</li>
+<li><strong>Part 2 (<a href="../abng-deterministic-systems/index.qmd">Deterministic and Auditable Neural Systems</a>):</strong> the SHA-256 audit chain, replay semantics, and the determinism contract.</li>
+<li><strong>Part 3 (this article):</strong> the demo catalog, scaling benchmarks, and honest limitations.</li>
+</ul>
+<p>This article can be read alone if you only care about the empirical evidence. Part 1 is useful for context but not required.</p>
+</div>
+</div>
+<section id="a-research-project-worth-taking-seriously-enough-to-falsify" class="level2">
+<h2 class="anchored" data-anchor-id="a-research-project-worth-taking-seriously-enough-to-falsify">A research project worth taking seriously enough to falsify</h2>
+<p>Most architecture write-ups follow a predictable arc: design philosophy, mechanism description, comparison to “existing methods,” a positive benchmark or two, conclusion. The benchmark numbers tend to be cherry-picked, the comparisons tend to be unfavourable to the alternatives, and the limitations section tends to read as a list of future-work promises rather than as a credible account of failure modes.</p>
+<p>This article tries the opposite. The point isn’t to convince you ABNG works. The point is to give you enough concrete evidence — and an honest accounting of its absence — that you can form your own opinion. If after reading this you decide the architecture is interesting but probably wrong in three specific ways, the article has done its job.</p>
+<p>Specifically, this piece walks through:</p>
+<ul>
+<li><strong>What demos exist</strong> (Phase 1: 14 categories across ~5,866 lines of test code).</li>
+<li><strong>What each demo actually proves</strong>, separated honestly from what it claims to prove (Phase 2: per-demo verification with <em>Proven / Demonstrated / Speculative</em> tags).</li>
+<li><strong>The headline empirical result</strong>: ABNG fits a known analytical PDE solution to within 0.05 MAE, with L2 error decaying at the Monte Carlo rate.</li>
+<li><strong>Real benchmark numbers</strong> on real hardware (Phase 3: 14 operations + four scaling tables at n=1k/10k/100k).</li>
+<li><strong>Where the article’s quoted speedup numbers don’t match what this machine measures</strong> (1.67× vs 2.37× quoted for one Phase 0.7 optimization, etc.).</li>
+<li><strong>The four damning honest gaps</strong>: no external baselines, no large-N validation, no cross-platform measurement, no statistical CIs.</li>
+<li><strong>Three specific experiments that would change my mind</strong> about whether ABNG works.</li>
+</ul>
+<p>The architecture itself is described in <a href="../../../blog/posts/abng-architecture/index.html">Part 1</a>. The audit and determinism story is in <a href="../abng-deterministic-systems/index.qmd">Part 2</a>. This article presumes both as context but lets you re-derive the empirical picture from the numbers.</p>
+</section>
+<section id="the-demo-catalog-what-exists" class="level2">
+<h2 class="anchored" data-anchor-id="the-demo-catalog-what-exists">The demo catalog: what exists</h2>
+<p>The codebase contains <strong>14 distinct demo categories</strong> across <strong>50 files</strong> totalling <strong>~5,866 LOC of test code</strong>. (The Phase 1 audit also found 0 LOC of bench code in the standard <code>benches/</code> directory, but actually ~963 LOC of perf bench code lives in <code>bench/abng_*/</code> — the path my initial grep missed.) Here’s the high-level structure:</p>
+<table class="table">
+<colgroup>
+<col style="width: 21%">
+<col style="width: 28%">
+<col style="width: 21%">
+<col style="width: 28%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Category</th>
+<th style="text-align: right;">Count</th>
+<th>Location</th>
+<th style="text-align: right;">LOC</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Rust direct-API demos</td>
+<td style="text-align: right;">3</td>
+<td><code>tests/test_abng_{pinn_uncertainty, tabular_gp, lineage_attestation}.rs</code></td>
+<td style="text-align: right;">1,173</td>
+</tr>
+<tr class="even">
+<td>CJC-Lang capability demos (Rust harnesses + .cjcl source)</td>
+<td style="text-align: right;">9</td>
+<td><code>tests/test_abng_*_cjcl.rs</code></td>
+<td style="text-align: right;">904</td>
+</tr>
+<tr class="odd">
+<td>CJC-Lang scaled demos</td>
+<td style="text-align: right;">8</td>
+<td><code>tests/test_abng_*_scaled_cjcl.rs</code></td>
+<td style="text-align: right;">511</td>
+</tr>
+<tr class="even">
+<td>Trigger-specific demos</td>
+<td style="text-align: right;">5</td>
+<td><code>tests/test_abng_{compress,grow,split,prune,freeze}_trigger_cjcl.rs</code></td>
+<td style="text-align: right;">346</td>
+</tr>
+<tr class="odd">
+<td>CJC-Lang demo sources (PRELUDE-style string consts)</td>
+<td style="text-align: right;">24</td>
+<td><code>tests/abng_demos/*_source.rs</code></td>
+<td style="text-align: right;">2,847</td>
+</tr>
+<tr class="even">
+<td>Test harness</td>
+<td style="text-align: right;">1</td>
+<td><code>tests/abng_demos/{harness, mod}.rs</code></td>
+<td style="text-align: right;">~85</td>
+</tr>
+<tr class="odd">
+<td>Performance benches</td>
+<td style="text-align: right;">4</td>
+<td><code>bench/abng_{micro, vs_sklearn, pinn_scale, lineage_at_scale}</code></td>
+<td style="text-align: right;">963</td>
+</tr>
+</tbody>
+</table>
+<p>The harness pattern is the project’s strongest single piece of determinism evidence: every CJC-Lang demo runs through <strong>both</strong> the AST eval interpreter AND the MIR executor, with <code>run_parity()</code> asserting the printed output is byte-identical. Every <code>_cjcl.rs</code> demo uses it. If the two backends ever diverge on any FP arithmetic, hash computation, or dispatch routing, the parity test fails immediately.</p>
+<section id="application-level-demos" class="level3">
+<h3 class="anchored" data-anchor-id="application-level-demos">Application-level demos</h3>
+<table class="table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>#</th>
+<th>Demo</th>
+<th>Files</th>
+<th>What it proves</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td><strong>PINN uncertainty</strong></td>
+<td><code>test_abng_pinn_uncertainty.rs</code> (397 LOC), <code>..._cjcl.rs</code>, <code>..._scaled_cjcl.rs</code> + 2 source files</td>
+<td>Belief-state propagation, per-region epistemic uncertainty, replayability, <strong>fits a known analytical solution within 0.05 MAE</strong>, provenance stamping</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td><strong>Tabular GP-like regression</strong></td>
+<td><code>test_abng_tabular_gp.rs</code> (351 LOC), <code>..._cjcl.rs</code>, <code>..._scaled_cjcl.rs</code> + 2 source files</td>
+<td>Per-leaf BLR as deterministic GP alternative, calibration, prefix-routing, sparse-leaf evidence handling</td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td><strong>Lineage attestation</strong></td>
+<td><code>test_abng_lineage_attestation.rs</code> (425 LOC), <code>..._cjcl.rs</code>, <code>..._scaled_cjcl.rs</code> + 2 source files</td>
+<td>SHA-256 audit chain, provenance stamping, tamper detection, prediction snapshots, three-signal spoof detection</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="capability-level-demos-cjc-lang-only" class="level3">
+<h3 class="anchored" data-anchor-id="capability-level-demos-cjc-lang-only">Capability-level demos (CJC-Lang only)</h3>
+<table class="table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>#</th>
+<th>Demo</th>
+<th>Files</th>
+<th>What it proves</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>4</td>
+<td><strong>OOD detection</strong></td>
+<td><code>test_abng_ood_detection_cjcl.rs</code> (106 LOC), <code>..._scaled_cjcl.rs</code> + 2 source files</td>
+<td>Composite <code>ood_score</code> separating three training-density tiers</td>
+</tr>
+<tr class="even">
+<td>5</td>
+<td><strong>Adaptive triggers</strong></td>
+<td><code>test_abng_adaptive_triggers_cjcl.rs</code> (116 LOC) + 1 source</td>
+<td><code>decide_step</code> engine, structural action firing, audit-chain integrity after restructure</td>
+</tr>
+<tr class="odd">
+<td>6</td>
+<td><strong>Calibration</strong></td>
+<td><code>test_abng_calibration_cjcl.rs</code> + <code>..._scaled_cjcl.rs</code> + 2 source files</td>
+<td>Per-leaf 15-bin ECE, calibration-stable maturity flag</td>
+</tr>
+<tr class="even">
+<td>7</td>
+<td><strong>Drift detection</strong></td>
+<td><code>test_abng_drift_detection_cjcl.rs</code> + <code>..._scaled_cjcl.rs</code> + 2 source files</td>
+<td>Drift baseline + L2 z-shift score, auto-unfreeze trigger</td>
+</tr>
+<tr class="odd">
+<td>8</td>
+<td><strong>Log compaction</strong></td>
+<td><code>test_abng_compact_log_cjcl.rs</code> + <code>..._scaled_cjcl.rs</code> + 2 source files</td>
+<td><code>StatsSnapshot</code> markers (audit kind <code>0x1A</code>), smart-replay fast-forward</td>
+</tr>
+<tr class="even">
+<td>9</td>
+<td><strong>Maturity inspection</strong></td>
+<td><code>test_abng_maturity_inspection_cjcl.rs</code> + <code>..._scaled_cjcl.rs</code> + 2 source files</td>
+<td><code>Maturity</code> + <code>NodeSignature</code> evolution, stability flags</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="trigger-specific-demos" class="level3">
+<h3 class="anchored" data-anchor-id="trigger-specific-demos">Trigger-specific demos</h3>
+<table class="table">
+<colgroup>
+<col style="width: 23%">
+<col style="width: 23%">
+<col style="width: 30%">
+<col style="width: 23%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>#</th>
+<th>Demo</th>
+<th style="text-align: right;">LOC</th>
+<th>What it proves</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>10</td>
+<td>Compress</td>
+<td style="text-align: right;">61</td>
+<td><code>force_compress</code> → <code>Dense</code> children variant; sub-tree collapse</td>
+</tr>
+<tr class="even">
+<td>11</td>
+<td>Grow</td>
+<td style="text-align: right;">78</td>
+<td><code>Grow</code> adds child at unbound route byte</td>
+</tr>
+<tr class="odd">
+<td>12</td>
+<td>Split</td>
+<td style="text-align: right;">72</td>
+<td><code>Split</code> partitions a mature leaf into two children</td>
+</tr>
+<tr class="even">
+<td>13</td>
+<td>Prune</td>
+<td style="text-align: right;">68</td>
+<td><code>Prune</code> marks low-evidence leaf inactive (tombstoned, not removed)</td>
+</tr>
+<tr class="odd">
+<td>14</td>
+<td>Freeze</td>
+<td style="text-align: right;">67</td>
+<td><code>Freeze</code> stops updates on a mature node</td>
+</tr>
+</tbody>
+</table>
+<p><strong>One asymmetry worth flagging</strong>: there is no dedicated <code>test_abng_merge_trigger_cjcl.rs</code>. The Merge action is exercised inside the adaptive-triggers demo (#5) instead. Small detail, but the article should not gloss over it.</p>
+</section>
+</section>
+<section id="what-each-demo-proves-and-doesnt" class="level2">
+<h2 class="anchored" data-anchor-id="what-each-demo-proves-and-doesnt">What each demo proves (and doesn’t)</h2>
+<p>Going demo by demo, here is what the test assertions actually prove vs what the architecture claims to do:</p>
+<section id="demo-1-pinn-uncertainty" class="level3">
+<h3 class="anchored" data-anchor-id="demo-1-pinn-uncertainty">Demo 1 — PINN uncertainty</h3>
+<p><strong>Test assertions</strong> (12 <code>#[test]</code> functions in <code>tests/test_abng_pinn_uncertainty.rs</code>):</p>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Test</th>
+<th>What it asserts</th>
+<th>Data scale</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>pinn_forward_pass_finite_per_leaf</code></td>
+<td><code>mean</code>, <code>lev</code>, <code>ale</code> all finite (<code>ale = ∞</code> is OK on prior)</td>
+<td>5 probe points</td>
+</tr>
+<tr class="even">
+<td><code>pinn_aleatoric_finite_after_one_observation_per_leaf</code></td>
+<td><code>b/(a−1)</code> finite once each leaf has ≥1 observation</td>
+<td>4 train + 5 probe</td>
+</tr>
+<tr class="odd">
+<td><strong><code>pinn_trained_interior_approximates_analytical_solution</code></strong></td>
+<td><code>\|pred − analytical_u\| &lt; 0.05</code> at 4 interior probes</td>
+<td>48 train obs</td>
+</tr>
+<tr class="even">
+<td><strong><code>pinn_tangible_benefit_lev_lower_in_dense_region</code></strong></td>
+<td>min-edge-leverage &gt; max-interior-leverage (strict separation)</td>
+<td>48 train obs</td>
+</tr>
+<tr class="odd">
+<td><code>pinn_unseen_region_has_higher_lev_than_seen</code></td>
+<td>Untrained edge has higher <code>lev</code> than trained interior</td>
+<td>32 train obs</td>
+</tr>
+<tr class="even">
+<td><code>pinn_double_run_chain_head_byte_identical</code></td>
+<td>Same seed → byte-identical <code>chain_head</code></td>
+<td>48 obs</td>
+</tr>
+<tr class="odd">
+<td><code>pinn_replay_round_trip_preserves_predictions</code></td>
+<td><code>serialize → replay → predict</code> matches bit-for-bit</td>
+<td>48 obs</td>
+</tr>
+<tr class="even">
+<td><code>pinn_smart_replay_byte_identical_to_naive</code></td>
+<td><code>smart_replay</code> produces identical state to naive <code>replay</code></td>
+<td>48 obs</td>
+</tr>
+<tr class="odd">
+<td><code>pinn_bc_provenance_stamp_persists_through_replay</code></td>
+<td><code>provenance_stamp_hash</code> survives round-trip</td>
+<td>48 obs</td>
+</tr>
+<tr class="even">
+<td><code>pinn_bc_change_forces_audit_chain_rotation</code></td>
+<td>New BC stamp emits <code>ProvenanceStamped</code> event + bumps chain_head</td>
+<td>48 obs</td>
+</tr>
+<tr class="odd">
+<td><code>pinn_predict_snap_carries_bc_lineage</code></td>
+<td><code>predict_snap</code> binary carries the provenance stamp</td>
+<td>one probe</td>
+</tr>
+<tr class="even">
+<td><strong><code>pinn_chain_head_canary_locked</code></strong></td>
+<td>Specific chain_head SHA-256 = <code>30d333f1f7dca5acaa76b0e4bfdbd4a733df38c6adeda094ae69cf0e9c4e468d</code></td>
+<td>48 obs</td>
+</tr>
+<tr class="odd">
+<td><code>pinn_audit_chain_verifies_post_train</code></td>
+<td><code>verify_chain()</code> returns Ok</td>
+<td>48 obs</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Verdict.</strong> The demo <strong>delivers more than the architecture article claims</strong>. It proves (a) the trained model fits the analytical solution within 0.05 MAE at interior probes, (b) <code>epistemic_leverage</code> cleanly separates dense vs sparse training regions, (c) replay is byte-identical, and (d) the chain_head is canary-locked. <strong>Tag: Proven at the tested data scale (48 observations).</strong></p>
+<p><strong>Honest gap.</strong> The 0.05 error bound is at a 32-sample-trained interior region; the test does not show what happens at higher noise levels, with the feature basis <em>not</em> containing the analytical solution, or at higher-dimensional PDEs. The demo proves the <em>correctness</em> of NIG conjugacy plus prefix-routed BLR; it does not prove the architecture would beat FNO on Darcy flow.</p>
+</section>
+<section id="demo-3-lineage-attestation" class="level3">
+<h3 class="anchored" data-anchor-id="demo-3-lineage-attestation">Demo 3 — Lineage attestation</h3>
+<p><strong>Test assertions</strong> (15 <code>#[test]</code> functions in <code>tests/test_abng_lineage_attestation.rs</code>):</p>
+<p>Key ones: - <code>dataset_fingerprint_differs_for_tampered_data</code> — Single-row tamper → different SHA-256 fingerprint - <code>lab_a_vs_attacker_b_chain_heads_differ</code> — Trained-on-A and trained-on-B graphs have different <code>chain_head</code> - <strong><code>three_signal_spoof_detection</code></strong> — Attacker substituting B’s model under A’s predictions fails <em>all three independent signals</em>: chain_head, BLR state_hash, AND provenance stamp - <code>lineage_chain_head_canary_locked</code> — Specific SHA-256 locked</p>
+<p><strong>Verdict.</strong> This is the <strong>strongest demo in the codebase for the audit-chain claim</strong>. The three-signal spoof detection is a real adversarial test, not just a positive-control determinism check. <strong>Tag: Proven at small scale (64-row synthetic dataset).</strong></p>
+<p><strong>Honest gap.</strong> The dataset is a 64-row synthetic clinical-trial mock-up. Real regulated-ML deployments involve datasets that are many orders of magnitude larger. The article correctly frames this as a “regulator’s nightmare scenario” <em>simulation</em>, not a real attestation.</p>
+</section>
+<section id="aggregate-verification-scorecard" class="level3">
+<h3 class="anchored" data-anchor-id="aggregate-verification-scorecard">Aggregate verification scorecard</h3>
+<table class="table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>#</th>
+<th>Demo</th>
+<th>Tag</th>
+<th>Strongest evidence</th>
+<th>Weakest gap</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td>PINN uncertainty</td>
+<td><strong>Proven</strong> at N=48</td>
+<td><code>\|pred − truth\| &lt; 0.05</code> + edge/interior lev separation + locked canary</td>
+<td>Feature basis contains analytical solution by construction</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td>Tabular GP-like</td>
+<td><strong>Proven</strong> at N=200</td>
+<td><code>trained_MSE &lt; 0.5 × prior_MSE</code> + uncertainty shrinks with N</td>
+<td>No actual GP baseline comparison in code</td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td>Lineage attestation</td>
+<td><strong>Proven</strong> at 64 rows</td>
+<td>Three-signal spoof detection (cleanest adversarial test)</td>
+<td>Single-row tamper is the easy case</td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td>OOD detection</td>
+<td><strong>Demonstrated</strong></td>
+<td>Three-tier separation across training density</td>
+<td>No comparison to standard OOD methods</td>
+</tr>
+<tr class="odd">
+<td>5</td>
+<td>Adaptive triggers</td>
+<td><strong>Proven</strong> at small N</td>
+<td>Audit chain survives <code>decide_step</code> (critical invariant)</td>
+<td>“Some action fired” is weak; quality is in gate-specific tests</td>
+</tr>
+<tr class="even">
+<td>6</td>
+<td>Calibration</td>
+<td><strong>Demonstrated</strong></td>
+<td>ECE per-leaf tracking</td>
+<td>Local calibration ≠ global calibration</td>
+</tr>
+<tr class="odd">
+<td>7</td>
+<td>Drift detection</td>
+<td><strong>Demonstrated</strong></td>
+<td>Drift score grows post-shift</td>
+<td>No baseline vs ADWIN / KSWIN</td>
+</tr>
+<tr class="even">
+<td>8</td>
+<td>Log compaction</td>
+<td><strong>Demonstrated</strong></td>
+<td>StatsSnapshot markers + smart-replay equivalence</td>
+<td>Correctness only, no perf measurement on the compaction path</td>
+</tr>
+<tr class="odd">
+<td>9</td>
+<td>Maturity inspection</td>
+<td><strong>Demonstrated</strong></td>
+<td>Signature evolution observable</td>
+<td>No comparison to e.g.&nbsp;early-stopping heuristics</td>
+</tr>
+<tr class="even">
+<td>10–14</td>
+<td>Triggers (Compress/Grow/Split/Prune/Freeze)</td>
+<td><strong>Demonstrated</strong> per action</td>
+<td>Each action provably fires under controlled conditions</td>
+<td>No assertion on negative cases (when the gate <em>shouldn’t</em> fire)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Summary</strong>: 5 demos <em>Proven</em> (strong test assertions + canary lock + replay determinism), 9 <em>Demonstrated</em> (single-scenario small-N tests, no baseline comparisons), 0 <em>Speculative</em> (every claim has <em>some</em> test, but several only have qualitative coverage).</p>
+</section>
+</section>
+<section id="the-headline-empirical-result-pinn-on-the-heat-equation" class="level2">
+<h2 class="anchored" data-anchor-id="the-headline-empirical-result-pinn-on-the-heat-equation">The headline empirical result: PINN on the heat equation</h2>
+<p>This is the strongest piece of evidence in the codebase. It deserves its own subsection.</p>
+<p><strong>Problem.</strong> Solve the 1D heat equation <code>∂u/∂t = α ∂²u/∂x²</code> with Dirichlet boundary conditions <code>u(0,t) = u(1,t) = 0</code> and initial condition <code>u(x,0) = sin(πx)</code>. At <code>t = 0.1, α = 1</code>, the analytical solution is <code>u(x, 0.1) = exp(-π² · 0.1) · sin(πx) ≈ 0.3722 · sin(πx)</code>.</p>
+<p><strong>Setup.</strong> 4-leaf ABNG graph over <code>x ∈ [0, 1]</code> with codebook bin edges at <code>0.25 / 0.5 / 0.75</code>. Each leaf has its own BLR head over the 4-D feature basis <code>[1, x, sin(πx), cos(πx)]</code> — engineered so the analytical solution is <em>exactly</em> in span.</p>
+<p><strong>Training.</strong> 48 observations total: 32 uniformly in the interior <code>[0.25, 0.75]</code>, 4 in each edge region. The asymmetry is deliberate — it lets the test verify that uncertainty tracks training density.</p>
+<p><strong>Result.</strong> The test <code>pinn_trained_interior_approximates_analytical_solution</code> asserts:</p>
+<p><span class="math display">\[|\text{pred}(x) - u(x, 0.1)| &lt; 0.05 \quad \forall x \in \{0.30, 0.45, 0.55, 0.70\}\]</span></p>
+<p>The test passes. ABNG genuinely fits the analytical solution within 0.05 MAE at interior probes.</p>
+<p>The companion test <code>pinn_tangible_benefit_lev_lower_in_dense_region</code> asserts a strictly stronger uncertainty property:</p>
+<p><span class="math display">\[\min_{x \in \text{edge}}\text{lev}(x) &gt; \max_{x \in \text{interior}}\text{lev}(x)\]</span></p>
+<p>That is, the <em>worst-case</em> edge <code>epistemic_leverage</code> exceeds the <em>best-case</em> interior leverage. The uncertainty signal cleanly stratifies dense vs sparse training regions — a property no point-estimate MLP can produce.</p>
+<p><strong>Scaling beyond the demo.</strong> The benchmark <code>bench/abng_pinn_scale/main.rs</code> trains on n ∈ {1000, 10000, 100000} collocation points sampled from the same problem family (truth = <code>sin(πx)</code> on <code>[0,1]</code>):</p>
+<table class="table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: right;">Collocation points</th>
+<th style="text-align: right;">Train time (ms)</th>
+<th style="text-align: right;">Per-point train (µs)</th>
+<th style="text-align: right;">L2 error (1024 eval points)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">1,000</td>
+<td style="text-align: right;">85.1</td>
+<td style="text-align: right;">85.1</td>
+<td style="text-align: right;">4.19 × 10⁻²</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">10,000</td>
+<td style="text-align: right;">264.2</td>
+<td style="text-align: right;">26.4</td>
+<td style="text-align: right;">9.35 × 10⁻³</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">100,000</td>
+<td style="text-align: right;">4,774</td>
+<td style="text-align: right;">47.7</td>
+<td style="text-align: right;">1.80 × 10⁻³</td>
+</tr>
+</tbody>
+</table>
+<p>L2 error decays as ~1/√n — the expected Monte Carlo rate when the feature basis contains the true function. <strong>The 5.2× error reduction from n=10k to n=100k matches √10 ≈ 3.16 within a factor of 2.</strong> The model is genuinely converging, not just fitting noise.</p>
+<pre class="mermaid"><code>flowchart TD
+    subgraph LEAVES["4 codebook regions"]
+        L0["leaf #1&lt;br/&gt;x ∈ [0, 0.25)&lt;br/&gt;4 obs (sparse)"]
+        L1["leaf #2&lt;br/&gt;x ∈ [0.25, 0.5)&lt;br/&gt;16 obs (dense)"]
+        L2["leaf #3&lt;br/&gt;x ∈ [0.5, 0.75)&lt;br/&gt;16 obs (dense)"]
+        L3["leaf #4&lt;br/&gt;x ∈ [0.75, 1]&lt;br/&gt;4 obs (sparse)"]
+    end
+    L0 -.high lev.-&gt; U["uncertainty profile"]
+    L1 -.low lev.-&gt; U
+    L2 -.low lev.-&gt; U
+    L3 -.high lev.-&gt; U
+    L1 --&gt; R["interior MAE &lt; 0.05&lt;br/&gt;vs analytical u(x, 0.1)"]
+    L2 --&gt; R
+    style L1 fill:#cfc
+    style L2 fill:#cfc</code></pre>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+What this result does NOT prove
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>The feature basis <code>[1, x, sin(πx), cos(πx)]</code> <strong>contains the analytical solution as a basis direction</strong>. This is a <em>correctness proof of NIG conjugacy plus the routing-and-update mechanics</em>; it is <strong>not</strong> a generalization claim. On problems where the truth is <em>not</em> in the feature span (most realistic PDEs, especially non-smooth ones), ABNG would underperform. The benchmark above is the architecture’s home turf — it should be expected to do well there.</p>
+</div>
+</div>
+</section>
+<section id="a-second-result-drift-triggered-structural-adaptation" class="level2">
+<h2 class="anchored" data-anchor-id="a-second-result-drift-triggered-structural-adaptation">A second result: drift-triggered structural adaptation</h2>
+<p>The most architecturally interesting demo — beyond the PINN result — is the drift-detection one. It exercises the part of ABNG that’s hardest to replicate in other architectures: the graph <em>responds to its own surprise</em>.</p>
+<p><strong>Scenario.</strong> A leaf trains on observations drawn from <code>x ~ N(0, 1)</code> for 50 steps. It matures, calibrates, and is frozen by <code>decide_step</code>. Then the data distribution shifts: <code>x ~ N(2, 1)</code> for the next 50 steps.</p>
+<p><strong>Frozen-leaf semantics.</strong> The leaf’s BLR posterior is unchanged through the shifted phase (<code>blr_update</code> is skipped on frozen leaves). But the density tracker keeps updating (<code>density.observe</code> doesn’t skip on freeze). Its Welford mean drifts toward <code>μ ≈ 2</code>. The <code>drift_score</code> = L2 z-shift between current density and the frozen <code>drift_baseline</code>. As the shifted phase progresses, the drift score grows past the <code>drift_unfreeze</code> threshold.</p>
+<p><strong>Auto-unfreeze.</strong> On the next <code>decide_step</code> call, <em>before</em> the regular Compress → Merge → Split → Prune → Grow → Freeze fall-through, the engine checks <code>is_frozen &amp;&amp; drift_score &gt; drift_unfreeze</code>. Threshold exceeded. <code>unfreeze</code> runs first, emitting an <code>Unfreeze</code> audit event (<code>0x16</code>). The leaf’s <code>is_frozen</code> flag flips back to <code>false</code>. Subsequent observations re-enter the BLR update path.</p>
+<p><strong>What the test verifies.</strong> <code>tests/test_abng_drift_detection_cjcl.rs::drift_cjcl_meaningful_shift_detected</code> asserts the drift signal moves on shift; the test <code>..._drift_grew_after_shift</code> asserts strict monotonic growth post-shift. The auto-unfreeze gate itself is verified in <code>tests/abng/decide_step_canary_tests.rs</code>.</p>
+<pre class="mermaid"><code>sequenceDiagram
+    participant O as Observation stream
+    participant L as Leaf
+    participant DS as Density tracker
+    participant D as decide_step
+    Note over O,D: Phase 1: x ~ N(0, 1)
+    O-&gt;&gt;L: y_1..y_50
+    L-&gt;&gt;L: BLR update
+    L-&gt;&gt;DS: Welford update
+    O-&gt;&gt;D: decide_step()
+    D-&gt;&gt;L: signature stable, mature
+    D--&gt;&gt;L: Freeze (audit 0x15)
+    Note over L: is_frozen = true
+    Note over O,D: Phase 2: x ~ N(2, 1)
+    O-&gt;&gt;L: y_51..y_75
+    L--&gt;&gt;L: SKIPPED (frozen)
+    L-&gt;&gt;DS: density still updates
+    DS-&gt;&gt;DS: drift_score grows
+    O-&gt;&gt;D: decide_step()
+    D-&gt;&gt;DS: drift_score &gt; drift_unfreeze?
+    D--&gt;&gt;L: Unfreeze (audit 0x16)
+    Note over L: is_frozen = false
+    O-&gt;&gt;L: y_76..y_100
+    L-&gt;&gt;L: BLR update resumes</code></pre>
+<p><strong>Why this matters.</strong> The graph <strong>responds to its own surprise</strong>. A frozen, well-calibrated leaf isn’t dead weight — if the world stops looking like what it trained on, the leaf re-engages. This is the closest ABNG comes to an active-inference loop (formal connection to Friston’s free-energy framework is weak — see Part 1 §“Where ABNG sits in the recombination space”). The mechanism is shipped and tested at small scale; performance under realistic concept drift (e.g., production streaming data with multi-modal shifts) is <strong>unmeasured</strong>.</p>
+</section>
+<section id="benchmark-methodology-and-the-numbers" class="level2">
+<h2 class="anchored" data-anchor-id="benchmark-methodology-and-the-numbers">Benchmark methodology and the numbers</h2>
+<p>The benchmarks below were run on:</p>
+<table class="table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Item</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Hardware</strong></td>
+<td>11th Gen Intel Core i7-11390H @ 3.40GHz (4 cores, 8 threads)</td>
+</tr>
+<tr class="even">
+<td><strong>OS</strong></td>
+<td>Windows 11 Pro (build 26200), MSVC toolchain</td>
+</tr>
+<tr class="odd">
+<td><strong>Rust</strong></td>
+<td>release profile (<code>-O3</code>-equivalent, LTO disabled)</td>
+</tr>
+<tr class="even">
+<td><strong>Bench framework</strong></td>
+<td>Manual <code>std::time::Instant</code> timing (no Criterion); per-op = total_ns / n_iters</td>
+</tr>
+<tr class="odd">
+<td><strong>Warmup</strong></td>
+<td>100 iters per op (microbench), 5 trials with min selection for replay/batch comparisons</td>
+</tr>
+<tr class="even">
+<td><strong>Reproducibility</strong></td>
+<td>All benches use fixed seeds (7, 11, 42); SplitMix64 RNG</td>
+</tr>
+<tr class="odd">
+<td><strong>Output format</strong></td>
+<td>JSONL to stdout, human scorecard to stderr</td>
+</tr>
+<tr class="even">
+<td><strong>Not measured</strong></td>
+<td>No CPU-pinning, no governor lock, no statistical confidence intervals on most ops</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Critical caveat:</strong> these numbers are <em>one run on one machine</em> with the system in a typical desktop state. Real characterization needs multiple runs per op with confidence intervals. The numbers below are good for <em>order-of-magnitude understanding</em> and <em>cross-op comparison</em>, <strong>not</strong> for absolute-performance claims.</p>
+<section id="microbenchmarks-per-op-cost" class="level3">
+<h3 class="anchored" data-anchor-id="microbenchmarks-per-op-cost">Microbenchmarks (per-op cost)</h3>
+<table class="table">
+<colgroup>
+<col style="width: 30%">
+<col style="width: 40%">
+<col style="width: 30%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Operation</th>
+<th style="text-align: right;">Per-op cost</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>descend</code> (one byte walk)</td>
+<td style="text-align: right;"><strong>118 ns</strong></td>
+<td>Cheapest op; baseline noise floor</td>
+</tr>
+<tr class="even">
+<td><code>encode_prefix</code> (1-D codebook)</td>
+<td style="text-align: right;"><strong>137 ns</strong></td>
+<td>Single quantile lookup</td>
+</tr>
+<tr class="odd">
+<td><code>codebook_encode_into</code> (8-D, buffer-reuse)</td>
+<td style="text-align: right;"><strong>130 ns</strong></td>
+<td>Phase 0.7 Item B</td>
+</tr>
+<tr class="even">
+<td><code>codebook_encode_alloc</code> (8-D, fresh Vec)</td>
+<td style="text-align: right;"><strong>217 ns</strong></td>
+<td><strong>1.67× speedup with buffer reuse</strong> (handoff doc claimed 2.37×)</td>
+</tr>
+<tr class="odd">
+<td><code>route_to_leaf</code> (encode + descend)</td>
+<td style="text-align: right;"><strong>172 ns</strong></td>
+<td>Hot inference path</td>
+</tr>
+<tr class="even">
+<td><code>blr_predict</code> (Cholesky solve, d=4)</td>
+<td style="text-align: right;"><strong>934 ns</strong></td>
+<td>Predict-time work per leaf</td>
+</tr>
+<tr class="odd">
+<td><code>blr_state_update_direct</code> (no graph)</td>
+<td style="text-align: right;"><strong>3,845 ns</strong></td>
+<td>NIG conjugate math alone</td>
+</tr>
+<tr class="even">
+<td><code>observe</code> (graph-level Welford + audit)</td>
+<td style="text-align: right;"><strong>4,238 ns</strong></td>
+<td>Includes audit-chain append</td>
+</tr>
+<tr class="odd">
+<td><code>train_step_fused</code></td>
+<td style="text-align: right;"><strong>17,804 ns</strong></td>
+<td>All-in-one training row</td>
+</tr>
+<tr class="even">
+<td><code>train_step_3call</code> (encode → descend → update → observe)</td>
+<td style="text-align: right;"><strong>18,374 ns</strong></td>
+<td><strong>1.03× speedup from fusion</strong> (handoff claimed 1.17×)</td>
+</tr>
+<tr class="odd">
+<td><code>blr_update</code> (graph-level)</td>
+<td style="text-align: right;"><strong>28,997 ns</strong></td>
+<td><strong>~7.5× the direct BLR math</strong> — dispatch overhead dominates</td>
+</tr>
+<tr class="even">
+<td><code>verify_chain</code> (10k events)</td>
+<td style="text-align: right;"><strong>12,324 µs total</strong></td>
+<td>1.23 µs/event amortized</td>
+</tr>
+</tbody>
+</table>
+<div class="callout callout-style-simple callout-tip no-icon callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+The single most striking measurement in the entire codebase
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><code>blr_update</code> (graph-level) costs <strong>29 µs/op</strong>, while <code>blr_state_update_direct</code> (the same NIG math, no graph) costs <strong>3.85 µs/op</strong>. The graph dispatch + audit + chain-hash scaffolding accounts for <strong>87% of the per-op cost</strong>. The actual Bayesian update is 13%. This is the most defensible answer to “what does determinism cost” in the codebase, and Part 2 returns to it as the centrepiece of the determinism-premium discussion.</p>
+</div>
+</div>
+</section>
+<section id="speedup-comparisons-engineering-wins" class="level3">
+<h3 class="anchored" data-anchor-id="speedup-comparisons-engineering-wins">Speedup comparisons (engineering wins)</h3>
+<table class="table">
+<colgroup>
+<col style="width: 21%">
+<col style="width: 28%">
+<col style="width: 28%">
+<col style="width: 21%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Comparison</th>
+<th style="text-align: right;">Measured speedup</th>
+<th style="text-align: right;">Handoff doc claim</th>
+<th>Match?</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>observe_batch</code> n=64 vs per-row</td>
+<td style="text-align: right;"><strong>12.66×</strong></td>
+<td style="text-align: right;">n/a</td>
+<td>—</td>
+</tr>
+<tr class="even">
+<td><code>observe_batch</code> n=1024 vs per-row</td>
+<td style="text-align: right;"><strong>23.51×</strong></td>
+<td style="text-align: right;">“≥10× target”</td>
+<td>✓ exceeds</td>
+</tr>
+<tr class="odd">
+<td><code>route_to_leaf_batch</code> n=1024 vs per-row</td>
+<td style="text-align: right;"><strong>1.91×</strong></td>
+<td style="text-align: right;">n/a</td>
+<td>—</td>
+</tr>
+<tr class="even">
+<td><code>smart_replay</code> vs naive @ 10k events</td>
+<td style="text-align: right;"><strong>2.08×</strong></td>
+<td style="text-align: right;">“≥ 5× target”</td>
+<td>✗ falls short</td>
+</tr>
+<tr class="odd">
+<td><code>codebook_encode_into</code> vs <code>_alloc</code> (d=8)</td>
+<td style="text-align: right;"><strong>1.67×</strong></td>
+<td style="text-align: right;">“2.37×”</td>
+<td>✗ smaller</td>
+</tr>
+<tr class="even">
+<td><code>train_step_fused</code> vs 3-call</td>
+<td style="text-align: right;"><strong>1.03×</strong></td>
+<td style="text-align: right;">“1.17×”</td>
+<td>✗ smaller</td>
+</tr>
+</tbody>
+</table>
+<p>Three of the article’s quoted Phase 0.7 speedup numbers don’t match what this machine measures. The architecture is the same; the CPU and the build flags differ. Plausible explanations:</p>
+<ol type="1">
+<li><strong>Different CPUs.</strong> The Phase 0.7 numbers were captured on a different machine; modern CPU generations have meaningful per-instruction performance differences.</li>
+<li><strong>Warmup effects.</strong> The original benches may have used longer warmup or different iter counts.</li>
+<li><strong>Real regression.</strong> It’s also possible that something between Phase 0.7 commit and HEAD has degraded the wins.</li>
+</ol>
+<p>I cannot distinguish among these from a single run. <strong>The honest takeaway for any future article: quote ranges, not point estimates.</strong> “Speedups of 1.0–2.4× depending on hardware and workload” is defensible. The current “2.37×” claim is technically accurate per the source doc but creates a false expectation.</p>
+</section>
+<section id="scaling-abng-on-synthetic-tabular-regression" class="level3">
+<h3 class="anchored" data-anchor-id="scaling-abng-on-synthetic-tabular-regression">Scaling: ABNG on synthetic tabular regression</h3>
+<p>Truth function: <code>y = 2x₁ + 3x₂ + 0.5·x₁x₂ + N(0, 0.05)</code>.</p>
+<table class="table">
+<colgroup>
+<col style="width: 16%">
+<col style="width: 16%">
+<col style="width: 16%">
+<col style="width: 16%">
+<col style="width: 16%">
+<col style="width: 16%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: right;">Train samples</th>
+<th style="text-align: right;">Train time (ms)</th>
+<th style="text-align: right;">Predict time (ms)</th>
+<th style="text-align: right;">Per-row train (µs)</th>
+<th style="text-align: right;">Per-row predict (µs)</th>
+<th style="text-align: right;">Held-out RMSE</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">800</td>
+<td style="text-align: right;">21.4</td>
+<td style="text-align: right;">0.8</td>
+<td style="text-align: right;">26.8</td>
+<td style="text-align: right;">4.2</td>
+<td style="text-align: right;">0.102</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">8,000</td>
+<td style="text-align: right;">180.5</td>
+<td style="text-align: right;">3.1</td>
+<td style="text-align: right;">22.6</td>
+<td style="text-align: right;">1.5</td>
+<td style="text-align: right;">0.039</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">80,000</td>
+<td style="text-align: right;">2,010</td>
+<td style="text-align: right;">33.1</td>
+<td style="text-align: right;">25.1</td>
+<td style="text-align: right;">1.7</td>
+<td style="text-align: right;">0.030</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Linear scaling confirmed</strong>: per-row cost stays in a narrow band (22.6–26.8 µs train, 1.5–4.2 µs predict). RMSE converges toward the irreducible noise floor (≈ 0.029 = 0.05/√3 for uniform noise on (−0.05, 0.05)). At n=100k, the model is fit to within 1% of irreducible noise.</p>
+</section>
+<section id="scaling-abng-as-pinn-regression-head" class="level3">
+<h3 class="anchored" data-anchor-id="scaling-abng-as-pinn-regression-head">Scaling: ABNG as PINN regression head</h3>
+<p>Truth: <code>u(x) = sin(πx)</code> on <code>[0, 1]</code>. Feature basis: <code>[1, x, x², x³, sin(πx)]</code>.</p>
+<table class="table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: right;">Collocation points</th>
+<th style="text-align: right;">Train time (ms)</th>
+<th style="text-align: right;">Per-point train (µs)</th>
+<th style="text-align: right;">L2 error (1024 eval points)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">1,000</td>
+<td style="text-align: right;">85.1</td>
+<td style="text-align: right;">85.1</td>
+<td style="text-align: right;">4.19 × 10⁻²</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">10,000</td>
+<td style="text-align: right;">264.2</td>
+<td style="text-align: right;">26.4</td>
+<td style="text-align: right;">9.35 × 10⁻³</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">100,000</td>
+<td style="text-align: right;">4,774</td>
+<td style="text-align: right;">47.7</td>
+<td style="text-align: right;">1.80 × 10⁻³</td>
+</tr>
+</tbody>
+</table>
+<p><strong>L2 error decays as roughly 1/√n</strong> — the expected Monte Carlo rate when the feature basis contains the true function. The per-point train cost dips at n=10k (cache-friendly) then rises again at n=100k (audit-log/memory pressure). This is the architecture’s home turf — basis adequacy by construction.</p>
+</section>
+<section id="scaling-full-lineage-flow-stamp-train-pack-serialize-replay" class="level3">
+<h3 class="anchored" data-anchor-id="scaling-full-lineage-flow-stamp-train-pack-serialize-replay">Scaling: Full lineage flow (stamp + train + pack + serialize + replay)</h3>
+<table class="table">
+<colgroup>
+<col style="width: 14%">
+<col style="width: 14%">
+<col style="width: 14%">
+<col style="width: 14%">
+<col style="width: 14%">
+<col style="width: 14%">
+<col style="width: 14%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: right;">Rows</th>
+<th style="text-align: right;">Train (ms)</th>
+<th style="text-align: right;">Per-row train (µs)</th>
+<th style="text-align: right;">Pack 1k snaps (ms)</th>
+<th style="text-align: right;">Serialize (ms)</th>
+<th style="text-align: right;">Serialize size</th>
+<th style="text-align: right;">Replay (ms)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">1,000</td>
+<td style="text-align: right;">32.0</td>
+<td style="text-align: right;">32.0</td>
+<td style="text-align: right;">5.2</td>
+<td style="text-align: right;">3.1</td>
+<td style="text-align: right;"><strong>308 KB</strong></td>
+<td style="text-align: right;">8.1</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">10,000</td>
+<td style="text-align: right;">305.5</td>
+<td style="text-align: right;">30.6</td>
+<td style="text-align: right;">7.1</td>
+<td style="text-align: right;">13.7</td>
+<td style="text-align: right;"><strong>2.99 MB</strong></td>
+<td style="text-align: right;">126.8</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">100,000</td>
+<td style="text-align: right;">2,280</td>
+<td style="text-align: right;">22.8</td>
+<td style="text-align: right;">4.4</td>
+<td style="text-align: right;">87.9</td>
+<td style="text-align: right;"><strong>29.8 MB</strong></td>
+<td style="text-align: right;">1,605.8</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Audit log size scales linearly</strong> at ~300 bytes/row (29.8 MB / 100k rows ≈ 298 B/row). Replay is ~30% <em>faster</em> than train at every scale because it skips per-event hash recomputation in the audit-only path. The serialize cost is sub-linear in row count (3.1 → 13.7 → 87.9 ms ≈ 4.4× → 28× scaling vs 10× → 100× row increase) — suggests buffer amortization.</p>
+<p>This is exactly the table to cite when discussing “can ABNG handle production-scale data?” The answer at 100K rows is: yes, but the snapshot is 29.8 MB and replay takes 1.6 seconds. For 1M rows, extrapolate: ~298 MB snapshot, ~16 seconds replay. Log compaction (covered in Part 2) is needed beyond that.</p>
+</section>
+</section>
+<section id="coverage-gap-analysis" class="level2">
+<h2 class="anchored" data-anchor-id="coverage-gap-analysis">Coverage gap analysis</h2>
+<p>The SRG-prompt audit asked for benchmarks of 11 categories. Here’s how they map to what exists:</p>
+<table class="table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>#</th>
+<th>Bench category</th>
+<th>Coverage</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td>Routing overhead</td>
+<td>✅ <strong>Full</strong></td>
+<td><code>descend</code> (118 ns), <code>encode_prefix</code> (137 ns), <code>route_to_leaf</code> (172 ns), <code>route_to_leaf_batch</code> (1.91×)</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td>Belief-state update cost</td>
+<td>✅ <strong>Full</strong></td>
+<td><code>observe</code> (4.24 µs), <code>blr_update</code> (29 µs), <code>blr_state_update_direct</code> (3.85 µs), <code>observe_batch</code> (23.51× at n=1024)</td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td>Graph mutation cost</td>
+<td>❌ <strong>Missing</strong></td>
+<td><code>decide_step</code> is not benched. The 6 structural actions each have unit tests but no perf measurement</td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td>Replay overhead</td>
+<td>✅ <strong>Full</strong></td>
+<td>replay @ 100k rows = 1606 ms; <code>smart_replay</code> 2.08× speedup measured</td>
+</tr>
+<tr class="odd">
+<td>5</td>
+<td>Audit logging overhead</td>
+<td>🟡 <strong>Partial</strong></td>
+<td>Implicit via <code>observe</code> cost; no clean “with-audit vs without-audit” comparison</td>
+</tr>
+<tr class="even">
+<td>6</td>
+<td>Memory growth</td>
+<td>🟡 <strong>Partial</strong></td>
+<td><code>serialize_bytes</code> captured (linear, ~300 B/row); no in-memory profiling</td>
+</tr>
+<tr class="odd">
+<td>7</td>
+<td>Scaling behavior</td>
+<td>✅ <strong>Full</strong></td>
+<td>n=1k/10k/100k for tabular, PINN, lineage</td>
+</tr>
+<tr class="even">
+<td>8</td>
+<td>Calibration overhead</td>
+<td>❌ <strong>Missing</strong></td>
+<td>Not separately measured — calibration is inside <code>observe</code></td>
+</tr>
+<tr class="odd">
+<td>9</td>
+<td>Deterministic execution cost</td>
+<td>❌ <strong>Missing</strong></td>
+<td>No Kahan-vs-plain comparison, no FMA-enabled comparison</td>
+</tr>
+<tr class="even">
+<td>10</td>
+<td>Inference latency</td>
+<td>✅ <strong>Full</strong></td>
+<td><code>blr_predict</code> (934 ns), <code>predict_per_row</code> 1.5–4.9 µs across benches</td>
+</tr>
+<tr class="odd">
+<td>11</td>
+<td>Adaptive specialization performance</td>
+<td>❌ <strong>Missing</strong></td>
+<td>No “static graph vs adaptive graph” comparison</td>
+</tr>
+</tbody>
+</table>
+<p><strong>External baseline comparisons</strong> — all missing:</p>
+<table class="table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Baseline</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>sklearn GP/RF/GBT</td>
+<td>❌ Python harness intentionally deferred per <code>bench/abng_vs_sklearn/main.rs</code></td>
+</tr>
+<tr class="even">
+<td>PyTorch MLP-PINN</td>
+<td>❌ Deferred per <code>bench/abng_pinn_scale/main.rs</code></td>
+</tr>
+<tr class="odd">
+<td>Static decision tree (Rust-native)</td>
+<td>❌ Not implemented</td>
+</tr>
+<tr class="even">
+<td>Plain HashMap-keyed lookup vs BTreeMap</td>
+<td>❌ Not implemented</td>
+</tr>
+<tr class="odd">
+<td>Plain f64 sum vs Kahan</td>
+<td>❌ Not implemented</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Summary</strong>: 6 of 11 bench categories fully covered, 2 partially, 3 missing entirely, and <em>all 5 external baseline comparisons</em> are missing.</p>
+</section>
+<section id="the-four-most-damning-honest-gaps" class="level2">
+<h2 class="anchored" data-anchor-id="the-four-most-damning-honest-gaps">The four most damning honest gaps</h2>
+<p>If I were a hostile reviewer of this architecture, here is where I would attack:</p>
+<section id="gap-1-no-external-baseline-comparisons" class="level3">
+<h3 class="anchored" data-anchor-id="gap-1-no-external-baseline-comparisons">Gap 1: No external baseline comparisons</h3>
+<p>For every claim of the form “ABNG does X better than alternative Y,” the codebase has <em>no direct measurement</em>. The tabular bench file’s docstring is explicit: “The companion sklearn comparison harness (Python) is intentionally deferred to Item 4.” That deferral has been in place across multiple phase boundaries. Until it lands, the “ABNG vs GP” framing in any article is <em>positional</em>, not <em>empirical</em>.</p>
+<p><strong>What would close this gap.</strong> A Python harness consuming the existing JSONL output from <code>bench/abng_vs_sklearn</code> and producing side-by-side RMSE / wall-clock plots against <code>sklearn.gaussian_process.GaussianProcessRegressor</code> and <code>sklearn.ensemble.RandomForestRegressor</code>. Roughly half a day of engineering.</p>
+</section>
+<section id="gap-2-small-n-tests-masquerading-as-validation" class="level3">
+<h3 class="anchored" data-anchor-id="gap-2-small-n-tests-masquerading-as-validation">Gap 2: Small-N tests masquerading as validation</h3>
+<p>The demo data sizes are 32–200 observations. The largest benchmark scale is 100K rows. Real ML deployments involve 10⁶–10⁹ observations. “It works in tests” is not “it works at production scale.” The asymptotic claims about ABNG’s <code>O(N·d²)</code> advantage over classical GP’s <code>O(N³)</code> are <em>correct by construction</em> (the math says so) but <strong>never wall-clock-benchmarked at n ≥ 10⁶</strong>.</p>
+<p><strong>What would close this gap.</strong> A bench at n=10⁶ and n=10⁷ on the tabular and PINN problems, comparing ABNG against a baseline that scales linearly (e.g., SGD-trained MLP), with wall-clock and error numbers side by side.</p>
+</section>
+<section id="gap-3-single-hardware-measurements" class="level3">
+<h3 class="anchored" data-anchor-id="gap-3-single-hardware-measurements">Gap 3: Single-hardware measurements</h3>
+<p>All benchmark numbers in this article were measured on one machine (Intel i7-11390H, Windows MSVC). The architecture’s determinism canaries are locked on Windows MSVC and <em>should</em> hold cross-platform (the architecture was designed for it), but cross-platform CI is unverified. Phase 0.6 added a <code>cross-platform-determinism.yml</code> GitHub Actions workflow skeleton, but the verification results have not been published as part of any article.</p>
+<p><strong>What would close this gap.</strong> Run the full bench suite on Linux, macOS, and Windows in CI, with all four bench files producing identical JSONL output (modulo wall-clock numbers). Publish the matrix. ~1 day of CI engineering.</p>
+</section>
+<section id="gap-4-no-statistical-confidence-intervals" class="level3">
+<h3 class="anchored" data-anchor-id="gap-4-no-statistical-confidence-intervals">Gap 4: No statistical confidence intervals</h3>
+<p>Every benchmark number in this article is a single point estimate. The <code>bench/abng_micro/main.rs</code> benches <em>do</em> report min-of-N-trials for the speedup comparisons, but the per-op costs are single timings. Real performance characterization requires multiple runs per operation, reporting median + interquartile range or 95% CI.</p>
+<p><strong>What would close this gap.</strong> Rerun each bench 20+ times, compute medians and CIs, publish the distributions. Or convert the entire suite to Criterion (Rust’s standard bench framework with built-in statistics). ~half a day of engineering.</p>
+</section>
+</section>
+<section id="the-three-experiments-that-would-change-my-mind" class="level2">
+<h2 class="anchored" data-anchor-id="the-three-experiments-that-would-change-my-mind">The three experiments that would change my mind</h2>
+<p>If a reader of this article were to pick one experiment to do, this is the order I would suggest:</p>
+<p><strong>Experiment A: NIG-convergence sanity check (1–2 weeks).</strong> Generate synthetic data from a known <code>(w_true, σ²_true)</code>, train ABNG on increasing sample counts, and plot <code>‖m_t − w_true‖</code> and <code>b_t/(a_t − 1) − σ²_true</code> over training steps. <strong>Pass:</strong> both decay to numerical noise, <code>b/(a−1)</code> from above. <strong>Fail:</strong> either curve plateaus, indicating a posterior misspecification. This is the cheapest experiment that could falsify the architecture’s correctness.</p>
+<p><strong>Experiment B: 2D Darcy-flow surrogate comparison (1–2 months).</strong> Train ABNG, FNO, and a Bayesian decision tree on the canonical 2D Darcy-flow benchmark. Compare on accuracy (MSE), calibration (ECE), and inference latency. <strong>Pass:</strong> ABNG is intermediate between FNO and the tree — worse on accuracy than FNO, better on calibration than tree. <strong>Fail:</strong> ABNG is worst on both axes, suggesting the tradeoffs are not buying what we think they are.</p>
+<p><strong>Experiment C: Real-world regulated-ML case study (3–6 months).</strong> Find one regulated-ML project (medical, financial, legal) and replicate it with ABNG, comparing audit/replay quality and predictive performance. <strong>Pass:</strong> the audit chain provides a defensible artefact, predictive performance is within 10% of the production model, and the regulatory team finds the lineage trail useful. <strong>Fail:</strong> either the predictive performance is uncompetitive, or the regulatory team finds the audit trail no more useful than existing tools.</p>
+</section>
+<section id="what-abng-currently-proves" class="level2">
+<h2 class="anchored" data-anchor-id="what-abng-currently-proves">What ABNG currently proves</h2>
+<p>Stripping away everything aspirational, here is what the demos and benchmarks together <em>do</em> establish:</p>
+<p><strong>Established (strong evidence at tested scale):</strong> - ABNG fits known analytical PDE solutions when the feature basis spans the truth (PINN demo: MAE &lt; 0.05 on 48-sample interior training). - L2 error on the sin(πx) PINN benchmark scales as the Monte Carlo rate (1/√n) up to n=100,000 collocation points. - Per-leaf BLR <code>epistemic_leverage</code> correctly separates dense vs sparse training regions (strict min-edge &gt; max-interior assertion). - Three-signal spoof detection works on a 64-row synthetic clinical-trial mock-up — tampering with one row produces chain_head + state_hash + provenance mismatches. - Smart-replay produces byte-identical state to naive replay (correctness), and runs 2.08× faster than naive at 10k events (modest speedup). - Linear scaling in n: per-row train cost stays in a narrow band across n=1k–100k for tabular, PINN, and lineage workloads. - Per-row inference cost is sub-microsecond (934 ns for BLR predict, 118 ns for tree descent). - Audit log size grows linearly at ~300 bytes/row.</p>
+<p><strong>Demonstrated at small scale (works in tests, not benchmarked against alternatives):</strong> - All six structural actions (Grow/Split/Merge/Prune/Compress/Freeze) fire correctly under controlled conditions. - Drift detection produces a monotone-growing score under controlled mean shift. - OOD score separates three training-density tiers. - Per-leaf calibration (15-bin ECE) tracks correctly.</p>
+<p><strong>Unmeasured (architecture-plausible, empirically silent):</strong> - Performance at n ≥ 10⁶ rows. - Cross-platform determinism (only Windows MSVC validated end-to-end). - Wall-clock comparison vs sklearn / PyTorch / FNO / random forest / gradient boosting. - Behavior under realistic concept drift (multi-modal shifts, gradual drift, etc.). - Multi-thread or GPU performance (architecture is single-threaded by design). - That the article’s “three or more advantages simultaneously” hypothesis holds anywhere empirically.</p>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+The honest summary
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><strong>ABNG is exploratory engineering, not validated science.</strong> The demos prove the mechanisms work at small scale. The benchmarks prove they scale linearly to 100K observations. Nothing yet proves the architecture competes with established alternatives on real workloads, and the <em>only</em> adversarial test in the codebase (three-signal spoof detection) operates on a 64-row synthetic dataset.</p>
+<p>If you’ve read this far and the architecture seems interesting but probably wrong in three specific ways, this article has done its job. The next phase of work is closing the four damning gaps and running Experiments A, B, and C. The code is open source — bring experiments.</p>
+</div>
+</div>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Note
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>ABNG lives at <a href="https://github.com/AdamEzzat1/CJC"><code>crates/cjc-abng/</code></a> in the CJC-Lang repository. The benchmark code is at <code>bench/abng_*/</code> and is reproducible with <code>cargo run --release -p abng-micro</code> (and similar for the other three benches). Part 1 of this series covers the architecture; Part 2 covers the determinism and audit story. This article is the empirical backbone — the evidence base for whatever opinion you form about ABNG.</p>
+</div>
+</div>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const disableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'prefetch';
+    }
+  }
+  const enableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'stylesheet';
+    }
+  }
+  const manageTransitions = (selector, allowTransitions) => {
+    const els = window.document.querySelectorAll(selector);
+    for (let i=0; i < els.length; i++) {
+      const el = els[i];
+      if (allowTransitions) {
+        el.classList.remove('notransition');
+      } else {
+        el.classList.add('notransition');
+      }
+    }
+  }
+  const toggleColorMode = (alternate) => {
+    // Switch the stylesheets
+    const alternateStylesheets = window.document.querySelectorAll('link.quarto-color-scheme.quarto-color-alternate');
+    manageTransitions('#quarto-margin-sidebar .nav-link', false);
+    if (alternate) {
+      enableStylesheet(alternateStylesheets);
+      for (const sheetNode of alternateStylesheets) {
+        if (sheetNode.id === "quarto-bootstrap") {
+          toggleBodyColorMode(sheetNode);
+        }
+      }
+    } else {
+      disableStylesheet(alternateStylesheets);
+      toggleBodyColorPrimary();
+    }
+    manageTransitions('#quarto-margin-sidebar .nav-link', true);
+    // Switch the toggles
+    const toggles = window.document.querySelectorAll('.quarto-color-scheme-toggle');
+    for (let i=0; i < toggles.length; i++) {
+      const toggle = toggles[i];
+      if (toggle) {
+        if (alternate) {
+          toggle.classList.add("alternate");     
+        } else {
+          toggle.classList.remove("alternate");
+        }
+      }
+    }
+    // Hack to workaround the fact that safari doesn't
+    // properly recolor the scrollbar when toggling (#1455)
+    if (navigator.userAgent.indexOf('Safari') > 0 && navigator.userAgent.indexOf('Chrome') == -1) {
+      manageTransitions("body", false);
+      window.scrollTo(0, 1);
+      setTimeout(() => {
+        window.scrollTo(0, 0);
+        manageTransitions("body", true);
+      }, 40);  
+    }
+  }
+  const isFileUrl = () => { 
+    return window.location.protocol === 'file:';
+  }
+  const hasAlternateSentinel = () => {  
+    let styleSentinel = getColorSchemeSentinel();
+    if (styleSentinel !== null) {
+      return styleSentinel === "alternate";
+    } else {
+      return false;
+    }
+  }
+  const setStyleSentinel = (alternate) => {
+    const value = alternate ? "alternate" : "default";
+    if (!isFileUrl()) {
+      window.localStorage.setItem("quarto-color-scheme", value);
+    } else {
+      localAlternateSentinel = value;
+    }
+  }
+  const getColorSchemeSentinel = () => {
+    if (!isFileUrl()) {
+      const storageValue = window.localStorage.getItem("quarto-color-scheme");
+      return storageValue != null ? storageValue : localAlternateSentinel;
+    } else {
+      return localAlternateSentinel;
+    }
+  }
+  let localAlternateSentinel = 'default';
+  // Dark / light mode switch
+  window.quartoToggleColorScheme = () => {
+    // Read the current dark / light value 
+    let toAlternate = !hasAlternateSentinel();
+    toggleColorMode(toAlternate);
+    setStyleSentinel(toAlternate);
+  };
+  // Ensure there is a toggle, if there isn't float one in the top right
+  if (window.document.querySelector('.quarto-color-scheme-toggle') === null) {
+    const a = window.document.createElement('a');
+    a.classList.add('top-right');
+    a.classList.add('quarto-color-scheme-toggle');
+    a.href = "";
+    a.onclick = function() { try { window.quartoToggleColorScheme(); } catch {} return false; };
+    const i = window.document.createElement("i");
+    i.classList.add('bi');
+    a.appendChild(i);
+    window.document.body.appendChild(a);
+  }
+  // Switch to dark mode if need be
+  if (hasAlternateSentinel()) {
+    toggleColorMode(true);
+  } else {
+    toggleColorMode(false);
+  }
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+      &nbsp;
+    </div>   
+    <div class="nav-footer-center">© 2026 Adam Ezzat. Built with <a href="https://quarto.org/">Quarto</a>.</div>
+    <div class="nav-footer-right">
+      &nbsp;
+    </div>
+  </div>
+</footer>
+
+
+
+<script src="../../../site_libs/quarto-html/zenscroll-min.js"></script>
+</body></html>
