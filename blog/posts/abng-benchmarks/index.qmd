@@ -189,7 +189,7 @@ These terms are often conflated. Following Doshi-Velez & Kim 2017 ("Towards A Ri
 - **Explainability**: the model can answer "*why* did you produce this output?" for a specific decision. ABNG provides this via the audit chain, route trace, and `predict_snap` blob. A user can replay any past decision and inspect its inputs and intermediate state.
 - **Interpretability**: a human can read the model parameters and understand the function the model implements at a semantic level. ABNG does **not** provide this. The per-leaf MLP body is a small black-box network; the BLR posterior is interpretable only in the standard "weight on each feature dimension" sense.
 
-ABNG's pitch is **explainability**, not interpretability — and the distinction is worth preserving in any TDS-style framing.
+ABNG's pitch is **explainability**, not interpretability — and the distinction is worth preserving in any technical framing of the architecture.
 :::
 
 ## 5. Experimental goals

@@ -3,7 +3,6 @@
     "listing": "/blog/index.html",
     "items": [
       "/blog/posts/abng-architecture/index.html",
-      "/blog/posts/abng-belief-states-first-class/index.html",
       "/blog/posts/abng-benchmarks/index.html",
       "/blog/posts/abng-benchmarks-part-2/index.html",
       "/blog/posts/abng-deterministic-systems/index.html",

@@ -289,8 +289,8 @@ This is Part 1 of a three-part series
 <div class="callout-body-container callout-body">
 <ul>
 <li><strong>Part 1 (this article):</strong> the architecture itself.</li>
-<li><strong>Part 2 (<a href="../abng-deterministic-systems/index.qmd">Deterministic and Auditable Neural Systems</a>):</strong> the SHA-256 audit chain, replay semantics, and the determinism contract.</li>
-<li><strong>Part 3 (<a href="../abng-benchmarks/index.qmd">Benchmarking Experimental Bayesian Graph Networks</a>):</strong> the demo catalog, scaling benchmarks, and honest limitations.</li>
+<li><strong>Part 2 (<a href="../../../blog/posts/abng-deterministic-systems/index.html">Deterministic and Auditable Neural Systems</a>):</strong> the SHA-256 audit chain, replay semantics, and the determinism contract.</li>
+<li><strong>Part 3 (<a href="../../../blog/posts/abng-benchmarks/index.html">Benchmarking Experimental Bayesian Graph Networks</a>):</strong> the demo catalog, scaling benchmarks, and honest limitations.</li>
 </ul>
 <p>Each part stands alone. Read in order for the full picture; read just Part 1 if you only care about the architectural shape; read Part 3 if you want the empirical evidence first.</p>
 </div>
@@ -754,8 +754,8 @@ What Makes This Different?
 <section id="the-follow-ups" class="level2">
 <h2 class="anchored" data-anchor-id="the-follow-ups">The follow-ups</h2>
 <p>This article covered what ABNG <em>is</em>. Two questions remain:</p>
-<p><strong>Does the auditability story actually hold up?</strong> The mechanism is a SHA-256 hash-chained log over every state mutation, with byte-identical replay and three-signal spoof detection. That’s Part 2 — <a href="../abng-deterministic-systems/index.qmd">Deterministic and Auditable Neural Systems</a>.</p>
-<p><strong>Does any of this actually work?</strong> Nine demo categories, 33+ test files, four scaling benchmarks, one analytical-solution result (PINN on the 1D heat equation: MAE &lt; 0.05 on a known truth). Plus honest gaps: zero external baselines, single-hardware measurements, small-N validation. That’s Part 3 — <a href="../abng-benchmarks/index.qmd">Benchmarking Experimental Bayesian Graph Networks</a>.</p>
+<p><strong>Does the auditability story actually hold up?</strong> The mechanism is a SHA-256 hash-chained log over every state mutation, with byte-identical replay and three-signal spoof detection. That’s Part 2 — <a href="../../../blog/posts/abng-deterministic-systems/index.html">Deterministic and Auditable Neural Systems</a>.</p>
+<p><strong>Does any of this actually work?</strong> Nine demo categories, 33+ test files, four scaling benchmarks, one analytical-solution result (PINN on the 1D heat equation: MAE &lt; 0.05 on a known truth). Plus honest gaps: zero external baselines, single-hardware measurements, small-N validation. That’s Part 3 — <a href="../../../blog/posts/abng-benchmarks/index.html">Benchmarking Experimental Bayesian Graph Networks</a>.</p>
 <div class="callout callout-style-simple callout-tip no-icon callout-titled">
 <div class="callout-header d-flex align-content-center">
 <div class="callout-icon-container">
@@ -794,7 +794,7 @@ Note
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p>ABNG lives at <a href="https://github.com/AdamEzzat1/CJC"><code>crates/cjc-abng/</code></a> in the CJC-Lang repository. The full codebase, the test suite, and the working <code>cjcl abng {inspect, replay, diff, explain, train}</code> CLI surface are open source. An earlier single-article version of this material — covering all three parts in one post — is at <a href="../../../blog/posts/abng-belief-states-first-class/index.html">the original ABNG belief-states post</a>. The capabilities-walkthrough version (engineering-changelog genre) is at <a href="../../../blog/posts/abng-experimental-bayesian-graph/index.html">the previous ABNG blog post</a>. This three-part series is the research-commentary version intended for Towards Data Science submission.</p>
+<p>ABNG lives at <a href="https://github.com/AdamEzzat1/CJC"><code>crates/cjc-abng/</code></a> in the CJC-Lang repository. The full codebase, the test suite, and the working <code>cjcl abng {inspect, replay, diff, explain, train}</code> CLI surface are open source. The capabilities-walkthrough version of this material (engineering-changelog genre) is at <a href="../../../blog/posts/abng-experimental-bayesian-graph/index.html">the previous ABNG blog post</a>. This is part of a four-article research-commentary series on ABNG.</p>
 </div>
 </div>
 

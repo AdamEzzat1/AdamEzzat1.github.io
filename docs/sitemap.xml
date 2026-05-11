@@ -2,74 +2,70 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://adamezzat1.github.io/about.html</loc>
-    <lastmod>2026-04-29T21:26:45.715Z</lastmod>
+    <lastmod>2026-05-11T06:17:10.123Z</lastmod>
   </url>
   <url>
     <loc>https://adamezzat1.github.io/blog/index.html</loc>
-    <lastmod>2026-05-11T05:50:33.380Z</lastmod>
-  </url>
-  <url>
-    <loc>https://adamezzat1.github.io/blog/posts/chess-rl-v2/index.html</loc>
-    <lastmod>2026-04-29T21:26:49.171Z</lastmod>
-  </url>
-  <url>
-    <loc>https://adamezzat1.github.io/blog/posts/cjc-v0.1-released/index.html</loc>
-    <lastmod>2026-04-29T21:26:50.286Z</lastmod>
-  </url>
-  <url>
-    <loc>https://adamezzat1.github.io/blog/posts/cjc-v0.1.1-syntax-guide/index.html</loc>
-    <lastmod>2026-04-29T21:26:52.793Z</lastmod>
-  </url>
-  <url>
-    <loc>https://adamezzat1.github.io/blog/posts/cjcl-cli-reference/index.html</loc>
-    <lastmod>2026-04-29T21:26:54.470Z</lastmod>
-  </url>
-  <url>
-    <loc>https://adamezzat1.github.io/blog/posts/introducing-cjc/index.html</loc>
-    <lastmod>2026-04-29T21:26:55.389Z</lastmod>
-  </url>
-  <url>
-    <loc>https://adamezzat1.github.io/blog/posts/neural-networks-in-cjc/index.html</loc>
-    <lastmod>2026-04-29T21:26:56.034Z</lastmod>
-  </url>
-  <url>
-    <loc>https://adamezzat1.github.io/blog/posts/tidyview-data-engine/index.html</loc>
-    <lastmod>2026-04-29T21:26:57.400Z</lastmod>
-  </url>
-  <url>
-    <loc>https://adamezzat1.github.io/blog/posts/tidyview-v3-and-dharht/index.html</loc>
-    <lastmod>2026-04-29T21:26:58.577Z</lastmod>
-  </url>
-  <url>
-    <loc>https://adamezzat1.github.io/index.html</loc>
-    <lastmod>2026-04-29T21:26:59.240Z</lastmod>
-  </url>
-  <url>
-    <loc>https://adamezzat1.github.io/projects.html</loc>
-    <lastmod>2026-04-29T21:26:59.905Z</lastmod>
-  </url>
-  <url>
-    <loc>https://adamezzat1.github.io/blog/posts/abng-experimental-bayesian-graph/index.html</loc>
-    <lastmod>2026-05-08T19:40:03.743Z</lastmod>
-  </url>
-  <url>
-    <loc>https://adamezzat1.github.io/blog/posts/abng-belief-states-first-class/index.html</loc>
-    <lastmod>2026-05-11T01:21:20.068Z</lastmod>
+    <lastmod>2026-05-11T06:17:15.442Z</lastmod>
   </url>
   <url>
     <loc>https://adamezzat1.github.io/blog/posts/abng-architecture/index.html</loc>
-    <lastmod>2026-05-11T02:43:49.308Z</lastmod>
+    <lastmod>2026-05-11T06:17:17.907Z</lastmod>
   </url>
   <url>
     <loc>https://adamezzat1.github.io/blog/posts/abng-benchmarks/index.html</loc>
-    <lastmod>2026-05-11T05:50:21.684Z</lastmod>
-  </url>
-  <url>
-    <loc>https://adamezzat1.github.io/blog/posts/abng-deterministic-systems/index.html</loc>
-    <lastmod>2026-05-11T02:56:48.790Z</lastmod>
+    <lastmod>2026-05-11T06:17:24.856Z</lastmod>
   </url>
   <url>
     <loc>https://adamezzat1.github.io/blog/posts/abng-benchmarks-part-2/index.html</loc>
-    <lastmod>2026-05-11T05:49:08.674Z</lastmod>
+    <lastmod>2026-05-11T06:17:28.398Z</lastmod>
+  </url>
+  <url>
+    <loc>https://adamezzat1.github.io/blog/posts/abng-deterministic-systems/index.html</loc>
+    <lastmod>2026-05-11T06:17:32.153Z</lastmod>
+  </url>
+  <url>
+    <loc>https://adamezzat1.github.io/blog/posts/abng-experimental-bayesian-graph/index.html</loc>
+    <lastmod>2026-05-11T06:17:39.920Z</lastmod>
+  </url>
+  <url>
+    <loc>https://adamezzat1.github.io/blog/posts/chess-rl-v2/index.html</loc>
+    <lastmod>2026-05-11T06:17:42.676Z</lastmod>
+  </url>
+  <url>
+    <loc>https://adamezzat1.github.io/blog/posts/cjc-v0.1-released/index.html</loc>
+    <lastmod>2026-05-11T06:17:45.026Z</lastmod>
+  </url>
+  <url>
+    <loc>https://adamezzat1.github.io/blog/posts/cjc-v0.1.1-syntax-guide/index.html</loc>
+    <lastmod>2026-05-11T06:17:54.007Z</lastmod>
+  </url>
+  <url>
+    <loc>https://adamezzat1.github.io/blog/posts/cjcl-cli-reference/index.html</loc>
+    <lastmod>2026-05-11T06:17:59.552Z</lastmod>
+  </url>
+  <url>
+    <loc>https://adamezzat1.github.io/blog/posts/introducing-cjc/index.html</loc>
+    <lastmod>2026-05-11T06:18:00.990Z</lastmod>
+  </url>
+  <url>
+    <loc>https://adamezzat1.github.io/blog/posts/neural-networks-in-cjc/index.html</loc>
+    <lastmod>2026-05-11T06:18:02.060Z</lastmod>
+  </url>
+  <url>
+    <loc>https://adamezzat1.github.io/blog/posts/tidyview-data-engine/index.html</loc>
+    <lastmod>2026-05-11T06:18:05.814Z</lastmod>
+  </url>
+  <url>
+    <loc>https://adamezzat1.github.io/blog/posts/tidyview-v3-and-dharht/index.html</loc>
+    <lastmod>2026-05-11T06:18:09.121Z</lastmod>
+  </url>
+  <url>
+    <loc>https://adamezzat1.github.io/index.html</loc>
+    <lastmod>2026-05-11T06:18:10.528Z</lastmod>
+  </url>
+  <url>
+    <loc>https://adamezzat1.github.io/projects.html</loc>
+    <lastmod>2026-05-11T06:18:13.977Z</lastmod>
   </url>
 </urlset>
