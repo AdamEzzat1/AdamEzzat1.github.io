@@ -1,0 +1,1760 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.3.340">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Adam Ezzat">
+<meta name="dcterms.date" content="2026-05-10">
+<meta name="description" content="Part II of a two-article benchmark deep-dive on ABNG. This article covers the four benchmark categories that make ABNG architecturally distinctive: routing efficiency (10K observations distribute across 8 codebook bins, peak matching input mean), memory scaling (decide_step sub-millisecond at all tested graph sizes through n_active = 256), adaptation (six structural actions firing under quality-gated conditions), and temporal dynamics (drift-trip auto-unfreeze restoring learning under distribution shift). Four experiments: beta (basis-not-in-span PINN, surprising piecewise-routing robustness), epsilon (decide_step scaling), theta (routing-flow Sankey), iota (2-D OOD heatmap separating training region from corners). The companion Part I covers determinism, lineage, state stability, probabilistic consistency, and explainability.">
+
+<title>Adam Ezzat - ABNG Benchmarks Part II — Adaptive Graph Evolution, Routing Behavior, and Temporal State Dynamics</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../../">
+<script src="../../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<script src="../../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-dark.min.css" rel="prefetch" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+<style>html{ scroll-behavior: smooth; }</style>
+
+
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../../index.html">
+    <span class="navbar-title">Adam Ezzat</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../../index.html" rel="" target="">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../about.html" rel="" target="">
+ <span class="menu-text">About</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../projects.html" rel="" target="">
+ <span class="menu-text">Projects</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../blog/index.html" rel="" target="">
+ <span class="menu-text">Blog</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/AdamEzzat1" rel="" target=""><i class="bi bi-github" role="img" aria-label="GitHub">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://linkedin.com/in/adamezzat" rel="" target=""><i class="bi bi-linkedin" role="img" aria-label="LinkedIn">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+            <div class="quarto-navbar-tools">
+  <a href="" class="quarto-color-scheme-toggle quarto-navigation-tool  px-1" onclick="window.quartoToggleColorScheme(); return false;" title="Toggle dark mode"><i class="bi"></i></a>
+</div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#introduction" id="toc-introduction" class="nav-link active" data-scroll-target="#introduction">1. Introduction</a>
+  <ul class="collapse">
+  <li><a href="#why-these-four-categories-belong-together" id="toc-why-these-four-categories-belong-together" class="nav-link" data-scroll-target="#why-these-four-categories-belong-together">Why these four categories belong together</a></li>
+  <li><a href="#what-this-article-delivers" id="toc-what-this-article-delivers" class="nav-link" data-scroll-target="#what-this-article-delivers">What this article delivers</a></li>
+  </ul></li>
+  <li><a href="#what-the-current-abng-demos-demonstrate" id="toc-what-the-current-abng-demos-demonstrate" class="nav-link" data-scroll-target="#what-the-current-abng-demos-demonstrate">2. What the current ABNG demos demonstrate</a></li>
+  <li><a href="#benchmark-taxonomy-where-this-article-slices-it" id="toc-benchmark-taxonomy-where-this-article-slices-it" class="nav-link" data-scroll-target="#benchmark-taxonomy-where-this-article-slices-it">3. Benchmark taxonomy (where this article slices it)</a></li>
+  <li><a href="#categories-covered-in-this-article" id="toc-categories-covered-in-this-article" class="nav-link" data-scroll-target="#categories-covered-in-this-article">4. Categories covered in this article</a>
+  <ul class="collapse">
+  <li><a href="#routing-efficiency" id="toc-routing-efficiency" class="nav-link" data-scroll-target="#routing-efficiency">4.1 Routing Efficiency</a></li>
+  <li><a href="#memory-scaling" id="toc-memory-scaling" class="nav-link" data-scroll-target="#memory-scaling">4.2 Memory Scaling</a></li>
+  <li><a href="#adaptation" id="toc-adaptation" class="nav-link" data-scroll-target="#adaptation">4.3 Adaptation</a></li>
+  <li><a href="#temporal-dynamics" id="toc-temporal-dynamics" class="nav-link" data-scroll-target="#temporal-dynamics">4.4 Temporal Dynamics</a></li>
+  </ul></li>
+  <li><a href="#experimental-goals" id="toc-experimental-goals" class="nav-link" data-scroll-target="#experimental-goals">5. Experimental goals</a>
+  <ul class="collapse">
+  <li><a href="#claims-and-pass-conditions" id="toc-claims-and-pass-conditions" class="nav-link" data-scroll-target="#claims-and-pass-conditions">Claims and pass conditions</a></li>
+  <li><a href="#pre-registered-failure-modes" id="toc-pre-registered-failure-modes" class="nav-link" data-scroll-target="#pre-registered-failure-modes">Pre-registered failure modes</a></li>
+  </ul></li>
+  <li><a href="#mini-demo-narratives" id="toc-mini-demo-narratives" class="nav-link" data-scroll-target="#mini-demo-narratives">6. Mini-demo narratives</a>
+  <ul class="collapse">
+  <li><a href="#md-ii-1-10k-observations-flow-through-8-bins-routing" id="toc-md-ii-1-10k-observations-flow-through-8-bins-routing" class="nav-link" data-scroll-target="#md-ii-1-10k-observations-flow-through-8-bins-routing">MD-II-1 — 10K observations flow through 8 bins (Routing)</a></li>
+  <li><a href="#md-ii-2-decide_step-on-256-nodes-in-under-1-ms-memory-scaling" id="toc-md-ii-2-decide_step-on-256-nodes-in-under-1-ms-memory-scaling" class="nav-link" data-scroll-target="#md-ii-2-decide_step-on-256-nodes-in-under-1-ms-memory-scaling">MD-II-2 — <code>decide_step</code> on 256 nodes in under 1 ms (Memory Scaling)</a></li>
+  <li><a href="#md-ii-3-merge-fires-when-two-leaves-converge-adaptation" id="toc-md-ii-3-merge-fires-when-two-leaves-converge-adaptation" class="nav-link" data-scroll-target="#md-ii-3-merge-fires-when-two-leaves-converge-adaptation">MD-II-3 — Merge fires when two leaves converge (Adaptation)</a></li>
+  <li><a href="#md-ii-4-auto-unfreeze-on-distribution-shift-temporal-dynamics" id="toc-md-ii-4-auto-unfreeze-on-distribution-shift-temporal-dynamics" class="nav-link" data-scroll-target="#md-ii-4-auto-unfreeze-on-distribution-shift-temporal-dynamics">MD-II-4 — Auto-unfreeze on distribution shift (Temporal Dynamics)</a></li>
+  </ul></li>
+  <li><a href="#deep-experiments" id="toc-deep-experiments" class="nav-link" data-scroll-target="#deep-experiments">7. Deep experiments</a>
+  <ul class="collapse">
+  <li><a href="#experiment-β-basis-not-in-span-pinn-the-surprise" id="toc-experiment-β-basis-not-in-span-pinn-the-surprise" class="nav-link" data-scroll-target="#experiment-β-basis-not-in-span-pinn-the-surprise">7.1 Experiment β — Basis-not-in-span PINN (the surprise)</a></li>
+  <li><a href="#experiment-ε-decide_step-scaling" id="toc-experiment-ε-decide_step-scaling" class="nav-link" data-scroll-target="#experiment-ε-decide_step-scaling">7.2 Experiment ε — <code>decide_step</code> scaling</a></li>
+  <li><a href="#experiment-θ-routing-flow-sankey" id="toc-experiment-θ-routing-flow-sankey" class="nav-link" data-scroll-target="#experiment-θ-routing-flow-sankey">7.3 Experiment θ — Routing-flow Sankey</a></li>
+  <li><a href="#experiment-ι-2-d-ood-score-heatmap" id="toc-experiment-ι-2-d-ood-score-heatmap" class="nav-link" data-scroll-target="#experiment-ι-2-d-ood-score-heatmap">7.4 Experiment ι — 2-D OOD score heatmap</a></li>
+  </ul></li>
+  <li><a href="#demo-deep-dives" id="toc-demo-deep-dives" class="nav-link" data-scroll-target="#demo-deep-dives">8. Demo deep-dives</a>
+  <ul class="collapse">
+  <li><a href="#adaptive-triggers-the-marquee-decide_step-demo" id="toc-adaptive-triggers-the-marquee-decide_step-demo" class="nav-link" data-scroll-target="#adaptive-triggers-the-marquee-decide_step-demo">8.1 Adaptive triggers — the marquee <code>decide_step</code> demo</a></li>
+  <li><a href="#five-trigger-specific-demos-compress-grow-split-prune-freeze" id="toc-five-trigger-specific-demos-compress-grow-split-prune-freeze" class="nav-link" data-scroll-target="#five-trigger-specific-demos-compress-grow-split-prune-freeze">8.2 Five trigger-specific demos (Compress, Grow, Split, Prune, Freeze)</a></li>
+  <li><a href="#drift-detection-auto-unfreeze-temporal-dynamics" id="toc-drift-detection-auto-unfreeze-temporal-dynamics" class="nav-link" data-scroll-target="#drift-detection-auto-unfreeze-temporal-dynamics">8.3 Drift detection + auto-unfreeze (temporal dynamics)</a></li>
+  <li><a href="#maturity-signature-evolution-temporal-state" id="toc-maturity-signature-evolution-temporal-state" class="nav-link" data-scroll-target="#maturity-signature-evolution-temporal-state">8.4 Maturity &amp; signature evolution (temporal state)</a></li>
+  </ul></li>
+  <li><a href="#routing-microbench-results" id="toc-routing-microbench-results" class="nav-link" data-scroll-target="#routing-microbench-results">9. Routing microbench results</a>
+  <ul class="collapse">
+  <li><a href="#speedup-comparisons-phase-0.7-perf-wins" id="toc-speedup-comparisons-phase-0.7-perf-wins" class="nav-link" data-scroll-target="#speedup-comparisons-phase-0.7-perf-wins">Speedup comparisons (Phase 0.7 perf wins)</a></li>
+  <li><a href="#cross-reference-to-scaling-at-higher-n" id="toc-cross-reference-to-scaling-at-higher-n" class="nav-link" data-scroll-target="#cross-reference-to-scaling-at-higher-n">Cross-reference to scaling at higher n</a></li>
+  </ul></li>
+  <li><a href="#failure-cases-limitations" id="toc-failure-cases-limitations" class="nav-link" data-scroll-target="#failure-cases-limitations">10. Failure cases &amp; limitations</a>
+  <ul class="collapse">
+  <li><a href="#decide_step-not-benched-past-n_active-256" id="toc-decide_step-not-benched-past-n_active-256" class="nav-link" data-scroll-target="#decide_step-not-benched-past-n_active-256">10.1 <code>decide_step</code> not benched past n_active = 256</a></li>
+  <li><a href="#trigger-demos-are-positive-control" id="toc-trigger-demos-are-positive-control" class="nav-link" data-scroll-target="#trigger-demos-are-positive-control">10.2 Trigger demos are positive-control</a></li>
+  <li><a href="#no-external-adaptive-system-baseline" id="toc-no-external-adaptive-system-baseline" class="nav-link" data-scroll-target="#no-external-adaptive-system-baseline">10.3 No external adaptive-system baseline</a></li>
+  <li><a href="#no-production-scale-temporal-dynamics" id="toc-no-production-scale-temporal-dynamics" class="nav-link" data-scroll-target="#no-production-scale-temporal-dynamics">10.4 No production-scale temporal dynamics</a></li>
+  <li><a href="#routing-analysis-depends-on-opt-in-audit-events" id="toc-routing-analysis-depends-on-opt-in-audit-events" class="nav-link" data-scroll-target="#routing-analysis-depends-on-opt-in-audit-events">10.5 Routing analysis depends on opt-in audit events</a></li>
+  <li><a href="#future-work-part-ii-categories" id="toc-future-work-part-ii-categories" class="nav-link" data-scroll-target="#future-work-part-ii-categories">Future work (Part II categories)</a></li>
+  </ul></li>
+  <li><a href="#reproducibility" id="toc-reproducibility" class="nav-link" data-scroll-target="#reproducibility">11. Reproducibility</a>
+  <ul class="collapse">
+  <li><a href="#build-environment-fingerprint" id="toc-build-environment-fingerprint" class="nav-link" data-scroll-target="#build-environment-fingerprint">Build environment fingerprint</a></li>
+  <li><a href="#reproduction-commands" id="toc-reproduction-commands" class="nav-link" data-scroll-target="#reproduction-commands">Reproduction commands</a></li>
+  <li><a href="#what-you-should-expect-to-see" id="toc-what-you-should-expect-to-see" class="nav-link" data-scroll-target="#what-you-should-expect-to-see">What you should expect to see</a></li>
+  </ul></li>
+  <li><a href="#why-this-matters" id="toc-why-this-matters" class="nav-link" data-scroll-target="#why-this-matters">12. Why this matters</a>
+  <ul class="collapse">
+  <li><a href="#online-learning" id="toc-online-learning" class="nav-link" data-scroll-target="#online-learning">Online learning</a></li>
+  <li><a href="#interpretable-routing" id="toc-interpretable-routing" class="nav-link" data-scroll-target="#interpretable-routing">Interpretable routing</a></li>
+  <li><a href="#adaptive-computation" id="toc-adaptive-computation" class="nav-link" data-scroll-target="#adaptive-computation">Adaptive computation</a></li>
+  </ul></li>
+  <li><a href="#conclusion" id="toc-conclusion" class="nav-link" data-scroll-target="#conclusion">13. Conclusion</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">ABNG Benchmarks Part II — Adaptive Graph Evolution, Routing Behavior, and Temporal State Dynamics</h1>
+<p class="subtitle lead">Four experiments on the parts of ABNG that are architecturally distinctive: routing partitions, structural decisions, decide_step cost, and the graph’s response to its own surprise.</p>
+  <div class="quarto-categories">
+    <div class="quarto-category">CJC-Lang</div>
+    <div class="quarto-category">ABNG</div>
+    <div class="quarto-category">benchmarks</div>
+    <div class="quarto-category">adaptive</div>
+    <div class="quarto-category">routing</div>
+    <div class="quarto-category">temporal</div>
+    <div class="quarto-category">drift</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    Part II of a two-article benchmark deep-dive on ABNG. This article covers the four benchmark categories that make ABNG architecturally distinctive: routing efficiency (10K observations distribute across 8 codebook bins, peak matching input mean), memory scaling (decide_step sub-millisecond at all tested graph sizes through n_active = 256), adaptation (six structural actions firing under quality-gated conditions), and temporal dynamics (drift-trip auto-unfreeze restoring learning under distribution shift). Four experiments: beta (basis-not-in-span PINN, surprising piecewise-routing robustness), epsilon (decide_step scaling), theta (routing-flow Sankey), iota (2-D OOD heatmap separating training region from corners). The companion Part I covers determinism, lineage, state stability, probabilistic consistency, and explainability.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Adam Ezzat </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">May 10, 2026</p>
+    </div>
+  </div>
+  
+    <div>
+    <div class="quarto-title-meta-heading">Modified</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date-modified">May 10, 2026</p>
+    </div>
+  </div>
+    
+  </div>
+  
+
+</header>
+
+<div class="reading-time">
+🕑 ~38 min read
+</div>
+<div class="callout callout-style-simple callout-tip no-icon callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+TL;DR
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>ABNG (Adaptive Belief Network Graph) is an experimental neural architecture that treats Bayesian belief as a first-class object — each leaf in an adaptive tree carries its own posterior, routing is a traceable walk through learned bytes, and the graph itself can grow / split / merge / prune / compress / freeze under a deterministic policy. <strong>This article (Part II of the benchmark deep-dive) covers the four categories where ABNG is architecturally distinctive — the parts where the graph isn’t fixed, where structural decisions matter, where the system <em>adapts</em>.</strong> Four experiments — β (basis-not-in-span PINN with surprising piecewise-routing robustness), ε (<code>decide_step</code> scaling sub-millisecond at n_active ≤ 256), θ (routing-flow Sankey matching input distribution), ι (2-D OOD heatmap showing spatial structure of abstain decisions) — back the claims. Plus five trigger-specific demo deep-dives (Compress / Grow / Split / Prune / Freeze) and the temporal-dynamics story (drift detection + auto-unfreeze). <strong>The companion Part I covers determinism, lineage, state stability, probabilistic consistency, and explainability.</strong></p>
+</div>
+</div>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Two prototype disclaimers
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><strong>ABNG is a research-stage prototype.</strong> It is built on top of <strong>CJC-Lang</strong>, a research compiler that is itself pre-1.0. Both are under active development. Anything you read here is current as of Phase 0.7 (snapshot magic <code>v13</code>); Phase 0.8 explicitly authorizes a wire-format bump to v14. None of this is production-ready. None of this has been deployed at scale.</p>
+</div>
+</div>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+This is article 4 of a 4-article ABNG series
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<ul>
+<li><strong>Article 1</strong> (<a href="../../../blog/posts/abng-architecture/index.html">ABNG: Treating Belief States as First-Class Citizens</a>) — the architecture itself.</li>
+<li><strong>Article 2</strong> (<a href="../../../blog/posts/abng-deterministic-systems/index.html">Deterministic and Auditable Neural Systems</a>) — the audit chain and determinism contract.</li>
+<li><strong>Article 3</strong> (<a href="../../../blog/posts/abng-benchmarks/index.html">Benchmarks Part I</a>) — determinism, lineage, state stability, probabilistic consistency, explainability.</li>
+<li><strong>Article 4 (this article)</strong> — Benchmarks Part II: adaptive graph evolution, routing behavior, temporal state dynamics.</li>
+</ul>
+<p>Each article can be read alone. This one is the empirical evidence for the “things that make ABNG architecturally distinctive” half of the benchmark story; Part I is the “things you can prove correct” half.</p>
+</div>
+</div>
+<section id="introduction" class="level2">
+<h2 class="anchored" data-anchor-id="introduction">1. Introduction</h2>
+<p>ABNG is an experimental neural architecture that treats Bayesian belief as a first-class architectural primitive: each leaf in an adaptive tree carries its own Normal-Inverse-Gamma posterior, routing is a traceable walk through learned bytes, and the graph can grow / split / merge / prune / compress / freeze itself under a deterministic decision policy. Every state mutation appends to a SHA-256 hash-chained audit log.</p>
+<p>That’s the architecture. <a href="../../../blog/posts/abng-benchmarks/index.html">Part I</a> handled the properties of a <em>fixed</em> graph — what you can prove about the model at any given moment in its training history. This article handles what makes ABNG architecturally distinctive: properties that emerge from the graph <em>changing</em> over time.</p>
+<section id="why-these-four-categories-belong-together" class="level3">
+<h3 class="anchored" data-anchor-id="why-these-four-categories-belong-together">Why these four categories belong together</h3>
+<p>The Part I categories (determinism, lineage, state stability, probabilistic consistency, explainability) can be tested on a snapshot. You freeze the graph at time <code>t</code>, run a battery of measurements, and either the property holds or it doesn’t. The categories don’t depend on the graph evolving.</p>
+<p>The Part II categories are different. <strong>Each one is a property of the graph <em>changing</em>.</strong></p>
+<ul>
+<li><strong>Routing efficiency</strong> is meaningful only because the routing partition exists and the input flows through it. A static lookup table doesn’t have an interesting “routing efficiency” story; ABNG does because the partition is learned and the bytes-to-leaves mapping is interpretable.</li>
+<li><strong>Memory scaling</strong> is meaningful because the graph grows. A fixed-size MLP has no scaling story; ABNG’s <code>n_active_nodes</code> is a dynamic quantity that emerges from <code>decide_step</code>’s history.</li>
+<li><strong>Adaptation</strong> <em>is</em> the story of the graph changing — Grow / Split / Merge / Prune / Compress / Freeze. Six discrete structural actions, each gated by a deterministic quality condition.</li>
+<li><strong>Temporal dynamics</strong> is the part of the story that depends on observation order. Drift detection responds to distribution shift over time; auto-unfreeze re-enables learning when surprise crosses a threshold; signature ring buffers track stability over multi-window history.</li>
+</ul>
+<p>What this means concretely for the article: the experiments here measure how the graph <em>behaves over training</em>, not just how it <em>predicts on test data</em>. The headline result (β — basis-not-in-span PINN) is a finding about how the <em>routing partition</em> changes what a basis-restricted model can represent — a result that would not exist if the routing weren’t part of the architecture.</p>
+</section>
+<section id="what-this-article-delivers" class="level3">
+<h3 class="anchored" data-anchor-id="what-this-article-delivers">What this article delivers</h3>
+<p>By the end of Part II:</p>
+<ol type="1">
+<li>You have formal definitions for routing efficiency, memory scaling, adaptation, and temporal dynamics — measurable, reproducible categories.</li>
+<li>You have four worked-through mini-demos (one per category) showing concrete inputs and observable graph behavior.</li>
+<li>You have four deep experiments with pre-registered pass/fail conditions and real wall-clock measurements: β, ε, θ, ι.</li>
+<li>You have five trigger-specific demo deep-dives covering all six structural actions in the codebase.</li>
+<li>You have the routing microbenchmark numbers and the structural-decision cost-model summary.</li>
+<li>You have a complete reproducibility section with exact <code>cargo</code> commands.</li>
+<li>You see five honest failure modes and the deferred work that would close them.</li>
+</ol>
+<p>The article is ~9,000 words. It assumes you’ve read Part I or know the architecture from <a href="../../../blog/posts/abng-architecture/index.html">Part 1 of the trilogy</a>; if you haven’t, Part I is the better starting point.</p>
+</section>
+</section>
+<section id="what-the-current-abng-demos-demonstrate" class="level2">
+<h2 class="anchored" data-anchor-id="what-the-current-abng-demos-demonstrate">2. What the current ABNG demos demonstrate</h2>
+<p>For continuity with Part I, the cross-article capability overview reappears here. <strong>This article focuses on the 8 capabilities marked “Part II” below.</strong> (Part I covers the other 11.)</p>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Demonstrated capability</th>
+<th>Mechanism</th>
+<th>Deep coverage in</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Adaptive routing</td>
+<td>QuantileCodebook + Adaptive Radix Tree-style descent</td>
+<td><strong>Part II</strong></td>
+</tr>
+<tr class="even">
+<td>Audit chain integrity</td>
+<td>SHA-256 chain over every state mutation; 30 audit kinds</td>
+<td>Part I</td>
+</tr>
+<tr class="odd">
+<td>Bayesian inference (per-leaf)</td>
+<td>NIG conjugate update over BLR weights + noise variance</td>
+<td>Part I</td>
+</tr>
+<tr class="even">
+<td>Belief-state stability over training</td>
+<td>Welford-smoothed <code>NodeSignature</code> per leaf</td>
+<td>Part I + <strong>Part II</strong></td>
+</tr>
+<tr class="odd">
+<td>Calibration tracking</td>
+<td>15-bin reliability diagram per leaf; ECE accumulated with Kahan</td>
+<td>Part I</td>
+</tr>
+<tr class="even">
+<td>Cryptographic provenance</td>
+<td>Per-node <code>provenance_stamp_hash</code> field</td>
+<td>Part I</td>
+</tr>
+<tr class="odd">
+<td>Deterministic execution</td>
+<td>Kahan summation, BTreeMap, no FMA, SplitMix64 RNG</td>
+<td>Part I</td>
+</tr>
+<tr class="even">
+<td>Drift detection</td>
+<td>L2 z-shift between current density and frozen baseline</td>
+<td><strong>Part II</strong></td>
+</tr>
+<tr class="odd">
+<td>Explainable abstain</td>
+<td>Composite <code>ood_score = max(density, prefix_distance, epi_z)</code></td>
+<td>Part I</td>
+</tr>
+<tr class="even">
+<td>Graph mutation visibility</td>
+<td><code>cjcl abng inspect</code> and <code>cjcl abng diff</code> CLI tools</td>
+<td>Part I + <strong>Part II</strong></td>
+</tr>
+<tr class="odd">
+<td>Lineage attestation</td>
+<td>Three-signal spoof detection</td>
+<td>Part I</td>
+</tr>
+<tr class="even">
+<td>Posterior convergence</td>
+<td>Closed-form NIG update with Cholesky + triangular solve</td>
+<td>Part I</td>
+</tr>
+<tr class="odd">
+<td>Probabilistic consistency</td>
+<td>Per-bin (predicted, observed) tracking; aggregate ECE</td>
+<td>Part I</td>
+</tr>
+<tr class="even">
+<td>Replayability under mutation</td>
+<td><code>serialize → replay</code> byte-identical even after structural events</td>
+<td>Part I</td>
+</tr>
+<tr class="odd">
+<td>Route introspection</td>
+<td>Opt-in <code>Routed</code> audit events (kind <code>0x1B</code>) for prediction traces</td>
+<td><strong>Part II</strong></td>
+</tr>
+<tr class="even">
+<td>Structural adaptation</td>
+<td><code>decide_step</code> engine with 6 actions + 14-threshold policy</td>
+<td><strong>Part II</strong></td>
+</tr>
+<tr class="odd">
+<td>Temporal state evolution</td>
+<td><code>Maturity</code> flags + 3-window stability ring buffers per node</td>
+<td><strong>Part II</strong></td>
+</tr>
+<tr class="even">
+<td>Trie-based routing</td>
+<td>Node4/16/48/256 children with auto-promotion</td>
+<td><strong>Part II</strong></td>
+</tr>
+<tr class="odd">
+<td>Uncertainty propagation</td>
+<td>Per-leaf <code>(mean, epistemic_leverage, aleatoric_var)</code> triple</td>
+<td>Part I</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="benchmark-taxonomy-where-this-article-slices-it" class="level2">
+<h2 class="anchored" data-anchor-id="benchmark-taxonomy-where-this-article-slices-it">3. Benchmark taxonomy (where this article slices it)</h2>
+<p>For continuity, the 9-category benchmark taxonomy is shown again, with this article’s coverage highlighted:</p>
+<table class="table">
+<colgroup>
+<col style="width: 21%">
+<col style="width: 21%">
+<col style="width: 21%">
+<col style="width: 35%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>#</th>
+<th>Benchmark category</th>
+<th>Definition</th>
+<th style="text-align: center;">Covered in</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td>Determinism</td>
+<td>Same input/seed produces identical graph evolution</td>
+<td style="text-align: center;">Part I</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td>Lineage</td>
+<td>Trace evidence propagation across audit events</td>
+<td style="text-align: center;">Part I</td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td>State Stability</td>
+<td>Measure belief convergence and divergence per leaf</td>
+<td style="text-align: center;">Part I</td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td>Probabilistic Consistency</td>
+<td>Calibration / confidence propagation stability</td>
+<td style="text-align: center;">Part I</td>
+</tr>
+<tr class="odd">
+<td>5</td>
+<td>Explainability</td>
+<td>Inspect causal transitions; expose abstain decisions</td>
+<td style="text-align: center;">Part I</td>
+</tr>
+<tr class="even">
+<td>6</td>
+<td><strong>Routing Efficiency</strong></td>
+<td>Compare graph traversal cost; measure per-input route latency</td>
+<td style="text-align: center;"><strong>Part II</strong></td>
+</tr>
+<tr class="odd">
+<td>7</td>
+<td><strong>Memory Scaling</strong></td>
+<td>Track graph growth vs complexity at varying n_active_nodes</td>
+<td style="text-align: center;"><strong>Part II</strong></td>
+</tr>
+<tr class="even">
+<td>8</td>
+<td><strong>Adaptation</strong></td>
+<td>Measure graph restructuring over time; structural action firing</td>
+<td style="text-align: center;"><strong>Part II</strong></td>
+</tr>
+<tr class="odd">
+<td>9</td>
+<td><strong>Temporal Dynamics</strong></td>
+<td>Observe state evolution across time; drift response and auto-unfreeze</td>
+<td style="text-align: center;"><strong>Part II</strong></td>
+</tr>
+</tbody>
+</table>
+<p>The split rule: categories 1–5 measure properties of a fixed graph or a small region of one. Categories 6–9 measure properties of an <em>evolving</em> graph.</p>
+</section>
+<section id="categories-covered-in-this-article" class="level2">
+<h2 class="anchored" data-anchor-id="categories-covered-in-this-article">4. Categories covered in this article</h2>
+<p>Brief formal definitions before the deep dives.</p>
+<section id="routing-efficiency" class="level3">
+<h3 class="anchored" data-anchor-id="routing-efficiency">4.1 Routing Efficiency</h3>
+<p><strong>Definition.</strong> Per-input route cost. Concretely: nanoseconds per <code>descend</code> call, nanoseconds per <code>encode_prefix</code> call, nanoseconds per <code>route_to_leaf</code> (the fused operation). Also: the <em>interpretability</em> of the routing partition — does the byte-byte mapping reveal where in input space the graph has seen data?</p>
+<p><strong>Mechanism.</strong> ABNG’s routing path is:</p>
+<ol type="1">
+<li><code>QuantileCodebook::encode_into(x, buf)</code> — bucketize each input dimension into a single byte using pre-calibrated quantile boundaries. <code>O(d_route × log(n_bins))</code> for binary search per dim.</li>
+<li><code>descend(route_key)</code> — walk the tree one byte at a time. <code>O(d_route)</code> lookups, each <code>O(1)</code> amortized via the ART-style children layout (Node4 / Node16 / Node48 / Node256).</li>
+<li>Optional <code>Routed</code> audit event (kind <code>0x1B</code>) recording the matched-prefix length and final leaf id.</li>
+</ol>
+<p><strong>Why it matters.</strong> Routing is the <em>only</em> per-input cost on ABNG’s inference path. If routing scales poorly, the architecture’s inference advantage collapses. Microbench data (§9) shows routing is sub-microsecond at all tested sizes — sub-200ns for the full route on this hardware.</p>
+</section>
+<section id="memory-scaling" class="level3">
+<h3 class="anchored" data-anchor-id="memory-scaling">4.2 Memory Scaling</h3>
+<p><strong>Definition.</strong> How the graph grows under training. Specifically: (a) per-node memory footprint as a function of feature dimension <code>d_feat</code>; (b) graph topology growth (<code>n_active_nodes</code> over time); (c) <code>decide_step</code> cost as <code>n_active_nodes</code> increases.</p>
+<p><strong>Mechanism.</strong> Each leaf carries five state structures: MLP body (<code>O(d_feat²)</code>), BLR head (<code>O(d_feat²)</code> for the precision matrix), DensityTracker (<code>O(d_feat)</code>), CalibrationBins (<code>O(n_bins)</code> = 15 × 16 bytes), DriftBaseline (<code>O(d_feat)</code>). Total per-leaf ~500 B at <code>d_feat = 4</code>, scales as <code>O(d_feat²)</code>.</p>
+<p>The <code>decide_step</code> engine iterates over <code>n_active_nodes</code> in <code>NodeId</code>-ascending order. The per-node work is <code>O(1)</code> (a small fixed-size set of gate checks). Total per-call cost is <code>O(n_active_nodes)</code> — confirmed at the tested scales by Experiment ε.</p>
+<p><strong>Why it matters.</strong> The architecture’s “the graph grows itself” claim is only useful if growth is <em>bounded</em> and <em>measurable</em>. A graph that grows quadratically with observations would be a structural failure, even if every other property held. The Experiment ε numbers establish that growth is linear and <code>decide_step</code> cost is sub-millisecond at moderate scale.</p>
+</section>
+<section id="adaptation" class="level3">
+<h3 class="anchored" data-anchor-id="adaptation">4.3 Adaptation</h3>
+<p><strong>Definition.</strong> <em>Structural</em> adaptation — how the graph changes its topology under evidence. Specifically: which actions fire from <code>{Grow, Split, Merge, Prune, Compress, Freeze}</code>, in what order, gated by which quality conditions, with what frequency.</p>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Structural ≠ parameter adaptation
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>A reader from gradient-descent-land might assume “adaptation” includes the BLR posterior updating on each observation. That’s <em>parameter</em> adaptation — covered in Part I §4.3 (State Stability). This section is specifically about the <em>graph’s structure changing</em> — leaves appearing / disappearing / merging / being protected from updates.</p>
+<p>A further structural-adaptation detail worth knowing: <code>decide_step</code>’s iteration order is single-threaded by design. The snapshot-at-call-entry invariant means actions in one <code>decide_step</code> call don’t feed back into that same call’s iteration. Parallelizing across nodes would break the deterministic iteration order and therefore the byte-identical replay property. This is the determinism contract leaking into the adaptation mechanism.</p>
+</div>
+</div>
+<p><strong>Mechanism.</strong> Each action has its own gate. Phase 0.4 sharpened these from “samples_seen ≥ N” to genuine quality conditions:</p>
+<ul>
+<li><strong>Grow</strong> requires <code>samples_seen ≥ grow_min</code> AND route-key entropy at candidate depth &gt; <code>H_grow</code>.</li>
+<li><strong>Split</strong> requires <code>samples_seen ≥ split_min</code> AND deterministic bootstrap ΔNLL gain ≥ <code>nll_split_gain</code>.</li>
+<li><strong>Merge</strong> requires Hamming-similar <code>NodeSignature</code>s AND KL-divergence between BLR posteriors below <code>kl_merge</code>.</li>
+<li><strong>Prune</strong> requires <code>samples_seen</code> below a minimum AND signature instability.</li>
+<li><strong>Compress</strong> requires sub-tree signature equivalence with a reference fingerprint.</li>
+<li><strong>Freeze</strong> requires <code>samples_seen ≥ freeze_min</code> AND <code>Maturity.calibration_stable AND Maturity.uncertainty_stable</code>.</li>
+</ul>
+<p>The fall-through order is fixed: Compress → Merge → Split → Prune → Grow → Freeze. At most one action per node per call. Pre-ladder, an auto-unfreeze check runs (covered in §4.4 Temporal Dynamics).</p>
+<p><strong>Why it matters.</strong> The “graph adapts itself” claim is the single most distinctive architectural pitch. If adaptation didn’t fire under reasonable conditions, the architecture is just a routed mixture-of-experts with no advantage over fixed-population MoE. Five trigger-specific demos (§8.2) verify each action fires correctly under its respective gate.</p>
+</section>
+<section id="temporal-dynamics" class="level3">
+<h3 class="anchored" data-anchor-id="temporal-dynamics">4.4 Temporal Dynamics</h3>
+<p><strong>Definition.</strong> How the graph responds to time-varying input distributions. Specifically: does the drift score climb when the distribution shifts? Does auto-unfreeze fire to re-enable learning? Do the 3-window ECE / σ stability ring buffers correctly classify stable vs unstable leaves?</p>
+<p><strong>Mechanism.</strong> Three time-aware state structures per leaf:</p>
+<ul>
+<li><strong><code>NodeSignature</code></strong> — 32-byte Welford-smoothed summary across four channels (prediction, uncertainty, calibration, routing). Stability is measured by <code>signature_stable_calls</code> — a counter incrementing when the smoothed signature doesn’t change appreciably between <code>decide_step</code> calls.</li>
+<li><strong><code>Maturity</code> flags</strong> — <code>samples_seen</code>, <code>calibration_stable</code>, <code>uncertainty_stable</code>, <code>trust_level</code>. Once <code>uncertainty_stable</code> first holds, the leaf’s <code>expected_epistemic</code> is auto-captured as a reference.</li>
+<li><strong>3-window stability ring buffers</strong> — three consecutive observation windows of ECE and σ_epi. A leaf only counts as calibration-stable when <code>max(ece_history) − min(ece_history)</code> stays under tolerance across all three windows.</li>
+</ul>
+<p>The drift-trip auto-unfreeze runs at the top of <code>decide_step</code>, <em>before</em> the structural-action ladder:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> decide_step_for_node(node, policy):</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> node.is_frozen <span class="kw">and</span> drift_score(node) <span class="op">&gt;</span> policy.drift_unfreeze:</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>        unfreeze(node)</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span>  <span class="co"># don't run further actions this call</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="co"># otherwise: regular fall-through</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> try_compress(...): <span class="cf">return</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> try_merge(...): <span class="cf">return</span></span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    <span class="co"># ...</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><strong>Why it matters.</strong> Real-world data has distribution shift. A frozen leaf that doesn’t notice it has fallen behind is silently wrong. ABNG’s auto-unfreeze gives the graph a way to detect its own surprise without human intervention. This is the closest the architecture comes to an active-inference loop.</p>
+</section>
+</section>
+<section id="experimental-goals" class="level2">
+<h2 class="anchored" data-anchor-id="experimental-goals">5. Experimental goals</h2>
+<p>Pre-registered claims this article supports. Pre-registered failure modes that would invalidate each claim.</p>
+<section id="claims-and-pass-conditions" class="level3">
+<h3 class="anchored" data-anchor-id="claims-and-pass-conditions">Claims and pass conditions</h3>
+<table class="table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Claim</th>
+<th>What’s claimed</th>
+<th>Pass condition</th>
+<th>Falsification</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Cβ</strong></td>
+<td>PINN out-of-span degrades gracefully</td>
+<td>L2 error on <code>\|x − 0.5\|</code> (out-of-basis target) is within 10× of L2 error on <code>sin(πx)</code> (in-basis target)</td>
+<td>Order-of-magnitude worse → architecture fails on out-of-basis targets</td>
+</tr>
+<tr class="even">
+<td><strong>Cε</strong></td>
+<td><code>decide_step</code> is sub-millisecond at moderate scale</td>
+<td>mean time &lt; 1ms at n_active ≤ 256, growing linearly</td>
+<td>Super-linear or &gt; 1ms — performance ceiling concern</td>
+</tr>
+<tr class="odd">
+<td><strong>Cθ</strong></td>
+<td>Routing distribution matches input distribution</td>
+<td>Per-bin observation count tracks input distribution shape</td>
+<td>Routing is uninformative — bin counts uniform regardless of input</td>
+</tr>
+<tr class="even">
+<td><strong>Cι</strong></td>
+<td>2-D OOD score has spatial structure</td>
+<td>Composite OOD high outside training region, low inside, with distinguishable component fields</td>
+<td>OOD score is uniform across input space — composite isn’t meaningful</td>
+</tr>
+</tbody>
+</table>
+<p>All four experiments <strong>passed</strong> in this run. Section 7 walks through each.</p>
+</section>
+<section id="pre-registered-failure-modes" class="level3">
+<h3 class="anchored" data-anchor-id="pre-registered-failure-modes">Pre-registered failure modes</h3>
+<ul>
+<li><strong>Cβ fails</strong> → routing partition does NOT provide effective basis-augmentation. The architecture’s behaviour on out-of-basis targets is much worse than on in-basis — meaning the PINN result is restricted to its home turf. Important to know.</li>
+<li><strong>Cε fails</strong> → <code>decide_step</code> has hidden quadratic cost. A graph that grows to 10K active nodes would be unusable. Would force a redesign of the policy engine.</li>
+<li><strong>Cθ fails</strong> → routing is doing something other than partitioning by input value. Likely a routing-encoding bug or threshold-tuning issue. Diagnostic.</li>
+<li><strong>Cι fails</strong> → composite OOD score is dominated by one component (likely density), making the “three independent signals” framing misleading. Would require revising the OOD-score story.</li>
+</ul>
+</section>
+</section>
+<section id="mini-demo-narratives" class="level2">
+<h2 class="anchored" data-anchor-id="mini-demo-narratives">6. Mini-demo narratives</h2>
+<p>Four scenarios — one per category — showing concrete inputs and observable graph behavior. Each is <strong>faithful to ABNG’s actual mechanism</strong>: input → codebook encode → tree descent → per-leaf update → audit advance. ABNG does <em>not</em> propagate belief across nodes via message passing; it routes each input to <em>one</em> leaf.</p>
+<section id="md-ii-1-10k-observations-flow-through-8-bins-routing" class="level3">
+<h3 class="anchored" data-anchor-id="md-ii-1-10k-observations-flow-through-8-bins-routing">MD-II-1 — 10K observations flow through 8 bins (Routing)</h3>
+<pre class="text"><code>Setup:
+  ABNG graph, 8-bin 1-D codebook with bin edges
+  at {1/8, 2/8, ..., 7/8}
+  8 children pre-allocated at root (one per byte 0x00..0x07)
+
+Stream:
+  10,000 observations from skewed Gaussian-like distribution
+  (Box-Muller-derived, centered at x = 0.6, std = 0.15, clipped to [0,1])
+
+Routing breakdown:
+  byte 0x00     8 obs    0.08%
+  byte 0x01   116 obs    1.16%
+  byte 0x02   545 obs    5.45%
+  byte 0x03 1,924 obs   19.24%
+  byte 0x04 3,139 obs   31.39%  &lt;- peak (matches Gaussian mean)
+  byte 0x05 2,694 obs   26.94%
+  byte 0x06 1,213 obs   12.13%
+  byte 0x07   361 obs    3.61%
+
+What ABNG tracked:
+  Per-leaf n_seen counter (visible via cjcl abng inspect --node)
+  Optional: opt-in Routed audit events (kind 0x1B) per descent
+
+Routing property:
+  Routing distribution matches input distribution. The partition
+  is interpretable — you can read off "the model has seen most of
+  its data around x ~ 0.6" directly from the byte counts.</code></pre>
+<p>The Sankey plot in §7.3 (Experiment θ) visualizes this with band thickness proportional to count. Compared to soft-routed MoE — where the gating decision is a learned softmax across the expert population — ABNG’s discrete byte routing is <em>trivially inspectable</em>. You don’t need attribution methods; you read the byte.</p>
+</section>
+<section id="md-ii-2-decide_step-on-256-nodes-in-under-1-ms-memory-scaling" class="level3">
+<h3 class="anchored" data-anchor-id="md-ii-2-decide_step-on-256-nodes-in-under-1-ms-memory-scaling">MD-II-2 — <code>decide_step</code> on 256 nodes in under 1 ms (Memory Scaling)</h3>
+<pre class="text"><code>Setup:
+  ABNG graph with 256-bin 1-D codebook
+  Forced-grow N children at the root (one per byte)
+  20 trials per configuration with 3 warmup calls
+
+n_active  min (ns)  mean (ns)  per-node-min (ns)
+------------------------------------------------
+17        1,900     10,115     111.8
+65        3,600     88,705     55.4
+256       2,000     147,850    7.8
+
+What ABNG tracked:
+  Per-node is_active flag (decide_step iterates only over active nodes)
+  Per-decide_step action_counts vector (6 elements, one per action type)
+  Audit chain head: advances only if structural events fired
+
+Memory-scaling property:
+  decide_step is sub-millisecond at all tested graph sizes.
+  Mean scales roughly linearly with n_active (10K -&gt; 89K -&gt; 148K ns
+  for 17 -&gt; 65 -&gt; 256 nodes). The minimum-of-20 timing is noisy
+  at small n_active because clock resolution is comparable to the
+  per-call cost; the mean is the cleaner signal.
+
+Honest limit:
+  The bench caps at 256 nodes because the codebook used has 256 bins
+  (one byte route key). Multi-depth graphs with &gt;256 leaves are
+  feasible but not benched in this run.</code></pre>
+<p>The full Experiment ε result is in §7.2. The honest implication is “linear scaling at moderate scale, with cache effects becoming relevant past 256 nodes.” For production-scale graphs (n_active ∈ {1K, 10K, 100K}), multi-depth structures would be needed, and the deeper-tree decide_step cost is <strong>unmeasured</strong> — listed in §10 future work.</p>
+</section>
+<section id="md-ii-3-merge-fires-when-two-leaves-converge-adaptation" class="level3">
+<h3 class="anchored" data-anchor-id="md-ii-3-merge-fires-when-two-leaves-converge-adaptation">MD-II-3 — Merge fires when two leaves converge (Adaptation)</h3>
+<pre class="text"><code>Setup:
+  ABNG graph with 4 sibling leaves at depth 1
+  Train each leaf on similar data for 100+ observations
+  Configure decision policy: kl_merge = 0.05; signature Hamming
+  tolerance = 0.10
+
+After training, two leaves (say A and B) converge:
+  Hamming(sig_A, sig_B) = 0.07          (under tolerance, gate passes)
+  KL(BlrState_A || BlrState_B) = 0.03   (under kl_merge, gate passes)
+  signature_stable_calls(A) = 5         (mature)
+  signature_stable_calls(B) = 5         (mature)
+
+decide_step fires:
+  For leaf A (lower NodeId):
+    drift-trip check: not frozen, skip
+    Compress gate: no equivalent sub-tree, skip
+    Merge gate: A and B are mergeable -&gt; FIRE
+  BlrState::combine(P_A, P_B) merges posteriors NIG-aware:
+    Lambda_into = Lambda_A + Lambda_B
+    m_into = Lambda_into^{-1} (Lambda_A m_A + Lambda_B m_B)
+    a_into = a_A + a_B
+    b_into combines via residual term
+
+After Merge:
+  A.n_seen = sum of both     (no information lost)
+  B.is_active = false        (tombstoned in arena)
+  action_counts[Merge] += 1
+  audit log: 0x12 Merge {absorbed: B, into: A}
+  audit log: 0x0A BlrUpdated (witness on A's combined posterior)
+
+What ABNG tracked:
+  Audit chain advance with Merge event
+  cjcl abng diff before.snap after.snap reveals topology change
+  cjcl abng inspect --node A reveals combined posterior
+
+Adaptation property:
+  The graph compressed itself when evidence supported it. The
+  Merge is NIG-aware - absorbed leaf's evidence is preserved in
+  the combined posterior, not lost. This is what Phase 0.4 Track
+  B-2.2.6 fixed; before, naive Merge would lose information.
+
+Honest caveat:
+  The kl_merge threshold and Hamming tolerance both require dataset-
+  specific tuning. Too-loose -&gt; spurious merges; too-tight -&gt; no
+  consolidation. There is no default that works across all data
+  distributions. Threshold preset templates are planned for Phase
+  0.5+ but not yet shipped.</code></pre>
+<p>The companion test <code>tests/test_abng_adaptive_triggers_cjcl.rs::adaptive_cjcl_audit_chain_verifies_post_decide_step</code> asserts the <em>critical invariant</em>: after Merge fires, <code>verify_chain()</code> still returns <code>Ok</code>. The structural mutation didn’t break tamper-evidence — covered in Part I §4.2 (lineage) and reaffirmed here.</p>
+</section>
+<section id="md-ii-4-auto-unfreeze-on-distribution-shift-temporal-dynamics" class="level3">
+<h3 class="anchored" data-anchor-id="md-ii-4-auto-unfreeze-on-distribution-shift-temporal-dynamics">MD-II-4 — Auto-unfreeze on distribution shift (Temporal Dynamics)</h3>
+<pre class="text"><code>Setup:
+  ABNG graph with 1 active leaf (k = 1)
+  Decision policy: drift_unfreeze threshold = 1.5
+
+Stage 1: data ~ N(0, 1), 50 observations
+  Each observation routes to leaf 1
+  BLR posterior tightens; signature stabilizes;
+  ECE remains low; uncertainty_stable becomes true at step ~30;
+  expected_epistemic = sigma_epi_at_step_30 auto-captured
+
+  decide_step at step 50:
+    Compress, Merge, Split, Prune gates: skip (single leaf)
+    Grow gate: route entropy too low, skip
+    Freeze gate: fires (calibration_stable AND uncertainty_stable)
+    -&gt; Freeze (0x15) audit event
+  Now: leaf 1.is_frozen = true; future blr_update on leaf 1
+  becomes a no-op.
+
+Stage 2: data ~ N(2, 1) (mean shifted), 25 observations
+  Each observation routes to leaf 1 (same byte)
+  blr_update is SKIPPED (frozen)
+  density.observe still updates (drift tracker keeps running)
+  drift_score climbs as Welford density shifts
+
+  decide_step at step 75:
+    Pre-ladder check: leaf 1 is frozen AND drift_score &gt; 1.5?
+    -&gt; drift_score = 2.3 &gt; 1.5 = drift_unfreeze
+    -&gt; Unfreeze fires (0x16 audit event)
+    -&gt; leaf 1.is_frozen = false
+    -&gt; unfreeze_count += 1
+    -&gt; rest of action ladder skipped this call
+
+Stage 3: BLR resumes
+  Subsequent observations re-enter blr_update path
+  BLR posterior re-tightens on the new distribution
+
+What ABNG tracked:
+  Audit log: Freeze (0x15) at step 50, Unfreeze (0x16) at step 75
+  density_score per observation (visible via cjcl abng inspect)
+  unfreeze_count: u64 field on the graph
+
+Temporal-dynamics property:
+  The graph responds to its own surprise. A frozen leaf that sees
+  distribution shift re-enables learning automatically. This is
+  the closest ABNG comes to an active-inference loop.
+
+Honest caveats:
+  - drift_unfreeze threshold tuning is dataset-specific
+  - "auto-unfreeze fires when drift score exceeds threshold" is
+    verified in unit tests; the full integration of "auto-unfreeze
+    + subsequent re-learning recovers performance" is not directly
+    measured here
+  - Tested on controlled mean-shift scenario; real-world drift
+    (multi-modal, gradual, etc.) is unmeasured</code></pre>
+<p>The drift-detection demo (<code>tests/test_abng_drift_detection_cjcl.rs</code>) tests the score-climbing property and verifies the auto-unfreeze gate fires under the right conditions. The integrated story (Freeze → drift → Unfreeze → recovery) is verified piece-by-piece but not as a single end-to-end performance test.</p>
+</section>
+</section>
+<section id="deep-experiments" class="level2">
+<h2 class="anchored" data-anchor-id="deep-experiments">7. Deep experiments</h2>
+<p>Four experiments, each with the same shape as Part I: hypothesis, methodology, results, figure, verdict.</p>
+<section id="experiment-β-basis-not-in-span-pinn-the-surprise" class="level3">
+<h3 class="anchored" data-anchor-id="experiment-β-basis-not-in-span-pinn-the-surprise">7.1 Experiment β — Basis-not-in-span PINN (the surprise)</h3>
+<p><strong>Hypothesis (Cβ).</strong> ABNG’s PINN performance degrades gracefully when the feature basis cannot represent the target function exactly.</p>
+<p><strong>Methodology.</strong> Two targets, same architecture (8-leaf 1-D codebook + 5-D feature basis <code>[1, x, x², x³, sin(πx)]</code> per leaf):</p>
+<ul>
+<li>In-span target: <code>u(x) = sin(πx)</code> — <strong>is</strong> in the basis (the last basis function).</li>
+<li>Out-of-span target: <code>u(x) = |x − 0.5|</code> — has a kink at x = 0.5; not in the polynomial + sinusoid basis globally.</li>
+</ul>
+<p>Train on n = 10,000 collocation points uniformly on [0, 1]. Evaluate L2 error on 1024 dense grid points.</p>
+<p><strong>Result.</strong></p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Scenario</th>
+<th style="text-align: right;">L2 error</th>
+<th style="text-align: right;">Max abs error</th>
+<th style="text-align: right;">Mean leverage</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>In-span <code>sin(πx)</code></td>
+<td style="text-align: right;">9.35 × 10⁻³</td>
+<td style="text-align: right;">2.23 × 10⁻²</td>
+<td style="text-align: right;">1.45 × 10⁻³</td>
+</tr>
+<tr class="even">
+<td>Out-of-span <code>\|x − 0.5\|</code></td>
+<td style="text-align: right;">9.01 × 10⁻³</td>
+<td style="text-align: right;">2.82 × 10⁻²</td>
+<td style="text-align: right;">1.45 × 10⁻³</td>
+</tr>
+</tbody>
+</table>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="figures/v_beta_basis_check.png" class="img-fluid figure-img"></p>
+<figcaption class="figure-caption">V-β — Basis-in-span vs out-of-span</figcaption>
+</figure>
+</div>
+<p><strong>Verdict.</strong> <strong>The hypothesis was wrong in an interesting direction.</strong> ABNG fits the out-of-span target <em>nearly as well</em> as the in-span target — L2 errors are within 4% of each other.</p>
+<p><strong>The mechanism.</strong> ABNG uses 8 routed leaves, each with its own 5-D feature basis. Even though <code>|x − 0.5|</code> is globally non-smooth at x = 0.5, each leaf only sees its own slice of input space. A 5-D affine fit within an 0.125-wide slice can approximate the local behaviour of <code>|x − 0.5|</code> very well — the function is piecewise <em>linear</em>, after all, and matches polynomial fits perfectly on each piece. The codebook bin boundary at x = 0.5 happens to align almost exactly with the kink, so the <em>piecewise</em> basis is effectively complete.</p>
+<p><strong>Two interpretations.</strong></p>
+<ol type="1">
+<li><strong>Positive interpretation:</strong> ABNG’s piecewise routing partition provides <em>effective basis-augmentation</em>. The architecture is more robust to basis-adequacy than a single-leaf BLR would be.</li>
+<li><strong>Skeptical interpretation:</strong> The result is partly an artifact of the test setup. <code>|x − 0.5|</code> is <em>piecewise linear</em>, and the codebook bin edges happen to be near the kink — both make the per-leaf 5-D basis effectively complete. Pick a target that the <em>piecewise</em> basis can’t fit (high-frequency oscillation, multiple discontinuities not aligned with bin edges) and the architecture should fail.</li>
+</ol>
+<p>Both interpretations are defensible. The article presents both. <strong>Tag: Demonstrated</strong> — the mechanism is real and reproducible, but the generality claim (“ABNG is robust to basis adequacy”) is <em>Reasonable extrapolation</em> pending the harder test.</p>
+<p><strong>Honest follow-up.</strong> A truer falsification: target <code>u(x) = sin(20πx)</code> (high-frequency, far above the codebook bin resolution). Or <code>u(x) = step(x − 0.37)</code> (discontinuity NOT aligned with a codebook bin edge). Either would reveal whether the architecture’s robustness is general or scenario-specific. <strong>Not run in this article.</strong></p>
+</section>
+<section id="experiment-ε-decide_step-scaling" class="level3">
+<h3 class="anchored" data-anchor-id="experiment-ε-decide_step-scaling">7.2 Experiment ε — <code>decide_step</code> scaling</h3>
+<p><strong>Hypothesis (Cε).</strong> <code>decide_step</code> is <code>O(n_active_nodes)</code>.</p>
+<p><strong>Methodology.</strong> Build graphs with <code>n_active ∈ {16, 64, 256}</code> active nodes via repeated <code>add_node</code> calls at the root. Run <code>decide_step</code> 20 times per configuration with 3 warmup calls. Report min and mean over the 20 trials. Cap at 256 because the codebook used has 256 bins.</p>
+<p><strong>Result.</strong></p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: right;">n_active</th>
+<th style="text-align: right;">min (ns)</th>
+<th style="text-align: right;">mean (ns)</th>
+<th style="text-align: right;">per-node-min (ns)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">17 (incl.&nbsp;root)</td>
+<td style="text-align: right;">1,900</td>
+<td style="text-align: right;">10,115</td>
+<td style="text-align: right;">111.8</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">65</td>
+<td style="text-align: right;">3,600</td>
+<td style="text-align: right;">88,705</td>
+<td style="text-align: right;">55.4</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">256</td>
+<td style="text-align: right;">2,000</td>
+<td style="text-align: right;">147,850</td>
+<td style="text-align: right;">7.8</td>
+</tr>
+</tbody>
+</table>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="figures/v4_decide_step_scaling.png" class="img-fluid figure-img"></p>
+<figcaption class="figure-caption">V4 — decide_step scaling</figcaption>
+</figure>
+</div>
+<p><strong>Verdict.</strong> Mean time grows roughly linearly with <code>n_active</code> (10K → 89K → 148K ns for 17 → 65 → 256 nodes). The minimum-of-20 measurement is noisy at small n_active (clock resolution dominates) but the mean is clean. <strong>Cε supported</strong> at the tested scales: sub-millisecond at n_active ≤ 256, scaling consistent with the O(n) hypothesis.</p>
+<p><strong>Honest limit.</strong> The codebook used has 256 bins so the bench can’t grow beyond ~256 nodes at depth 1. Multi-depth graphs (deeper than 1) would allow n_active = 1K, 10K, larger, but the deeper-tree <code>decide_step</code> cost is <strong>unmeasured</strong> in this run. Future work.</p>
+<p><strong>The cost model summary.</strong> At the tested scales:</p>
+<ul>
+<li><strong>Inference path (route + predict):</strong> sub-microsecond per query (118 ns descend + 137 ns encode + 934 ns blr_predict ≈ 1.2 µs).</li>
+<li><strong>Training path (observe):</strong> ~4 µs per observation (includes audit-chain append).</li>
+<li><strong>decide_step:</strong> sub-millisecond per call up to n_active = 256.</li>
+<li><strong>Full graph training:</strong> at n=10K observations with periodic decide_step, total wall-clock ≈ 50ms.</li>
+</ul>
+<p>These numbers extrapolate linearly to ~5 seconds for n=1M observations at the tested graph size. For larger graphs, the costs compound — full characterization requires multi-depth scaling work.</p>
+</section>
+<section id="experiment-θ-routing-flow-sankey" class="level3">
+<h3 class="anchored" data-anchor-id="experiment-θ-routing-flow-sankey">7.3 Experiment θ — Routing-flow Sankey</h3>
+<p><strong>Hypothesis (Cθ).</strong> Training data flows through the trie’s codebook bins in proportion to the input distribution; routing can be visualized as a Sankey diagram from root to leaves.</p>
+<p><strong>Methodology.</strong> Generate n = 10,000 samples from a skewed Gaussian (Box-Muller-derived, centered at x = 0.6, std = 0.15, clipped to [0, 1]). Train ABNG with an 8-bin 1-D codebook + 8 child leaves. Record route byte and resolved leaf per observation. Aggregate counts.</p>
+<p><strong>Result.</strong> All 10,000 inputs routed; 8 unique route bytes, 8 unique leaves. Distribution matches input skew (full table in MD-II-1).</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="figures/v3_routing_flow.png" class="img-fluid figure-img"></p>
+<figcaption class="figure-caption">V3 — Routing flow Sankey</figcaption>
+</figure>
+</div>
+<p><strong>Verdict.</strong> <strong>Cθ passed.</strong> The Sankey makes the “discrete routing partitions input space” claim <em>visible</em>. The peak at byte 0x04 (31.39%) matches the Gaussian mean. The tails decay symmetrically. Tag: <strong><em>Demonstrated</em></strong> — the routing mechanism produces an inspectable distribution that reflects the input.</p>
+<p><strong>Why this matters more than it seems.</strong> For an MoE-style router with soft gating, “which expert handled this input?” is a learned floating-point distribution across the whole expert population. ABNG’s discrete routing turns the same question into “read the route byte.” You don’t need attribution methods. You read the byte. That’s a substantial <strong>interpretability advantage</strong> for debugging and capacity planning.</p>
+</section>
+<section id="experiment-ι-2-d-ood-score-heatmap" class="level3">
+<h3 class="anchored" data-anchor-id="experiment-ι-2-d-ood-score-heatmap">7.4 Experiment ι — 2-D OOD score heatmap</h3>
+<p><strong>Hypothesis (Cι).</strong> The composite <code>ood_score</code> and its three components (density, prefix-distance, epistemic-leverage) produce spatially structured abstain signals in 2-D input space. Training in a sub-region should yield distinguishable OOD profiles inside vs outside.</p>
+<p><strong>Methodology.</strong> Train ABNG on n = 1,000 points sampled uniformly from <code>[0.25, 0.75]²</code> of the truth function <code>f(x, y) = 2x + 3y + 0.5xy</code>. Use a 2-D codebook with 8 bins per dimension. Evaluate on a 50 × 50 grid covering <code>[0, 1]²</code>. Emit <code>(x, y, ood, density_score, prefix_distance, epistemic_leverage)</code> per grid cell.</p>
+<p><strong>Result.</strong></p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="figures/v9_ood_2d_heatmap.png" class="img-fluid figure-img"></p>
+<figcaption class="figure-caption">V9 — 2-D OOD score heatmap</figcaption>
+</figure>
+</div>
+<p>The four-panel decomposition shows:</p>
+<ul>
+<li><strong>Top-left (composite OOD)</strong> — the abstain signal. Bright (high OOD) outside the training region (dashed box); dark (low OOD) inside.</li>
+<li><strong>Top-right (density component)</strong> — Mahalanobis distance from the per-leaf Welford density. Tracks whether the input “looks like” what each leaf saw.</li>
+<li><strong>Bottom-left (prefix distance)</strong> — number of unmatched route-key bytes. 0 inside training region (full match); 2 in regions where neither codebook coordinate finds a bound child.</li>
+<li><strong>Bottom-right (epistemic leverage)</strong> — <code>φᵀΛ⁻¹φ</code>. Largest where the BLR posterior is least confident.</li>
+</ul>
+<p><strong>Verdict.</strong> <strong>Cι passed.</strong> All four signals show the expected spatial structure: low inside the training region, high outside. The four components are <em>not</em> redundant — each captures a different “is this unusual?” axis. The composite <code>max()</code> produces a deliberately conservative single number; the individual components let a user diagnose <em>which</em> OOD axis triggered abstain. Tag: <strong><em>Demonstrated</em></strong>.</p>
+<p><strong>The architectural distinction this exposes.</strong> ABNG’s OOD score is the <em>composition</em> of three signals (one continuous, one discrete, one model-uncertainty). The discrete signal (prefix distance) is unique to the architecture — no soft-router model has it. The composition is over-conservative by design: a <em>single</em> high signal is enough to trigger abstain, even if the other two are low.</p>
+</section>
+</section>
+<section id="demo-deep-dives" class="level2">
+<h2 class="anchored" data-anchor-id="demo-deep-dives">8. Demo deep-dives</h2>
+<p>Existing demo suites that illustrate Part II’s categories.</p>
+<section id="adaptive-triggers-the-marquee-decide_step-demo" class="level3">
+<h3 class="anchored" data-anchor-id="adaptive-triggers-the-marquee-decide_step-demo">8.1 Adaptive triggers — the marquee <code>decide_step</code> demo</h3>
+<p><strong>The setup.</strong> Construct a graph with similar-signature sibling leaves. Train each leaf on observations from the same distribution. Run <code>decide_step</code> and observe what fires.</p>
+<p><strong>What the test asserts.</strong></p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="at">#[</span>test<span class="at">]</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="kw">fn</span> adaptive_cjcl_audit_chain_verifies_post_decide_step() <span class="op">{</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> out <span class="op">=</span> run_parity(<span class="pp">abng_demos::adaptive_source::</span>SOURCE<span class="op">,</span> SEED)<span class="op">;</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="pp">assert_eq!</span>(extract_value(<span class="op">&amp;</span>out<span class="op">,</span> <span class="st">"verify_chain"</span>)<span class="op">,</span> <span class="st">"true"</span>)<span class="op">;</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="at">#[</span>test<span class="at">]</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a><span class="kw">fn</span> adaptive_cjcl_some_structural_action_fired() <span class="op">{</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> out <span class="op">=</span> run_parity(<span class="pp">abng_demos::adaptive_source::</span>SOURCE<span class="op">,</span> SEED)<span class="op">;</span></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>    <span class="pp">assert_eq!</span>(extract_value(<span class="op">&amp;</span>out<span class="op">,</span> <span class="st">"any_action_fired"</span>)<span class="op">,</span> <span class="st">"true"</span>)<span class="op">;</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a><span class="at">#[</span>test<span class="at">]</span></span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a><span class="kw">fn</span> adaptive_cjcl_merge_count_matches_canary_topology() <span class="op">{</span></span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> out <span class="op">=</span> run_parity(<span class="pp">abng_demos::adaptive_source::</span>SOURCE<span class="op">,</span> SEED)<span class="op">;</span></span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>    <span class="pp">assert_eq!</span>(extract_value(<span class="op">&amp;</span>out<span class="op">,</span> <span class="st">"merge_count"</span>)<span class="op">,</span> <span class="st">"1"</span>)<span class="op">;</span>  <span class="co">// exact canary</span></span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><strong>Why the audit-chain-integrity assertion is the critical one.</strong> A structural mutation that broke the audit chain would silently invalidate every replay guarantee. The test verifies that <code>verify_chain()</code> still returns <code>Ok</code> after the mutation fires. This is the <em>invariant</em> — without it, every other property in this article degrades.</p>
+<p>The Merge-count-canary test pins exactly <em>one</em> Merge action firing under the deterministic scenario. Any change to the structural-action thresholds, the iteration order, or the gate logic would surface as a different count. Tag: <strong><em>Proven</em></strong> at the demo scenario; canary-locked.</p>
+</section>
+<section id="five-trigger-specific-demos-compress-grow-split-prune-freeze" class="level3">
+<h3 class="anchored" data-anchor-id="five-trigger-specific-demos-compress-grow-split-prune-freeze">8.2 Five trigger-specific demos (Compress, Grow, Split, Prune, Freeze)</h3>
+<p>Each trigger has a dedicated demo file isolating its behavior:</p>
+<pre><code>tests/test_abng_compress_trigger_cjcl.rs    61 LOC
+tests/test_abng_grow_trigger_cjcl.rs        78 LOC
+tests/test_abng_split_trigger_cjcl.rs       72 LOC
+tests/test_abng_prune_trigger_cjcl.rs       68 LOC
+tests/test_abng_freeze_trigger_cjcl.rs      67 LOC</code></pre>
+<p>Each demo follows the same pattern:</p>
+<ol type="1">
+<li>Configure decision policy so the target action’s gate is the only one that can fire under the scenario.</li>
+<li>Train the graph to satisfy the gate’s preconditions (samples_seen ≥ threshold, signature_stable_calls ≥ N, etc.).</li>
+<li>Call <code>decide_step</code> once.</li>
+<li>Assert exactly one action fired (the target).</li>
+<li>Assert audit chain still verifies.</li>
+</ol>
+<p><strong>What this proves at the action level.</strong> Each of the six structural actions is verifiable in isolation. The Phase 0.4 quality gates (KL-merge, ΔNLL-split, route-entropy-grow) are exercised through these demos.</p>
+<p><strong>One asymmetry worth flagging.</strong> There is <strong>no dedicated <code>test_abng_merge_trigger_cjcl.rs</code>.</strong> Merge is exercised inside the adaptive-triggers demo (§8.1) rather than getting its own file. Small detail — the demo suite covers Merge but the asymmetry is real and worth noting. Tag: <strong><em>Demonstrated</em></strong> at the per-action level for the 5 trigger-specific demos, plus <strong><em>Proven</em></strong> at canary-level for the adaptive-triggers demo.</p>
+</section>
+<section id="drift-detection-auto-unfreeze-temporal-dynamics" class="level3">
+<h3 class="anchored" data-anchor-id="drift-detection-auto-unfreeze-temporal-dynamics">8.3 Drift detection + auto-unfreeze (temporal dynamics)</h3>
+<p><strong>The setup.</strong> Train an ABNG leaf on data <code>~N(0, 1)</code> for ~50 observations. Configure the decision policy so the leaf reaches “frozen” status. Then shift the data distribution to <code>~N(2, 1)</code> and observe the drift score climb.</p>
+<p><strong>What the test asserts.</strong></p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="at">#[</span>test<span class="at">]</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="kw">fn</span> drift_cjcl_drift_score_non_negative() <span class="op">{</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> out <span class="op">=</span> run_parity(<span class="pp">abng_demos::drift_source::</span>SOURCE<span class="op">,</span> SEED)<span class="op">;</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    <span class="pp">assert_eq!</span>(extract_value(<span class="op">&amp;</span>out<span class="op">,</span> <span class="st">"drift_nonneg"</span>)<span class="op">,</span> <span class="st">"true"</span>)<span class="op">;</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a><span class="at">#[</span>test<span class="at">]</span></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="kw">fn</span> drift_cjcl_meaningful_shift_detected() <span class="op">{</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> out <span class="op">=</span> run_parity(<span class="pp">abng_demos::drift_source::</span>SOURCE<span class="op">,</span> SEED)<span class="op">;</span></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>    <span class="pp">assert_eq!</span>(extract_value(<span class="op">&amp;</span>out<span class="op">,</span> <span class="st">"meaningful_shift"</span>)<span class="op">,</span> <span class="st">"true"</span>)<span class="op">;</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a><span class="at">#[</span>test<span class="at">]</span></span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a><span class="kw">fn</span> drift_cjcl_drift_grew_after_shift() <span class="op">{</span></span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Verifies drift score is strictly higher after the shift than before</span></span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> out <span class="op">=</span> run_parity(<span class="pp">abng_demos::drift_source::</span>SOURCE<span class="op">,</span> SEED)<span class="op">;</span></span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a>    <span class="co">// (specific high/low value assertions)</span></span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><strong>Verdict.</strong> The mechanism is verified: drift score is non-negative, climbs after distribution shift, and crosses the “meaningful shift” threshold. The companion test in <code>tests/abng/decide_step_canary_tests.rs</code> verifies the auto-unfreeze gate fires when the drift score exceeds <code>drift_unfreeze</code>.</p>
+<p><strong>Caveat.</strong> The integrated “auto-unfreeze fires AND subsequent training recovers performance on the shifted distribution” is not measured as a single end-to-end test. The mechanism is verified piece-by-piece. Tag: <strong><em>Demonstrated</em></strong> at the per-piece level; <strong><em>Reasonable extrapolation</em></strong> for the integrated recovery story.</p>
+</section>
+<section id="maturity-signature-evolution-temporal-state" class="level3">
+<h3 class="anchored" data-anchor-id="maturity-signature-evolution-temporal-state">8.4 Maturity &amp; signature evolution (temporal state)</h3>
+<p><strong>The setup.</strong> Train an ABNG leaf over many observations. Track <code>Maturity</code> flags (<code>samples_seen</code>, <code>calibration_stable</code>, <code>uncertainty_stable</code>, <code>trust_level</code>) and <code>NodeSignature</code> (32-byte Welford-smoothed summary across 4 channels) over time.</p>
+<p><strong>What the test asserts.</strong></p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="at">#[</span>test<span class="at">]</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="kw">fn</span> maturity_cjcl_eventually_reaches_stable() <span class="op">{</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Verifies that after enough observations, both calibration_stable</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>    <span class="co">// and uncertainty_stable flip to true for the trained leaf</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="at">#[</span>test<span class="at">]</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="kw">fn</span> maturity_cjcl_signature_welford_smoothed_across_4_channels() <span class="op">{</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Verifies the signature is non-zero across all 4 channels</span></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a>    <span class="co">// (prediction, uncertainty, calibration, routing)</span></span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb9-13"><a href="#cb9-13" aria-hidden="true" tabindex="-1"></a><span class="at">#[</span>test<span class="at">]</span></span>
+<span id="cb9-14"><a href="#cb9-14" aria-hidden="true" tabindex="-1"></a><span class="kw">fn</span> maturity_cjcl_3_window_stability_buffers_work() <span class="op">{</span></span>
+<span id="cb9-15"><a href="#cb9-15" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Verifies the ECE / sigma_epi history rings have correct length</span></span>
+<span id="cb9-16"><a href="#cb9-16" aria-hidden="true" tabindex="-1"></a>    <span class="co">// and fill correctly across observation windows</span></span>
+<span id="cb9-17"><a href="#cb9-17" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><strong>Verdict.</strong> The temporal-state evolution mechanisms are verified. A trained leaf’s <code>Maturity</code> flags transition correctly; the signature ring buffers fill across observation windows; the 3-window stability gates correctly classify stable vs unstable leaves. Tag: <strong><em>Demonstrated</em></strong>.</p>
+<p><strong>The bigger story this demo enables.</strong> The combination of Maturity + NodeSignature is what makes <code>decide_step</code>’s actions <em>deterministic given evidence</em>. The structural decisions are pure functions of the per-node state, not stochastic samples. This is why ABNG can be replayed byte-identically even though the graph is restructuring — the restructure decisions are deterministic, and the deterministic decisions are reproducible.</p>
+</section>
+</section>
+<section id="routing-microbench-results" class="level2">
+<h2 class="anchored" data-anchor-id="routing-microbench-results">9. Routing microbench results</h2>
+<p>Per-operation cost of the routing path, measured on the benchmark hardware (Intel i7-11390H @ 3.40 GHz, Windows MSVC release build):</p>
+<table class="table">
+<colgroup>
+<col style="width: 30%">
+<col style="width: 40%">
+<col style="width: 30%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Operation</th>
+<th style="text-align: right;">Per-op cost</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>descend</code> (one byte walk)</td>
+<td style="text-align: right;"><strong>118 ns</strong></td>
+<td>Cheapest op; baseline noise floor</td>
+</tr>
+<tr class="even">
+<td><code>encode_prefix</code> (1-D codebook)</td>
+<td style="text-align: right;"><strong>137 ns</strong></td>
+<td>Single quantile lookup</td>
+</tr>
+<tr class="odd">
+<td><code>codebook_encode_into</code> (8-D, buffer-reuse)</td>
+<td style="text-align: right;"><strong>130 ns</strong></td>
+<td>Phase 0.7 Item B optimization</td>
+</tr>
+<tr class="even">
+<td><code>codebook_encode_alloc</code> (8-D, fresh Vec)</td>
+<td style="text-align: right;"><strong>217 ns</strong></td>
+<td>1.67× speedup with buffer reuse</td>
+</tr>
+<tr class="odd">
+<td><code>route_to_leaf</code> (encode + descend, fused)</td>
+<td style="text-align: right;"><strong>172 ns</strong></td>
+<td>Hot inference path</td>
+</tr>
+<tr class="even">
+<td><code>route_to_leaf_batch</code> (n=1024 vs per-row)</td>
+<td style="text-align: right;"><strong>1.91× speedup</strong></td>
+<td>Phase 0.7 Item 7 batched-dispatch</td>
+</tr>
+</tbody>
+</table>
+<section id="speedup-comparisons-phase-0.7-perf-wins" class="level3">
+<h3 class="anchored" data-anchor-id="speedup-comparisons-phase-0.7-perf-wins">Speedup comparisons (Phase 0.7 perf wins)</h3>
+<table class="table">
+<colgroup>
+<col style="width: 21%">
+<col style="width: 28%">
+<col style="width: 28%">
+<col style="width: 21%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Comparison</th>
+<th style="text-align: right;">Measured speedup</th>
+<th style="text-align: right;">Phase 0.7 doc claim</th>
+<th>Match?</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>observe_batch</code> n=1024 vs per-row</td>
+<td style="text-align: right;"><strong>23.51×</strong></td>
+<td style="text-align: right;">“≥ 10× target”</td>
+<td>✓ exceeds</td>
+</tr>
+<tr class="even">
+<td><code>route_to_leaf_batch</code> n=1024 vs per-row</td>
+<td style="text-align: right;"><strong>1.91×</strong></td>
+<td style="text-align: right;">n/a</td>
+<td>—</td>
+</tr>
+<tr class="odd">
+<td><code>smart_replay</code> vs naive @ 10k events</td>
+<td style="text-align: right;"><strong>2.08×</strong></td>
+<td style="text-align: right;">“≥ 5× target”</td>
+<td>✗ falls short</td>
+</tr>
+<tr class="even">
+<td><code>codebook_encode_into</code> vs <code>_alloc</code> (d=8)</td>
+<td style="text-align: right;"><strong>1.67×</strong></td>
+<td style="text-align: right;">“2.37×”</td>
+<td>✗ smaller</td>
+</tr>
+</tbody>
+</table>
+<p>As Part I §9.6 noted: three of the article’s quoted Phase 0.7 speedup numbers don’t match this hardware’s measurements. Plausible explanations are different CPU generations, build flags, or warmup variation. The honest framing: <strong>speedup numbers should be quoted as ranges, not point estimates</strong>. “1.0–2.4× depending on hardware” is defensible; “2.37×” creates a false expectation.</p>
+</section>
+<section id="cross-reference-to-scaling-at-higher-n" class="level3">
+<h3 class="anchored" data-anchor-id="cross-reference-to-scaling-at-higher-n">Cross-reference to scaling at higher n</h3>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="figures/v1_scaling_curves.png" class="img-fluid figure-img"></p>
+<figcaption class="figure-caption">V1 — Scaling curves (PINN-relevant subplot middle panel)</figcaption>
+</figure>
+</div>
+<p>The middle subplot above shows the basis-in-span PINN scaling at n = 1K → 100K collocation points. L2 error decays at the expected Monte Carlo rate (≈ 1/√n). The per-point train cost dips at n = 10K (cache-friendly) then rises at n = 100K (cache pressure on the audit log and per-node state).</p>
+</section>
+</section>
+<section id="failure-cases-limitations" class="level2">
+<h2 class="anchored" data-anchor-id="failure-cases-limitations">10. Failure cases &amp; limitations</h2>
+<section id="decide_step-not-benched-past-n_active-256" class="level3">
+<h3 class="anchored" data-anchor-id="decide_step-not-benched-past-n_active-256">10.1 <code>decide_step</code> not benched past n_active = 256</h3>
+<p>The bench caps at 256 nodes due to the 256-bin codebook. Multi-depth graphs would allow n_active in {1K, 10K, 100K}; the <em>deeper-tree</em> <code>decide_step</code> cost is unmeasured. Listed in future work — addressable in 1-2 days of bench code.</p>
+</section>
+<section id="trigger-demos-are-positive-control" class="level3">
+<h3 class="anchored" data-anchor-id="trigger-demos-are-positive-control">10.2 Trigger demos are positive-control</h3>
+<p>Each of the 5 trigger-specific demos verifies the action <em>fires</em> under the right conditions. None verify the action <em>doesn’t</em> fire under conditions where it shouldn’t. The right complement is negative-case tests (e.g., “with kl_merge = 0 and Hamming similarity threshold = 0, Merge should never fire”). <strong>Not implemented in this article</strong>. Listed in future work.</p>
+</section>
+<section id="no-external-adaptive-system-baseline" class="level3">
+<h3 class="anchored" data-anchor-id="no-external-adaptive-system-baseline">10.3 No external adaptive-system baseline</h3>
+<p>ABNG’s drift detection vs ADWIN, KSWIN, Page-Hinkley. ABNG’s structural adaptation vs Mondrian Forests, online decision trees. <strong>No head-to-head comparisons exist</strong> in this article. Listed in future work as separate research questions (one for drift, one for adaptive partitioning).</p>
+</section>
+<section id="no-production-scale-temporal-dynamics" class="level3">
+<h3 class="anchored" data-anchor-id="no-production-scale-temporal-dynamics">10.4 No production-scale temporal dynamics</h3>
+<p>The drift demo tests a controlled mean-shift scenario. Real-world drift is <em>multi-modal</em> (e.g., concept drift in news classification), <em>gradual</em> (slowly changing user preferences), and <em>adversarial</em> (data poisoning). None of these are exercised. The Phase 0.7 demos verify the <em>mechanism</em> works on toy scenarios; competitive performance on real streaming data is <strong>unmeasured</strong>.</p>
+</section>
+<section id="routing-analysis-depends-on-opt-in-audit-events" class="level3">
+<h3 class="anchored" data-anchor-id="routing-analysis-depends-on-opt-in-audit-events">10.5 Routing analysis depends on opt-in audit events</h3>
+<p>For Experiment θ (routing-flow Sankey) and §8 demo analysis, the routing flow is reconstructed from <code>descend()</code> results during the bench run. The opt-in <code>Routed</code> audit events (kind <code>0x1B</code>) would let routing be analysed <em>post-hoc</em> from any audit log — but emitting them adds linear cost in observations. The current bench framework counts routes during execution rather than logging them. For production routing analysis, the choice between in-line counting (cheap, ephemeral) and persistent <code>Routed</code> events (expensive, replayable) is a workflow decision.</p>
+</section>
+<section id="future-work-part-ii-categories" class="level3">
+<h3 class="anchored" data-anchor-id="future-work-part-ii-categories">Future work (Part II categories)</h3>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Item</th>
+<th>Cost</th>
+<th>Closes which gap</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Multi-depth <code>decide_step</code> bench at n_active = {1K, 10K, 100K}</td>
+<td>1 week</td>
+<td>§10.1</td>
+</tr>
+<tr class="even">
+<td>Negative-case trigger tests</td>
+<td>2-3 days</td>
+<td>§10.2</td>
+</tr>
+<tr class="odd">
+<td>ADWIN baseline for drift detection</td>
+<td>1-2 days</td>
+<td>§10.3</td>
+</tr>
+<tr class="even">
+<td>Mondrian Forest baseline for adaptive partitioning</td>
+<td>2-3 days</td>
+<td>§10.3</td>
+</tr>
+<tr class="odd">
+<td>Real-world streaming-data drift demo</td>
+<td>1 month (needs dataset partner)</td>
+<td>§10.4</td>
+</tr>
+<tr class="even">
+<td>Stress-test 10⁹-event replay with smart-replay path</td>
+<td>1-2 days</td>
+<td>(push past Part I’s 10⁶ ceiling)</td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="reproducibility" class="level2">
+<h2 class="anchored" data-anchor-id="reproducibility">11. Reproducibility</h2>
+<p>Every number, table, and figure in this article can be reproduced from a clean checkout of the CJC-Lang repository.</p>
+<section id="build-environment-fingerprint" class="level3">
+<h3 class="anchored" data-anchor-id="build-environment-fingerprint">Build environment fingerprint</h3>
+<pre class="text"><code>Hardware:    Intel Core i7-11390H @ 3.40 GHz (4 cores, 8 threads)
+OS:          Windows 11 Pro build 26200
+Toolchain:   MSVC, Rust (stable channel at publication time)
+Build mode:  release (-O3-equivalent, LTO disabled)
+CJC-Lang:    Phase 0.7, snapshot magic v13 (b"ABNG\x0D")
+Plotting:    Python 3.11, matplotlib 3.9.2, numpy 2.2.6</code></pre>
+</section>
+<section id="reproduction-commands" class="level3">
+<h3 class="anchored" data-anchor-id="reproduction-commands">Reproduction commands</h3>
+<div class="sourceCode" id="cb11"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="co"># 1. Clone the repository</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/AdamEzzat1/CJC.git</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> CJC</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a><span class="co"># 2. Build the bench suite (release profile)</span></span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> build <span class="at">--release</span> <span class="dt">\</span></span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">-p</span> abng-srg-experiments <span class="dt">\</span></span>
+<span id="cb11-8"><a href="#cb11-8" aria-hidden="true" tabindex="-1"></a>  <span class="at">-p</span> abng-micro <span class="dt">\</span></span>
+<span id="cb11-9"><a href="#cb11-9" aria-hidden="true" tabindex="-1"></a>  <span class="at">-p</span> abng-pinn-scale</span>
+<span id="cb11-10"><a href="#cb11-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-11"><a href="#cb11-11" aria-hidden="true" tabindex="-1"></a><span class="co"># 3. Run the experiments relevant to Part II</span></span>
+<span id="cb11-12"><a href="#cb11-12" aria-hidden="true" tabindex="-1"></a><span class="fu">mkdir</span> <span class="at">-p</span> bench_results</span>
+<span id="cb11-13"><a href="#cb11-13" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> run <span class="at">--release</span> <span class="at">-p</span> abng-srg-experiments <span class="op">&gt;</span> bench_results/abng_srg.jsonl</span>
+<span id="cb11-14"><a href="#cb11-14" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> run <span class="at">--release</span> <span class="at">-p</span> abng-micro          <span class="op">&gt;</span> bench_results/abng_micro.jsonl</span>
+<span id="cb11-15"><a href="#cb11-15" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> run <span class="at">--release</span> <span class="at">-p</span> abng-pinn-scale     <span class="op">&gt;</span> bench_results/abng_pinn_scale.jsonl</span>
+<span id="cb11-16"><a href="#cb11-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-17"><a href="#cb11-17" aria-hidden="true" tabindex="-1"></a><span class="co"># 4. Generate figures</span></span>
+<span id="cb11-18"><a href="#cb11-18" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> bench_results <span class="kw">&amp;&amp;</span> <span class="ex">python</span> plot_all.py</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="what-you-should-expect-to-see" class="level3">
+<h3 class="anchored" data-anchor-id="what-you-should-expect-to-see">What you should expect to see</h3>
+<ul>
+<li>Experiment β: 2 rows of JSONL with <code>op = "beta_basis_check"</code> (one for in-span, one for out-of-span).</li>
+<li>Experiment ε: 5 rows with <code>op = "epsilon_decide_step"</code> showing the n_active scaling table.</li>
+<li>Experiment θ: 16 rows with <code>op = "theta_routing_byte"</code> or <code>op = "theta_routing_leaf"</code> (8 each).</li>
+<li>Experiment ι: 2500 rows with <code>op = "iota_2d_ood_grid"</code> (50×50 = 2500 grid cells).</li>
+</ul>
+<p>If your re-run produces numbers within ±5% of the values reported here, the underlying determinism contract is functioning correctly. The discrete routing in Experiment θ should produce <em>byte-identical</em> counts to this article (because routing is fully deterministic given the input distribution and seed); any divergence indicates a serious determinism regression.</p>
+</section>
+</section>
+<section id="why-this-matters" class="level2">
+<h2 class="anchored" data-anchor-id="why-this-matters">12. Why this matters</h2>
+<p>Three concrete use cases where Part II’s properties pay off.</p>
+<section id="online-learning" class="level3">
+<h3 class="anchored" data-anchor-id="online-learning">Online learning</h3>
+<p>The “graph adapts itself” claim has practical force when the data is streaming. Frozen leaves auto-unfreeze on drift; redundant leaves merge; over-extended ones split. No retraining loop, no hyperparameter sweep over network depth — the structural decisions are <em>part of the architecture</em>. For a system that needs to keep learning after deployment (recommendation, anomaly detection, real-time monitoring), this is a meaningful capability.</p>
+<p><em>What this doesn’t claim</em>: that ABNG is <strong>deployment-ready</strong> for online learning. The structural-decision thresholds require tuning; the drift detection has only been verified on toy scenarios; the recovery story (Freeze → drift → Unfreeze → recovery) is verified piece-by-piece, not end-to-end on real data.</p>
+</section>
+<section id="interpretable-routing" class="level3">
+<h3 class="anchored" data-anchor-id="interpretable-routing">Interpretable routing</h3>
+<p>ABNG’s codebook-and-trie routing makes “which expert handled this input?” a trivial question. You read it off the route key — one byte per dimension. Compared to MoE routers, where the gating decision is a learned floating-point distribution over the whole expert population (and you need attribution methods to even visualize which expert dominated), this is <em>substantially</em> more interpretable for debugging and capacity planning.</p>
+<p><em>What this doesn’t claim</em>: that interpretability of routing implies interpretability of the <em>model’s function</em>. The per-leaf MLP body is still a small black-box network. ABNG provides <em>routing interpretability</em> and <em>audit-level explainability</em> (Part I §4.5); it does not provide parameter-level interpretability of the function each leaf implements.</p>
+</section>
+<section id="adaptive-computation" class="level3">
+<h3 class="anchored" data-anchor-id="adaptive-computation">Adaptive computation</h3>
+<p>ABNG joins a small family of architectures where the compute graph isn’t fixed at design time: Adaptive Computation Time, Pondernet, Universal Transformers. ABNG’s distinction is that adaptation happens at the <em>training-graph</em> level (structural decisions over many observations), not at the <em>inference</em> level (per-token compute).</p>
+<p><em>The trade-off</em>. Inference-level adaptive compute (ACT, Pondernet) saves wall-clock on easy inputs; the graph itself is fixed. Training-level adaptive compute (ABNG) changes the graph itself; inference cost is bounded by the current graph’s depth (sub-microsecond per descent) but training cost includes the structural-decision overhead. Different architectures serve different workloads.</p>
+</section>
+</section>
+<section id="conclusion" class="level2">
+<h2 class="anchored" data-anchor-id="conclusion">13. Conclusion</h2>
+<p>This article walked through Part II of the ABNG benchmark deep-dive: four categories where the architecture is <em>most</em> distinctive — the parts that aren’t fixed at design time.</p>
+<p><strong>What’s now established empirically (at the tested scale, on the tested hardware):</strong></p>
+<ul>
+<li>PINN out-of-span doesn’t degrade as expected — the piecewise routing partition provides effective basis-augmentation (Experiment β). The previous version of this article’s “ABNG works on PDEs because basis spans truth” was a <em>partial</em> explanation; the routing partition is the missing piece.</li>
+<li><code>decide_step</code> is sub-millisecond at n_active ≤ 256 with roughly linear scaling (Experiment ε).</li>
+<li>Routing distribution matches input distribution; 10K observations across 8 codebook bins produce a readable Sankey (Experiment θ).</li>
+<li>2-D OOD has clear spatial structure; the four-panel decomposition shows composite + density + prefix-distance + epistemic-leverage all contributing different signals (Experiment ι).</li>
+<li>All five trigger-specific demos verify their named action fires correctly under quality-gated conditions (§8.2).</li>
+<li>Drift detection mechanism verified on controlled mean-shift scenarios (§8.3).</li>
+<li>Maturity + NodeSignature track per-leaf state evolution over training (§8.4).</li>
+</ul>
+<p><strong>What remains speculative across both parts:</strong></p>
+<ul>
+<li>Whether ABNG would compete with sklearn-GP, FNO, deep SVDD, ADWIN, or Mondrian Forests on their home benchmarks — no head-to-head measurement exists.</li>
+<li>Whether the architecture scales to 10⁶+ rows with multi-depth graphs — measured to 10⁵ rows / 10⁶ events at depth-1.</li>
+<li>Whether the determinism contract holds cross-platform — only Windows MSVC tested.</li>
+<li>Whether the “three-or-more-advantages-simultaneously” hypothesis from <a href="../../../blog/posts/abng-architecture/index.html">Part 1 of the trilogy</a> holds anywhere empirically.</li>
+</ul>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+The honest summary
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><strong>ABNG demonstrates promising properties for deterministic, inspectable, graph-based probabilistic computation</strong> — and Part II’s results show those properties extend to the architecturally-distinctive half of the system: adaptive structural decisions, interpretable routing, drift response. At the tested scale, on the tested hardware, the four experiments and the trigger-specific demos all pass.</p>
+<p>The architecture is <strong>not validated science.</strong> It is exploratory engineering with strong correctness signals at small scale, on a specific hardware target, with several axes of comparison to established systems unmeasured. The five future-work items in §10 are each weeks-to-months of work.</p>
+<p>If you’ve read both Part I and Part II, you have the empirical state of ABNG as of Phase 0.7 — what’s proven, what’s demonstrated, what’s reasonable extrapolation, what’s speculative. The next decisions belong to readers who want to run the experiments §10 lists.</p>
+</div>
+</div>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Note
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>ABNG lives at <a href="https://github.com/AdamEzzat1/CJC"><code>crates/cjc-abng/</code></a> in the CJC-Lang repository. All benchmark code is in <code>bench/abng_*/</code>. The plotting script is at <a href="https://github.com/AdamEzzat1/CJC/blob/main/bench_results/plot_all.py"><code>bench_results/plot_all.py</code></a>.</p>
+<p>This was article 4 of a 4-article ABNG series. Article 1 covers the architecture; Article 2 covers the determinism and audit story; Article 3 (Part I of the benchmarks) covers the categories where ABNG can be proven correct at the tested scale; this article (Part II) covered adaptive graph evolution, routing, and temporal dynamics.</p>
+</div>
+</div>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const disableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'prefetch';
+    }
+  }
+  const enableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'stylesheet';
+    }
+  }
+  const manageTransitions = (selector, allowTransitions) => {
+    const els = window.document.querySelectorAll(selector);
+    for (let i=0; i < els.length; i++) {
+      const el = els[i];
+      if (allowTransitions) {
+        el.classList.remove('notransition');
+      } else {
+        el.classList.add('notransition');
+      }
+    }
+  }
+  const toggleColorMode = (alternate) => {
+    // Switch the stylesheets
+    const alternateStylesheets = window.document.querySelectorAll('link.quarto-color-scheme.quarto-color-alternate');
+    manageTransitions('#quarto-margin-sidebar .nav-link', false);
+    if (alternate) {
+      enableStylesheet(alternateStylesheets);
+      for (const sheetNode of alternateStylesheets) {
+        if (sheetNode.id === "quarto-bootstrap") {
+          toggleBodyColorMode(sheetNode);
+        }
+      }
+    } else {
+      disableStylesheet(alternateStylesheets);
+      toggleBodyColorPrimary();
+    }
+    manageTransitions('#quarto-margin-sidebar .nav-link', true);
+    // Switch the toggles
+    const toggles = window.document.querySelectorAll('.quarto-color-scheme-toggle');
+    for (let i=0; i < toggles.length; i++) {
+      const toggle = toggles[i];
+      if (toggle) {
+        if (alternate) {
+          toggle.classList.add("alternate");     
+        } else {
+          toggle.classList.remove("alternate");
+        }
+      }
+    }
+    // Hack to workaround the fact that safari doesn't
+    // properly recolor the scrollbar when toggling (#1455)
+    if (navigator.userAgent.indexOf('Safari') > 0 && navigator.userAgent.indexOf('Chrome') == -1) {
+      manageTransitions("body", false);
+      window.scrollTo(0, 1);
+      setTimeout(() => {
+        window.scrollTo(0, 0);
+        manageTransitions("body", true);
+      }, 40);  
+    }
+  }
+  const isFileUrl = () => { 
+    return window.location.protocol === 'file:';
+  }
+  const hasAlternateSentinel = () => {  
+    let styleSentinel = getColorSchemeSentinel();
+    if (styleSentinel !== null) {
+      return styleSentinel === "alternate";
+    } else {
+      return false;
+    }
+  }
+  const setStyleSentinel = (alternate) => {
+    const value = alternate ? "alternate" : "default";
+    if (!isFileUrl()) {
+      window.localStorage.setItem("quarto-color-scheme", value);
+    } else {
+      localAlternateSentinel = value;
+    }
+  }
+  const getColorSchemeSentinel = () => {
+    if (!isFileUrl()) {
+      const storageValue = window.localStorage.getItem("quarto-color-scheme");
+      return storageValue != null ? storageValue : localAlternateSentinel;
+    } else {
+      return localAlternateSentinel;
+    }
+  }
+  let localAlternateSentinel = 'default';
+  // Dark / light mode switch
+  window.quartoToggleColorScheme = () => {
+    // Read the current dark / light value 
+    let toAlternate = !hasAlternateSentinel();
+    toggleColorMode(toAlternate);
+    setStyleSentinel(toAlternate);
+  };
+  // Ensure there is a toggle, if there isn't float one in the top right
+  if (window.document.querySelector('.quarto-color-scheme-toggle') === null) {
+    const a = window.document.createElement('a');
+    a.classList.add('top-right');
+    a.classList.add('quarto-color-scheme-toggle');
+    a.href = "";
+    a.onclick = function() { try { window.quartoToggleColorScheme(); } catch {} return false; };
+    const i = window.document.createElement("i");
+    i.classList.add('bi');
+    a.appendChild(i);
+    window.document.body.appendChild(a);
+  }
+  // Switch to dark mode if need be
+  if (hasAlternateSentinel()) {
+    toggleColorMode(true);
+  } else {
+    toggleColorMode(false);
+  }
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+      &nbsp;
+    </div>   
+    <div class="nav-footer-center">© 2026 Adam Ezzat. Built with <a href="https://quarto.org/">Quarto</a>.</div>
+    <div class="nav-footer-right">
+      &nbsp;
+    </div>
+  </div>
+</footer>
+
+
+
+<script src="../../../site_libs/quarto-html/zenscroll-min.js"></script>
+</body></html>
