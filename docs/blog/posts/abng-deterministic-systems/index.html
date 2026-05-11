@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.3.340">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Adam Ezzat">
+<meta name="dcterms.date" content="2026-05-10">
+<meta name="description" content="Part 2 of a three-article series on ABNG. Most ML training is not replayable bit-for-bit. Two runs of ‘the same’ code on ‘the same’ data produce two different artifacts. This article walks through ABNG’s SHA-256 audit chain mechanism — every state mutation appended to a hash-chained log, replayable from a serialized snapshot, three-signal spoof detection — and is honest about what the determinism premium costs (~87% of per-training-step time is dispatch + audit overhead, not Bayesian math). For engineers in regulated ML, scientific replication, and any setting where ‘why this output?’ needs a paper trail.">
+
+<title>Adam Ezzat - Deterministic and Auditable Neural Systems</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../../">
+<script src="../../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<script src="../../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-dark.min.css" rel="prefetch" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+<style>html{ scroll-behavior: smooth; }</style>
+
+
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../../index.html">
+    <span class="navbar-title">Adam Ezzat</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../../index.html" rel="" target="">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../about.html" rel="" target="">
+ <span class="menu-text">About</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../projects.html" rel="" target="">
+ <span class="menu-text">Projects</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../blog/index.html" rel="" target="">
+ <span class="menu-text">Blog</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/AdamEzzat1" rel="" target=""><i class="bi bi-github" role="img" aria-label="GitHub">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://linkedin.com/in/adamezzat" rel="" target=""><i class="bi bi-linkedin" role="img" aria-label="LinkedIn">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+            <div class="quarto-navbar-tools">
+  <a href="" class="quarto-color-scheme-toggle quarto-navigation-tool  px-1" onclick="window.quartoToggleColorScheme(); return false;" title="Toggle dark mode"><i class="bi"></i></a>
+</div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#the-reproducibility-crisis-in-ml-one-layer-deep" id="toc-the-reproducibility-crisis-in-ml-one-layer-deep" class="nav-link active" data-scroll-target="#the-reproducibility-crisis-in-ml-one-layer-deep">The reproducibility crisis in ML, one layer deep</a></li>
+  <li><a href="#what-auditable-actually-has-to-mean" id="toc-what-auditable-actually-has-to-mean" class="nav-link" data-scroll-target="#what-auditable-actually-has-to-mean">What “auditable” actually has to mean</a></li>
+  <li><a href="#the-sha-256-audit-chain-mechanism" id="toc-the-sha-256-audit-chain-mechanism" class="nav-link" data-scroll-target="#the-sha-256-audit-chain-mechanism">The SHA-256 audit chain mechanism</a>
+  <ul class="collapse">
+  <li><a href="#what-each-event-commits-to" id="toc-what-each-event-commits-to" class="nav-link" data-scroll-target="#what-each-event-commits-to">What each event commits to</a></li>
+  <li><a href="#event-sizes-in-practice" id="toc-event-sizes-in-practice" class="nav-link" data-scroll-target="#event-sizes-in-practice">Event sizes in practice</a></li>
+  </ul></li>
+  <li><a href="#a-worked-example-detecting-a-tampered-training-dataset" id="toc-a-worked-example-detecting-a-tampered-training-dataset" class="nav-link" data-scroll-target="#a-worked-example-detecting-a-tampered-training-dataset">A worked example: detecting a tampered training dataset</a></li>
+  <li><a href="#replay-semantics" id="toc-replay-semantics" class="nav-link" data-scroll-target="#replay-semantics">Replay semantics</a>
+  <ul class="collapse">
+  <li><a href="#smart-replay" id="toc-smart-replay" class="nav-link" data-scroll-target="#smart-replay">Smart replay</a></li>
+  <li><a href="#what-replay-does-not-validate" id="toc-what-replay-does-not-validate" class="nav-link" data-scroll-target="#what-replay-does-not-validate">What replay does not validate</a></li>
+  </ul></li>
+  <li><a href="#the-determinism-contract" id="toc-the-determinism-contract" class="nav-link" data-scroll-target="#the-determinism-contract">The determinism contract</a>
+  <ul class="collapse">
+  <li><a href="#why-this-rules-out-gpu-acceleration" id="toc-why-this-rules-out-gpu-acceleration" class="nav-link" data-scroll-target="#why-this-rules-out-gpu-acceleration">Why this rules out GPU acceleration</a></li>
+  </ul></li>
+  <li><a href="#what-this-costs-the-determinism-premium-quantified" id="toc-what-this-costs-the-determinism-premium-quantified" class="nav-link" data-scroll-target="#what-this-costs-the-determinism-premium-quantified">What this costs: the determinism premium quantified</a></li>
+  <li><a href="#how-this-compares-to-mlflow-dvc-weights-biases" id="toc-how-this-compares-to-mlflow-dvc-weights-biases" class="nav-link" data-scroll-target="#how-this-compares-to-mlflow-dvc-weights-biases">How this compares to MLflow / DVC / Weights &amp; Biases</a></li>
+  <li><a href="#use-cases-where-the-cost-inverts" id="toc-use-cases-where-the-cost-inverts" class="nav-link" data-scroll-target="#use-cases-where-the-cost-inverts">Use cases where the cost inverts</a>
+  <ul class="collapse">
+  <li><a href="#auditability-for-regulated-decisions" id="toc-auditability-for-regulated-decisions" class="nav-link" data-scroll-target="#auditability-for-regulated-decisions">Auditability for regulated decisions</a></li>
+  <li><a href="#reproducible-scientific-simulation" id="toc-reproducible-scientific-simulation" class="nav-link" data-scroll-target="#reproducible-scientific-simulation">Reproducible scientific simulation</a></li>
+  <li><a href="#debugging-at-the-architectural-level" id="toc-debugging-at-the-architectural-level" class="nav-link" data-scroll-target="#debugging-at-the-architectural-level">Debugging at the architectural level</a></li>
+  </ul></li>
+  <li><a href="#what-this-approach-cannot-do" id="toc-what-this-approach-cannot-do" class="nav-link" data-scroll-target="#what-this-approach-cannot-do">What this approach cannot do</a>
+  <ul class="collapse">
+  <li><a href="#no-gpu-acceleration" id="toc-no-gpu-acceleration" class="nav-link" data-scroll-target="#no-gpu-acceleration">No GPU acceleration</a></li>
+  <li><a href="#no-multi-thread-training-within-one-graph" id="toc-no-multi-thread-training-within-one-graph" class="nav-link" data-scroll-target="#no-multi-thread-training-within-one-graph">No multi-thread training within one graph</a></li>
+  <li><a href="#no-live-debugging-beyond-inspection-tooling" id="toc-no-live-debugging-beyond-inspection-tooling" class="nav-link" data-scroll-target="#no-live-debugging-beyond-inspection-tooling">No live debugging beyond inspection tooling</a></li>
+  <li><a href="#the-audit-log-is-large" id="toc-the-audit-log-is-large" class="nav-link" data-scroll-target="#the-audit-log-is-large">The audit log is large</a></li>
+  </ul></li>
+  <li><a href="#what-would-convince-me-to-deploy-this" id="toc-what-would-convince-me-to-deploy-this" class="nav-link" data-scroll-target="#what-would-convince-me-to-deploy-this">What would convince me to deploy this</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Deterministic and Auditable Neural Systems</h1>
+<p class="subtitle lead">What it would take to give a neural network a git-commit history — and why anyone would want that.</p>
+  <div class="quarto-categories">
+    <div class="quarto-category">CJC-Lang</div>
+    <div class="quarto-category">ABNG</div>
+    <div class="quarto-category">determinism</div>
+    <div class="quarto-category">audit</div>
+    <div class="quarto-category">reproducibility</div>
+    <div class="quarto-category">regulated-ML</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    Part 2 of a three-article series on ABNG. Most ML training is not replayable bit-for-bit. Two runs of ‘the same’ code on ‘the same’ data produce two different artifacts. This article walks through ABNG’s SHA-256 audit chain mechanism — every state mutation appended to a hash-chained log, replayable from a serialized snapshot, three-signal spoof detection — and is honest about what the determinism premium costs (~87% of per-training-step time is dispatch + audit overhead, not Bayesian math). For engineers in regulated ML, scientific replication, and any setting where ‘why this output?’ needs a paper trail.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Adam Ezzat </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">May 10, 2026</p>
+    </div>
+  </div>
+  
+    <div>
+    <div class="quarto-title-meta-heading">Modified</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date-modified">May 10, 2026</p>
+    </div>
+  </div>
+    
+  </div>
+  
+
+</header>
+
+<div class="reading-time">
+🕑 ~38 min read
+</div>
+<div class="callout callout-style-simple callout-tip no-icon callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+TL;DR
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Most ML training is <em>not</em> replayable bit-for-bit. Two runs of “the same” code on “the same” data produce two different artifacts, and reconstructing <em>why</em> a specific model produced a specific output is essentially “trust the lab’s bookkeeping.” This article walks through ABNG’s audit chain mechanism — SHA-256 over every state mutation, replayable from a serialized log, three-signal spoof detection — and is honest about what the determinism premium <em>costs</em>: ~87% of the per-training-step time is dispatch + audit overhead, not Bayesian math. The audit-chain primitive itself is well-understood (Merkle, 1979; git, 2005), but applying it at training-step granularity is the unusual choice worth examining.</p>
+</div>
+</div>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Two prototype disclaimers
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><strong>ABNG is a research-stage prototype.</strong> It is built on top of <strong>CJC-Lang</strong>, a research compiler that is itself pre-1.0. Both are under active development. The audit-chain mechanism works as described; the broader claim that “this is suitable for regulated-ML deployment” is currently <em>unvalidated by any real deployment</em>. The “regulator’s nightmare scenario” walkthrough in this article operates on a 64-row synthetic dataset, not a real clinical-trial corpus.</p>
+</div>
+</div>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+This is Part 2 of a three-part series
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<ul>
+<li><strong>Part 1 (<a href="../../../blog/posts/abng-architecture/index.html">ABNG: Treating Belief States as First-Class Citizens</a>):</strong> the architecture itself.</li>
+<li><strong>Part 2 (this article):</strong> the SHA-256 audit chain, replay semantics, the determinism contract.</li>
+<li><strong>Part 3 (<a href="../../../blog/posts/abng-benchmarks/index.html">Benchmarking Experimental Bayesian Graph Networks</a>):</strong> the demo catalog, scaling benchmarks, and honest limitations.</li>
+</ul>
+<p>This article can be read alone if your primary interest is the determinism / auditability story. Part 1 covers the underlying architecture; Part 3 covers what the benchmarks actually measure.</p>
+</div>
+</div>
+<section id="the-reproducibility-crisis-in-ml-one-layer-deep" class="level2">
+<h2 class="anchored" data-anchor-id="the-reproducibility-crisis-in-ml-one-layer-deep">The reproducibility crisis in ML, one layer deep</h2>
+<p>Reproducibility in ML is a misleadingly familiar phrase. The version most practitioners encounter — “publish your code and your data so others can rerun your experiment” — addresses <em>artefact</em> reproducibility. Same code, same data, hopefully similar results.</p>
+<p>A deeper version of the question is rarely asked: <strong>given the trained model artefact you have today, can you reconstruct, bit-for-bit, the training history that produced it?</strong></p>
+<p>For the vast majority of ML systems, the answer is no. Even with code and data pinned to specific commits, retraining produces <em>similar</em> but not <em>identical</em> artefacts. Non-determinism creeps in through floating-point reduction orderings (different cuDNN versions, different GPU drivers), parallel scheduling (the OS decides which threads finish first), stochastic optimizers seeded loosely (NumPy RNG state at the moment of training start), and a long list of small things that don’t matter individually but compound across millions of operations.</p>
+<p>For most use cases this is tolerable. A model that achieves 78.3% accuracy in one training run and 78.4% in another is <em>practically</em> the same model. No one debugs a production recommender system by asking “what was the exact gradient at step 1,247,891?”</p>
+<p>For some use cases it’s not tolerable at all.</p>
+<p><strong>Scientific replication.</strong> If a published model is the <em>evidence</em> for a scientific claim — a protein-structure prediction, a climate forecast, a clinical-trial outcome — then “another team will get a similar model when they rerun the code” is not the same as “another team will get the same model.” Statistical claims that depend on the model are conditioning on a specific artefact; they need that specific artefact reconstructible.</p>
+<p><strong>Regulated ML.</strong> When a model decision must be defended to a regulator (FDA, EMA, financial auditor) the question is not “does the code work?” but “was this specific output produced by a specific model trained on a specific dataset, and can you prove no tampering occurred?” Trust-the-lab’s-bookkeeping doesn’t survive contact with adversarial review.</p>
+<p><strong>Postmortem debugging.</strong> When a deployed model produces a strange output, the question “what would I change to never have that output again?” requires reconstructing the specific training trajectory that produced the model’s current weights. With non-deterministic training, you can’t even reliably reproduce the bug.</p>
+<p>These three classes of problem share a structural property: the <em>exact</em> training history matters, not just the final accuracy number. ABNG is built around this property. The rest of this article walks through how, what it costs, and where existing tools fall short of providing the same guarantee.</p>
+</section>
+<section id="what-auditable-actually-has-to-mean" class="level2">
+<h2 class="anchored" data-anchor-id="what-auditable-actually-has-to-mean">What “auditable” actually has to mean</h2>
+<p>Before getting into the mechanism, it’s worth being precise about the word. “Audit trail” gets used loosely in the ML lineage tooling space to mean many incompatible things:</p>
+<p><strong>Level 1 — Artefact tracking.</strong> “I stored a copy of the trained model and a copy of the training data in S3, with metadata about which produced which.” This is what MLflow, DVC, Weights &amp; Biases, and similar tools provide. The audit unit is the <em>artefact</em>: dataset → trained model. The granularity is <em>coarse</em> — one entry per training run.</p>
+<p><strong>Level 2 — Event logging.</strong> “I logged every API call, every commit, every parameter change to an append-only stream.” This is what most production systems do for operations metadata. The audit unit is the <em>event</em>: every meaningful action in the pipeline. The granularity is <em>fine</em> but the events are typically just textual descriptions, not cryptographic commitments to the underlying state.</p>
+<p><strong>Level 3 — State-mutation chain with cryptographic commitments.</strong> “Every change to the model’s internal state is appended to a hash-chained log, and any future replay can verify the log was not tampered with after the fact.” The audit unit is the <em>state mutation</em>: every parameter update has its own hash witness. The granularity is <em>the finest possible</em>. This is what ABNG provides.</p>
+<p><strong>Level 4 — Tamper-proof, not tamper-evident.</strong> A theoretical level that nothing in mainstream ML provides. Even Level 3 only detects tampering after the fact; it cannot prevent an attacker who controls the entire pipeline from producing a self-consistent malicious log. True tamper-proofing would require external attestation (TPM, secure enclaves, blockchain-style consensus) that ABNG does not implement.</p>
+<p>ABNG is unambiguously a Level 3 system. The right mental model is <strong>a git commit history for a model</strong>:</p>
+<ul>
+<li>Every state change is a commit.</li>
+<li>Each commit has a cryptographic hash that depends on the previous commit.</li>
+<li>The history is complete (every change is in there) and verifiable (you can re-derive any past state).</li>
+<li>It is not however a defense against an attacker who controls the repo from the start.</li>
+</ul>
+<p>The distinction between Level 3 (tamper-evident) and Level 4 (tamper-proof) matters because it shapes what ABNG can and cannot claim. ABNG can credibly say “the audit log shows the training history; if anyone modified the log or the snapshot after the fact, replay will detect it.” ABNG cannot credibly say “this proves the lab was honest.” Those are different claims.</p>
+</section>
+<section id="the-sha-256-audit-chain-mechanism" class="level2">
+<h2 class="anchored" data-anchor-id="the-sha-256-audit-chain-mechanism">The SHA-256 audit chain mechanism</h2>
+<p>Every operation that mutates state in an ABNG graph appends one event to an in-memory audit log. Each event carries a kind tag, a payload, and a <code>new_hash</code> computed by SHA-256-chaining over the previous event’s hash:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a>new_hash <span class="op">=</span> sha256(prev_hash <span class="op">||</span> canonical_bytes(payload))</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Thirty audit kinds are defined (tag bytes <code>0x00..0x1D</code>), covering everything from <code>Created</code> (graph genesis, tag <code>0x00</code>) and <code>NodeAdded</code> (<code>0x02</code>) through <code>BlrUpdated</code> (<code>0x0A</code>), <code>CalibrationUpdated</code> (<code>0x0E</code>), <code>Split</code> (<code>0x11</code>), <code>Merge</code> (<code>0x12</code>), <code>Unfreeze</code> (<code>0x16</code>), down to opt-in <code>StatsSnapshot</code> (log-compaction marker, <code>0x1A</code>), <code>Routed</code> (per-descent trace, <code>0x1B</code>), <code>ProvenanceStamped</code> (per-node lineage commitment, <code>0x1C</code>), and <code>BeliefUpdateBatch</code> (<code>0x1D</code>).</p>
+<p>The kind list is <em>frozen</em> — future ABNG phases must allocate new tags rather than reuse existing ones. This is a deliberate forward-compatibility guarantee: a snapshot from Phase 0.4 (when the chain had 28 audit kinds) can still be read by a Phase 0.7 binary (with 30 audit kinds) because the original tag semantics never change.</p>
+<pre class="mermaid"><code>flowchart LR
+    G["Genesis hash&lt;br/&gt;sha256(b'ABNG-GENESIS-v1')"] --&gt; E0["Event 0&lt;br/&gt;Created"]
+    E0 --&gt; E1["Event 1&lt;br/&gt;NodeAdded"]
+    E1 --&gt; E2["Event 2&lt;br/&gt;BlrInitialized"]
+    E2 --&gt; E3["Event 3&lt;br/&gt;BlrUpdated&lt;br/&gt;(witness hash)"]
+    E3 --&gt; E4["Event 4&lt;br/&gt;CalibrationUpdated&lt;br/&gt;(witness hash)"]
+    E4 --&gt; E5["Event 5&lt;br/&gt;Split"]
+    E5 --&gt; EDOTS["..."]
+    EDOTS --&gt; EN["Event N&lt;br/&gt;chain_head"]</code></pre>
+<p>The genesis hash is the fixed constant <code>sha256(b"ABNG-GENESIS-v1")</code>, exposed in the public API. Every graph starts with the same genesis hash; the first event (<code>Created</code>) is hashed against it. The chain head is the most recent <code>new_hash</code> — a single 32-byte commitment to the entire training history.</p>
+<section id="what-each-event-commits-to" class="level3">
+<h3 class="anchored" data-anchor-id="what-each-event-commits-to">What each event commits to</h3>
+<p>There are three classes of audit event, differing in payload size and replay semantics:</p>
+<p><strong>Structural events</strong> carry the full payload because replay needs them to reconstruct the graph. Examples: <code>Created</code>, <code>NodeAdded { parent, key_byte }</code>, <code>Grow { parent, key_byte, child }</code>, <code>Split { parent, child_a, child_b }</code>, <code>Merge { absorbed, into }</code>, <code>CodebookFrozen { codebook_hash }</code>. These events <em>drive</em> graph reconstruction during replay.</p>
+<p><strong>Witness-only events</strong> carry just a 32-byte state hash, not the actual data. Examples: <code>BlrUpdated { state_hash }</code>, <code>LeafParamsUpdated { params_hash }</code>, <code>DensityUpdated { state_hash }</code>, <code>CalibrationUpdated { state_hash }</code>. The actual per-node data lives in the snapshot’s per-node section, not in the event payload. The audit event acts as a <em>checkpoint</em> — replay re-applies the per-node bytes from the snapshot and verifies the hash matches.</p>
+<p><strong>Trace events</strong> are opt-in and carry minimal context. The most important one is <code>Routed { leaf, matched_prefix }</code> (tag <code>0x1B</code>), emitted by <code>descend_traced()</code> when route tracing is enabled. By default routing produces no audit event — turning on Routed at high observation rates can dwarf the model’s training data, so it’s reserved for explainability use cases.</p>
+</section>
+<section id="event-sizes-in-practice" class="level3">
+<h3 class="anchored" data-anchor-id="event-sizes-in-practice">Event sizes in practice</h3>
+<p>The vast majority of events under heavy training are witness-only (<code>BlrUpdated</code>, <code>DensityUpdated</code>, <code>CalibrationUpdated</code>). Each costs roughly 80 bytes on the wire (8 byte tag + 8 byte node id + 32 byte state hash + 8 byte seq + 24 byte boilerplate including the SHA-256 chain advance). At four updates per observation (one BLR, one density, one calibration, one signature update), a million-row training run produces ~320 MB of audit log — fits on disk, painful in memory.</p>
+<p>This is where log compaction enters. The <code>StatsSnapshot</code> event (tag <code>0x1A</code>, shipped in Phase 0.4 Track A) is a <em>marker</em> placed periodically into the chain. It captures a hash of the full per-node state at the marker point. The <code>smart_replay</code> API can then <em>fast-forward</em> past long runs of <code>*Updated</code> events by recovering state from the marker. This is correctness-preserving: smart-replay produces byte-identical state to naive replay, but skips the per-event hash recomputation. The speedup measured in Part 3 is 2.08× at 10K events — less than the originally-predicted ≥5×, but a meaningful improvement.</p>
+</section>
+</section>
+<section id="a-worked-example-detecting-a-tampered-training-dataset" class="level2">
+<h2 class="anchored" data-anchor-id="a-worked-example-detecting-a-tampered-training-dataset">A worked example: detecting a tampered training dataset</h2>
+<p>This is the strongest demo in the codebase and deserves a careful walkthrough.</p>
+<p><strong>Scenario.</strong> A clinical research lab trains an ABNG model on a regulatory dataset and submits both the model snapshot and a few prediction snapshots to a regulator. An attacker (or insider, or simply a buggy upstream pipeline) substitutes a different model trained on a <em>tampered</em> dataset and tries to pass the original lab’s predictions off as still valid. Can the regulator detect the swap?</p>
+<p><strong>Setup.</strong> - Dataset A: 64 synthetic clinical-trial rows <code>(patient_id, dose, response)</code> with <code>response = 0.2 + 0.6·dose + 0.1·dose²</code> — a simple polynomial dose-response curve. - Dataset B: identical to A <em>except</em> patient 17’s response is rewritten — exactly one row tampered, simulating data fraud. - Two ABNG graphs: <code>g_A</code> trained on dataset A, <code>g_B</code> trained on dataset B.</p>
+<p>Both graphs have identical architecture: 1-D codebook over <code>dose</code> with 4 bins, 4 children (one per bin), each with its own BLR head over <code>[1, dose, dose², dose³]</code>. Same seed, same training schedule. The <em>only</em> difference between <code>g_A</code> and <code>g_B</code> is dataset content.</p>
+<pre class="mermaid"><code>flowchart TD
+    DS_A["Dataset A&lt;br/&gt;64 rows (legitimate)"] --&gt; H_A["sha256(A) = stamp_A"]
+    DS_B["Dataset B&lt;br/&gt;row 17 tampered"] --&gt; H_B["sha256(B) = stamp_B"]
+    H_A --&gt; G_A["Train g_A&lt;br/&gt;chain_head_A&lt;br/&gt;blr_hash_A[*]"]
+    H_B --&gt; G_B["Train g_B&lt;br/&gt;chain_head_B&lt;br/&gt;blr_hash_B[*]"]
+    G_A --&gt; V_A["lab submits&lt;br/&gt;g_A.snap"]
+    G_B --&gt; ATK["attacker&lt;br/&gt;swaps to g_B.snap"]
+    ATK --&gt; CHECK{"regulator verifies"}
+    V_A --&gt; CHECK
+    CHECK --&gt; F["FAILS on:&lt;br/&gt;1. chain_head_A ≠ chain_head_B&lt;br/&gt;2. blr_hash mismatch on row 17 leaf&lt;br/&gt;3. stamp_A ≠ stamp_B"]
+    style F fill:#fcc</code></pre>
+<p><strong>Three independent failure signals.</strong> The test <code>tests/test_abng_lineage_attestation.rs::three_signal_spoof_detection</code> asserts that the attempted swap fails <em>all three</em> signals simultaneously, and that each signal would fire even if the other two were somehow defeated:</p>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Signal</th>
+<th>What it commits to</th>
+<th>How the swap fails</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>chain_head</code> (32 byte SHA-256)</td>
+<td>The entire training history (every observation, every BLR update, every audit event)</td>
+<td><code>g_A.chain_head ≠ g_B.chain_head</code> because the BlrUpdated event for the leaf containing patient 17 differs</td>
+</tr>
+<tr class="even">
+<td>Per-leaf <code>BLR state_hash</code></td>
+<td>The leaf’s posterior <code>(m, Λ, a, b)</code></td>
+<td><code>g_A.leaves[k].blr.state_hash() ≠ g_B.leaves[k].blr.state_hash()</code> for the affected <code>k</code></td>
+</tr>
+<tr class="odd">
+<td>Root <code>provenance_stamp_hash</code></td>
+<td><code>sha256(dataset_bytes)</code> — the regulator-chosen 32-byte fingerprint of the training data</td>
+<td><code>sha256(A_bytes) ≠ sha256(B_bytes)</code> because patient 17 differs</td>
+</tr>
+</tbody>
+</table>
+<p>The three signals are <em>independent</em>. The first depends on the entire chain of audit events. The second depends only on the affected leaf’s posterior state. The third depends only on the dataset itself. An attacker would need to simultaneously forge all three — which requires producing a SHA-256 collision (computationally infeasible by current knowledge), forging a Bayesian posterior state to match a specific hash (same), and forging the original dataset bytes (same).</p>
+<p><strong>What this proves.</strong> Tamper detection at the <em>training-data-row</em> level. A single-row dataset change produces detectable signal at three independent integrity checkpoints. This is the cleanest adversarial test in the codebase — the only one that constructs a “what would an attacker do” scenario rather than a positive-control determinism check.</p>
+<p><strong>What this does not prove.</strong> The dataset is 64 rows. Real regulated-ML datasets are many orders of magnitude larger. The mechanism <em>should</em> scale linearly (each additional row adds ~300 bytes to the audit log per training step), but the wall-clock cost of verifying a 10⁶-row training history’s audit chain — Part 3 measured ~1.6 seconds at 10⁵ rows — would extrapolate to ~16 seconds at 10⁶, ~160 seconds at 10⁷. Tolerable for offline regulator review; not tolerable as a real-time check.</p>
+<p><strong>The “git commit history for a model” framing concretely.</strong> In git, <code>git log</code> shows every commit. Each commit has a SHA-1 hash that depends on the parent. Modifying any past commit invalidates all later commit hashes. The chain is verifiable end-to-end. ABNG works the same way at training-step granularity: every parameter update is one “commit,” the chain head is the “HEAD,” and you can <code>git show &lt;hash&gt;</code> to inspect any past state. The analogy is exact at the structural level; the difference is what’s being committed (model state mutations, not source code edits) and the hash function (SHA-256, not SHA-1).</p>
+</section>
+<section id="replay-semantics" class="level2">
+<h2 class="anchored" data-anchor-id="replay-semantics">Replay semantics</h2>
+<p>Given a serialized snapshot, the <code>abng_replay</code> function reconstructs the graph from scratch:</p>
+<ol type="1">
+<li><p><strong>Parse the snapshot header.</strong> Magic bytes <code>b"ABNG\x0D"</code> (version <code>\x0D</code> = v13 as of Phase 0.7), genesis hash check, configuration metadata (codebook, leaf head architecture, BLR prior, decision policy).</p></li>
+<li><p><strong>Replay the audit log.</strong> Walk every event in sequence. For each event:</p>
+<ul>
+<li>Recompute <code>new_hash = sha256(running_hash || canonical_bytes(event))</code>.</li>
+<li>Compare against the stored <code>new_hash</code>. Mismatch → <code>DecodeError::ChainMismatch { at_seq }</code>.</li>
+<li>Apply the event’s semantic effect: append a node, update a posterior, fire a structural action, etc.</li>
+</ul></li>
+<li><p><strong>Verify per-node state.</strong> After replaying all events, the per-node section of the snapshot is checked against the most recent <code>*Initialized</code> / <code>*Updated</code> witness for each node. A node whose final state hash doesn’t match the stored bytes → <code>DecodeError::BlrStateHashMismatch</code>, <code>LeafParamsHashMismatch</code>, etc.</p></li>
+<li><p><strong>Verify the final chain head.</strong> The end-of-log <code>chain_head</code> from the replayed events must match the stored <code>final_hash</code>. Mismatch → <code>DecodeError::FinalHashMismatch</code>.</p></li>
+</ol>
+<p>Replay is <strong>byte-identical</strong> by construction: same seed (for any RNG draws during replay), same audit log, same per-node state → same reconstructed graph, byte-for-byte. Part 3 verifies this empirically (<code>pinn_replay_round_trip_preserves_predictions</code> asserts <code>f64::to_bits</code> equality on predictions before and after replay).</p>
+<section id="smart-replay" class="level3">
+<h3 class="anchored" data-anchor-id="smart-replay">Smart replay</h3>
+<p>For long training runs with many witness-only events (<code>BlrUpdated</code>, <code>DensityUpdated</code>, <code>CalibrationUpdated</code>), naive replay does redundant work — every event triggers a fresh hash chain advance. <strong>Smart replay</strong> uses <code>StatsSnapshot</code> markers to fast-forward past these runs:</p>
+<ul>
+<li>Replay walks the log until hitting a <code>StatsSnapshot</code> event.</li>
+<li>The marker carries a hash of the per-node state at that point. Replay loads that state directly from the snapshot section, skipping all the <code>*Updated</code> events that <em>would have</em> produced it.</li>
+<li>The chain head still advances correctly because the marker itself is part of the chain.</li>
+</ul>
+<p>The Phase 3 benchmark measured smart-replay at 2.08× faster than naive at 10K events. The Phase 0.6 handoff predicted ≥5× — the gap is plausibly because the test was at moderate event count and smart-replay’s overhead per <code>StatsSnapshot</code> is comparable to naive replay’s overhead per event at this scale. The speedup grows with more <code>*Updated</code> events per <code>StatsSnapshot</code>; at production scale (10⁶+ events per training run), the gain should be much larger but is empirically untested.</p>
+</section>
+<section id="what-replay-does-not-validate" class="level3">
+<h3 class="anchored" data-anchor-id="what-replay-does-not-validate">What replay does not validate</h3>
+<p>Replay validates <em>the audit log is internally consistent and matches the per-node state</em>. It does not validate:</p>
+<ul>
+<li><strong>That the training data was correct.</strong> If the dataset was tampered before training, the audit log records the tampered training faithfully. The lineage-attestation demo addresses this gap via the <code>ProvenanceStamped</code> event tying the root to <code>sha256(dataset_bytes)</code>, but only if the dataset hash is committed before training.</li>
+<li><strong>That the architecture is sound.</strong> Replay re-derives the model state but doesn’t second-guess the architecture’s correctness.</li>
+<li><strong>That the predictions are good.</strong> Replay produces the same model; a bad model trained reproducibly is still a bad model.</li>
+</ul>
+<p>These limits are intrinsic to any Level 3 audit system. Tamper-evidence is about catching changes to a known-good baseline, not about establishing the baseline.</p>
+</section>
+</section>
+<section id="the-determinism-contract" class="level2">
+<h2 class="anchored" data-anchor-id="the-determinism-contract">The determinism contract</h2>
+<p>Replayability requires bit-identical determinism, and bit-identical determinism does not come for free. ABNG inherits a specific contract from CJC-Lang:</p>
+<p><strong>Summation.</strong> All f64 accumulations use <code>KahanAccumulatorF64</code> or <code>pairwise_sum_f64</code> from the <code>cjc-repro</code> crate. Plain <code>+=</code> reductions are banned in canonical paths. This adds ~2× the FLOPs of naive summation but compensates for the order-dependent error that breaks bit-identical reproducibility under multi-threading.</p>
+<p><strong>Hashing.</strong> SHA-256 from <code>cjc_snap::hash::sha256</code> — a hand-rolled FIPS 180-4 implementation. Zero external dependencies (no <code>sha2</code>, <code>ring</code>, <code>openssl</code>). The hand-roll cost is one-time engineering; the benefit is that ABNG’s audit chain has no third-party security boundary to monitor.</p>
+<p><strong>Random numbers.</strong> <code>cjc_repro::Rng</code> is a SplitMix64 PRNG seeded explicitly from <code>(graph.seed, node_id, layer_idx, kind_bit)</code> derivations. No hardware RNG, no global PRNG state, no implicit thread-local generators. Every random draw is reproducible from the seed.</p>
+<p><strong>Maps and sets.</strong> <code>BTreeMap</code> and <code>BTreeSet</code> only. <code>HashMap</code> is banned in canonical paths because its iteration order is randomized per-process (<code>std::collections::HashMap</code> uses random hash seeds for DoS protection, which is good for security and bad for reproducibility). BTreeMap is 2-5× slower than HashMap on most lookups, but its iteration order is deterministic.</p>
+<p><strong>Float canonical bytes.</strong> Whenever an f64 needs to be serialized or hashed, it goes through <code>f64::to_bits().to_be_bytes()</code> — preserves NaN bit patterns and is platform-stable. No platform-specific endianness, no signaling-NaN coercion.</p>
+<p><strong>No FMA in belief-touching kernels.</strong> Fused multiply-add can give slightly different bits than <code>a*b + c</code> on some hardware. ABNG explicitly disables FMA for the BLR Cholesky factorization, the Welford updates, and the calibration ECE accumulation. The cost is ~10–30% on modern CPUs depending on workload; the benefit is bit-identical results across all CPUs that implement IEEE 754 correctly.</p>
+<section id="why-this-rules-out-gpu-acceleration" class="level3">
+<h3 class="anchored" data-anchor-id="why-this-rules-out-gpu-acceleration">Why this rules out GPU acceleration</h3>
+<p>The CUDA / cuDNN / FlashAttention ecosystem provides extraordinary throughput, but at the cost of bit-stability. Vendor BLAS uses different reduction orderings depending on hardware (Volta vs Ampere vs Hopper), batch size, and even the cuDNN minor version. Two runs on the same GPU but different driver versions can produce slightly different gradients. For ML accuracy this is acceptable; for ABNG’s audit-chain guarantee it isn’t.</p>
+<p>A “fast mode” that relaxes determinism could be added — similar to PyTorch’s <code>torch.use_deterministic_algorithms(False)</code> — but it would defeat the audit-chain claim. Bit-identical replay would no longer hold. The architecture is intentionally designed not to chase modern hardware. This is the single biggest practical limitation: users who need GPU throughput cannot use ABNG; users who need replayability cannot use GPUs.</p>
+</section>
+</section>
+<section id="what-this-costs-the-determinism-premium-quantified" class="level2">
+<h2 class="anchored" data-anchor-id="what-this-costs-the-determinism-premium-quantified">What this costs: the determinism premium quantified</h2>
+<p>The Phase 3 benchmark on the same hardware (Intel i7-11390H @ 3.40GHz, Windows MSVC release build) revealed a striking number:</p>
+<ul>
+<li><code>blr_state_update_direct</code> (just the NIG conjugate update, no graph dispatch or audit): <strong>3,845 ns per step</strong></li>
+<li><code>blr_update</code> (the same NIG update through the graph, with audit-chain append): <strong>28,997 ns per step</strong></li>
+</ul>
+<p>The graph dispatch + audit + chain-hash scaffolding accounts for <strong>87% of the per-step cost</strong>. The actual Bayesian update is 13%. This is the most defensible answer to “what does determinism cost” in the codebase.</p>
+<pre><code>[Bayesian math]    ████ 3.85 µs (13%)
+[Determinism premium] ████████████████████████████████ 25.15 µs (87%)
+Total blr_update:  ████████████████████████████████████ 29 µs</code></pre>
+<p>The premium breaks down (approximately) as: - ~5 µs: route encode + descend (codebook lookup + tree walk). - ~3 µs: SHA-256 chain advance (one event hash). - ~4 µs: BLR state hash computation (witness for the audit event). - ~5 µs: audit-event allocation + canonical-bytes serialization. - ~3 µs: per-node stats chain advance (separate hash chain per node). - ~5 µs: dispatch overhead + miscellaneous bookkeeping.</p>
+<p>These numbers are approximate (the individual sub-operations aren’t separately benched), but the <em>total</em> gap between direct and graph-mediated update is confidently measured.</p>
+<p><strong>Phase 0.7 spent six commits chipping away at this premium</strong>:</p>
+<table class="table">
+<colgroup>
+<col style="width: 21%">
+<col style="width: 21%">
+<col style="width: 28%">
+<col style="width: 28%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Item</th>
+<th>Target</th>
+<th style="text-align: right;">Measured speedup</th>
+<th style="text-align: right;">Handoff doc claim</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Item B</td>
+<td><code>QuantileCodebook::encode_into</code> (buffer reuse)</td>
+<td style="text-align: right;"><strong>1.67×</strong></td>
+<td style="text-align: right;">“2.37×” — doesn’t match this hardware</td>
+</tr>
+<tr class="even">
+<td>Item A</td>
+<td><code>AuditEvent::write_payload</code> (chain verify)</td>
+<td style="text-align: right;">(≈1.25× implicit)</td>
+<td style="text-align: right;">“1.25×” — matches</td>
+</tr>
+<tr class="odd">
+<td>Item C</td>
+<td>streaming SHA-256 hasher</td>
+<td style="text-align: right;">(≈1.18× implicit)</td>
+<td style="text-align: right;">“1.18×” — matches</td>
+</tr>
+<tr class="even">
+<td>Item F</td>
+<td>stack-array <code>advance_stats_chain</code></td>
+<td style="text-align: right;">(≈1.24× implicit)</td>
+<td style="text-align: right;">“1.24×” — matches</td>
+</tr>
+<tr class="odd">
+<td>Item E</td>
+<td><code>AdaptiveChildren::iter_sorted</code> (zero-alloc)</td>
+<td style="text-align: right;">(zero-alloc, not benched)</td>
+<td style="text-align: right;">—</td>
+</tr>
+<tr class="even">
+<td>Item 4</td>
+<td>fused <code>abng_train_step</code> builtin</td>
+<td style="text-align: right;"><strong>1.03×</strong></td>
+<td style="text-align: right;">“1.17×” — doesn’t match this hardware</td>
+</tr>
+</tbody>
+</table>
+<p>Two of the six measured speedups on this machine are meaningfully smaller than the handoff doc reports. Plausible explanations are different CPU generations, build flag differences, or warmup variation — see Part 3 for the deeper discussion. The honest takeaway: <strong>speedup numbers should be quoted as ranges, not point estimates</strong>, because different hardware sees different wins.</p>
+</section>
+<section id="how-this-compares-to-mlflow-dvc-weights-biases" class="level2">
+<h2 class="anchored" data-anchor-id="how-this-compares-to-mlflow-dvc-weights-biases">How this compares to MLflow / DVC / Weights &amp; Biases</h2>
+<p>The mainstream ML lineage toolchain provides what I called “Level 1 — Artefact tracking” above. To make the comparison concrete:</p>
+<table class="table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Tool</th>
+<th>Audit unit</th>
+<th>Granularity</th>
+<th>Cryptographic?</th>
+<th>Replay?</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>MLflow</strong></td>
+<td>Run (one training execution)</td>
+<td>Coarse — one entry per training run</td>
+<td>No — metadata is plain text</td>
+<td>Re-run the code with logged parameters</td>
+</tr>
+<tr class="even">
+<td><strong>DVC</strong></td>
+<td>File-level artefact (dataset, model, intermediate)</td>
+<td>Medium — one entry per pinned artefact</td>
+<td>Cryptographic hashes of file contents</td>
+<td>Re-derive via DAG of pinned files</td>
+</tr>
+<tr class="odd">
+<td><strong>Weights &amp; Biases</strong></td>
+<td>Training step (metrics)</td>
+<td>Fine for metrics, coarse for state</td>
+<td>No — metrics are plain</td>
+<td>Re-run with logged config</td>
+</tr>
+<tr class="even">
+<td><strong>ABNG audit chain</strong></td>
+<td>State mutation</td>
+<td>Finest possible — every parameter update</td>
+<td>SHA-256 chain over all events</td>
+<td><strong>Byte-identical replay from log</strong></td>
+</tr>
+</tbody>
+</table>
+<p>These tools serve different problems. MLflow/W&amp;B are <em>experiment tracking</em> — they help you compare runs, version experiments, and reproduce results approximately. DVC is <em>data and artefact pipeline</em> — it gives Git-like versioning to large binary files. None of them attempts byte-identical replay of training history.</p>
+<p>ABNG’s audit chain is <em>closer to a database write-ahead log</em> than to any of these — a WAL captures every state mutation in order, and replay rebuilds state by replaying the WAL. The closest analogue in the broader software-engineering world is event-sourced architectures (Greg Young, Martin Fowler), where the canonical state is the event log and current state is a materialized view of the log.</p>
+<p>The right question is not “should I use ABNG instead of MLflow?” but “for what subset of my ML pipeline do I need state-mutation-level granularity rather than artefact-level?” For most use cases the answer is “none” — MLflow’s level of granularity is plenty. For the three problem classes named earlier (scientific replication, regulated ML, postmortem debugging at finest granularity), the answer can be different.</p>
+</section>
+<section id="use-cases-where-the-cost-inverts" class="level2">
+<h2 class="anchored" data-anchor-id="use-cases-where-the-cost-inverts">Use cases where the cost inverts</h2>
+<p>Each of these is a domain where the determinism premium pays for itself.</p>
+<section id="auditability-for-regulated-decisions" class="level3">
+<h3 class="anchored" data-anchor-id="auditability-for-regulated-decisions">Auditability for regulated decisions</h3>
+<p>When a model decision must be defended — to a regulator, a court, a clinician, or a postmortem — “why this output?” needs a paper trail. ABNG’s chain head is a single 32-byte commitment to the entire training history. Replayability is the strongest possible form of paper trail: you can re-derive the model from the audit log and verify nothing has been tampered with.</p>
+<p><strong>Caveat.</strong> “Tamper-evident, not tamper-proof” still applies. An attacker who controls the entire training pipeline can produce a self-consistent malicious log. But against an opposing party who has only the snapshots (the lab claims one thing, the regulator suspects another), the chain produces a definitive third-party-verifiable answer.</p>
+</section>
+<section id="reproducible-scientific-simulation" class="level3">
+<h3 class="anchored" data-anchor-id="reproducible-scientific-simulation">Reproducible scientific simulation</h3>
+<p>Physics-informed networks, surrogate solvers, and inverse problems often live as a <em>step</em> inside a larger simulation pipeline. If the model is non-deterministic, the simulation downstream is non-deterministic. Bit-identical replay of the model means bit-identical replay of the pipeline. This matters for any scientific result where the model is part of the claim — climate ensemble runs, drug-discovery surrogates, ML-accelerated materials science.</p>
+<p><strong>Caveat.</strong> Determinism does not make a simulation <strong>correct</strong>, only repeatable. A bug in either the model or the sampler is reproduced exactly the same way every time. The benefit is that the bug is debuggable; the benefit is not that there are no bugs.</p>
+</section>
+<section id="debugging-at-the-architectural-level" class="level3">
+<h3 class="anchored" data-anchor-id="debugging-at-the-architectural-level">Debugging at the architectural level</h3>
+<p>Anyone who has chased a non-determinism bug across GPUs knows the cost. A reproducible substrate does not make ML easier, but it makes the bugs you <em>do</em> hit actually debuggable, because failures are the same every time. ABNG’s <code>cjcl abng inspect --node N --audit</code> filters the log to a single node; <code>descend_traced</code> captures routing paths for individual predictions; <code>abng_predict_snap</code> captures prediction-time state. These don’t <em>automate</em> diagnosis but they make manual diagnosis tractable.</p>
+<p><strong>Caveat.</strong> The audit log is a postmortem artefact, not a live debugging surface. Stepping through a 10⁶-event chain to find which observation corrupted which posterior is a real human-time cost. Most users will treat the log as a “in case of emergency, break glass” tool rather than a daily-driver debugger.</p>
+</section>
+</section>
+<section id="what-this-approach-cannot-do" class="level2">
+<h2 class="anchored" data-anchor-id="what-this-approach-cannot-do">What this approach cannot do</h2>
+<p>The determinism contract has fundamental costs:</p>
+<section id="no-gpu-acceleration" class="level3">
+<h3 class="anchored" data-anchor-id="no-gpu-acceleration">No GPU acceleration</h3>
+<p>Covered above. The determinism contract is incompatible with the vendor BLAS / cuDNN / FlashAttention reduction orderings that make modern accelerator hardware fast. A GPU-equipped workstation gets <strong>no measurable speedup</strong> over a laptop for ABNG training. This is <em>fundamental</em> — recovery would require giving up bit-identical replay.</p>
+</section>
+<section id="no-multi-thread-training-within-one-graph" class="level3">
+<h3 class="anchored" data-anchor-id="no-multi-thread-training-within-one-graph">No multi-thread training within one graph</h3>
+<p>The multi-graph arena is per-thread (multiple graphs can coexist), but a single graph’s training loop is single-threaded by design. <code>decide_step</code>’s deterministic node iteration order matters; parallelizing it would require careful synchronization and would probably break the byte-identical-replay property. Phase 0.8 is considering per-leaf parallelism for independent observations, but contingent on profiling.</p>
+</section>
+<section id="no-live-debugging-beyond-inspection-tooling" class="level3">
+<h3 class="anchored" data-anchor-id="no-live-debugging-beyond-inspection-tooling">No live debugging beyond inspection tooling</h3>
+<p>The audit log is read-only at runtime — you can <code>cjcl abng inspect</code> it, but you can’t <code>gdb</code> it. For users who need step-through debugging of model state evolution, the audit chain is a <em>replacement</em> for that capability (replay any past state) rather than an <em>interactive</em> tool.</p>
+</section>
+<section id="the-audit-log-is-large" class="level3">
+<h3 class="anchored" data-anchor-id="the-audit-log-is-large">The audit log is large</h3>
+<p>Even with witness-only events at ~80 bytes apiece, four state updates per observation across 1 M training rows is ~320 MB of audit log. Without compaction this is unmanageable in memory and expensive to keep in active storage. The <code>StatsSnapshot</code> marker + smart-replay path addresses this but at the cost of forward-only audit walk (you can’t quickly inspect arbitrary past state without re-replaying from a checkpoint).</p>
+</section>
+</section>
+<section id="what-would-convince-me-to-deploy-this" class="level2">
+<h2 class="anchored" data-anchor-id="what-would-convince-me-to-deploy-this">What would convince me to deploy this</h2>
+<p>The “git commit history for a model” pitch is compelling in theory. Before deploying ABNG in a real regulated-ML setting, four things would need to happen:</p>
+<ol type="1">
+<li><p><strong>Cross-platform CI verification.</strong> The locked SHA-256 canary hashes are demonstrated on x86-64 Linux, macOS, and Windows in CJC-Lang’s test suite. ARM and BSD are untested. A GitHub Actions matrix running the full ABNG test suite on Linux+ARM, macOS+ARM, and Windows+x64, with canary comparison, is a finite engineering project — a <code>cross-platform-determinism.yml</code> workflow skeleton exists in the repo (Phase 0.6), but verification results have not been published. Until they are, “bit-identical determinism” carries an implicit footnote.</p></li>
+<li><p><strong>Wall-clock cost characterization at production scale.</strong> Part 3 measured at n=1k, 10k, 100k rows. Real regulated-ML datasets are often 10⁶–10⁹ rows. Extrapolated from the 100K-row numbers: a 10⁶-row training history would produce a ~300 MB audit log with ~16-second replay. A 10⁹-row run would produce a ~300 GB log with ~16,000-second replay — not impossible but not casually verifiable. Realistic deployment would require log compaction tuned to the workload, and Phase 0.8 is the natural milestone for that.</p></li>
+<li><p><strong>A real-world case study.</strong> A practitioner using ABNG for a problem with real stakes — a regulated trial, a scientific replication package, a robotic-system audit — and writing up what worked, what didn’t, and what they would do differently. Until this exists, ABNG is software without a user. The closest existing thing is the synthetic clinical-trial scenario walked through above, which is a useful proof-of-concept but not a deployment.</p></li>
+<li><p><strong>An adversarial security review.</strong> The “tamper-evident, not tamper-proof” framing is correct, but a serious deployment would benefit from independent security review of the audit-chain construction. Specifically: is SHA-256 the right hash function for this application’s expected lifetime (collision resistance vs preimage resistance vs both)? Are there any non-obvious replay attacks on the chain structure? Does the smart-replay path have any subtle invariants a malicious snapshot could violate? These questions would take a real security team a few weeks to answer competently.</p></li>
+</ol>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+The honest summary
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>ABNG’s audit chain mechanism is <em>correct</em> and <em>well-tested at the engineering level</em>. The Phase 3 benchmarks confirm it scales linearly to 100K rows; the lineage attestation demo proves the three-signal spoof detection works at 64-row scale. The mechanism itself is well-understood cryptographically — SHA-256 hash chains and Merkle structures have a substantial security literature.</p>
+<p>The gap between this and “production-ready for regulated ML” is not theoretical, it’s operational: cross-platform verification, scale testing, real deployment, security review. Those are months of work, not days, and the cost-benefit decision for any given organization depends on whether their use case actually needs Level 3 auditability or whether MLflow / DVC’s Level 1 is sufficient.</p>
+<p>For most ML, Level 1 is enough. For the subset where it isn’t, ABNG is the most rigorous experimental answer the open-source ecosystem currently has — and it is unambiguously an experimental answer, not a deployment-ready one.</p>
+</div>
+</div>
+<p>If after reading this article you decide the audit-chain approach is interesting but probably wrong in three specific ways, this piece has done its job. The architecture itself is in <a href="../../../blog/posts/abng-architecture/index.html">Part 1</a>; the empirical backbone is in <a href="../../../blog/posts/abng-benchmarks/index.html">Part 3</a>. The open-source code is at <a href="https://github.com/AdamEzzat1/CJC"><code>crates/cjc-abng/</code></a> — bring your skepticism.</p>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Note
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>ABNG lives at <a href="https://github.com/AdamEzzat1/CJC"><code>crates/cjc-abng/</code></a> in the CJC-Lang repository. The full codebase, the test suite (including the three-signal spoof detection demo at <code>tests/test_abng_lineage_attestation.rs</code>), and the working <code>cjcl abng {inspect, replay, diff, explain, train}</code> CLI surface are open source. Part 1 of this series covers the architecture; Part 3 covers the empirical evidence. This article was the audit and determinism story — the part of the pitch that justifies the determinism premium.</p>
+</div>
+</div>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const disableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'prefetch';
+    }
+  }
+  const enableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'stylesheet';
+    }
+  }
+  const manageTransitions = (selector, allowTransitions) => {
+    const els = window.document.querySelectorAll(selector);
+    for (let i=0; i < els.length; i++) {
+      const el = els[i];
+      if (allowTransitions) {
+        el.classList.remove('notransition');
+      } else {
+        el.classList.add('notransition');
+      }
+    }
+  }
+  const toggleColorMode = (alternate) => {
+    // Switch the stylesheets
+    const alternateStylesheets = window.document.querySelectorAll('link.quarto-color-scheme.quarto-color-alternate');
+    manageTransitions('#quarto-margin-sidebar .nav-link', false);
+    if (alternate) {
+      enableStylesheet(alternateStylesheets);
+      for (const sheetNode of alternateStylesheets) {
+        if (sheetNode.id === "quarto-bootstrap") {
+          toggleBodyColorMode(sheetNode);
+        }
+      }
+    } else {
+      disableStylesheet(alternateStylesheets);
+      toggleBodyColorPrimary();
+    }
+    manageTransitions('#quarto-margin-sidebar .nav-link', true);
+    // Switch the toggles
+    const toggles = window.document.querySelectorAll('.quarto-color-scheme-toggle');
+    for (let i=0; i < toggles.length; i++) {
+      const toggle = toggles[i];
+      if (toggle) {
+        if (alternate) {
+          toggle.classList.add("alternate");     
+        } else {
+          toggle.classList.remove("alternate");
+        }
+      }
+    }
+    // Hack to workaround the fact that safari doesn't
+    // properly recolor the scrollbar when toggling (#1455)
+    if (navigator.userAgent.indexOf('Safari') > 0 && navigator.userAgent.indexOf('Chrome') == -1) {
+      manageTransitions("body", false);
+      window.scrollTo(0, 1);
+      setTimeout(() => {
+        window.scrollTo(0, 0);
+        manageTransitions("body", true);
+      }, 40);  
+    }
+  }
+  const isFileUrl = () => { 
+    return window.location.protocol === 'file:';
+  }
+  const hasAlternateSentinel = () => {  
+    let styleSentinel = getColorSchemeSentinel();
+    if (styleSentinel !== null) {
+      return styleSentinel === "alternate";
+    } else {
+      return false;
+    }
+  }
+  const setStyleSentinel = (alternate) => {
+    const value = alternate ? "alternate" : "default";
+    if (!isFileUrl()) {
+      window.localStorage.setItem("quarto-color-scheme", value);
+    } else {
+      localAlternateSentinel = value;
+    }
+  }
+  const getColorSchemeSentinel = () => {
+    if (!isFileUrl()) {
+      const storageValue = window.localStorage.getItem("quarto-color-scheme");
+      return storageValue != null ? storageValue : localAlternateSentinel;
+    } else {
+      return localAlternateSentinel;
+    }
+  }
+  let localAlternateSentinel = 'default';
+  // Dark / light mode switch
+  window.quartoToggleColorScheme = () => {
+    // Read the current dark / light value 
+    let toAlternate = !hasAlternateSentinel();
+    toggleColorMode(toAlternate);
+    setStyleSentinel(toAlternate);
+  };
+  // Ensure there is a toggle, if there isn't float one in the top right
+  if (window.document.querySelector('.quarto-color-scheme-toggle') === null) {
+    const a = window.document.createElement('a');
+    a.classList.add('top-right');
+    a.classList.add('quarto-color-scheme-toggle');
+    a.href = "";
+    a.onclick = function() { try { window.quartoToggleColorScheme(); } catch {} return false; };
+    const i = window.document.createElement("i");
+    i.classList.add('bi');
+    a.appendChild(i);
+    window.document.body.appendChild(a);
+  }
+  // Switch to dark mode if need be
+  if (hasAlternateSentinel()) {
+    toggleColorMode(true);
+  } else {
+    toggleColorMode(false);
+  }
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+      &nbsp;
+    </div>   
+    <div class="nav-footer-center">© 2026 Adam Ezzat. Built with <a href="https://quarto.org/">Quarto</a>.</div>
+    <div class="nav-footer-right">
+      &nbsp;
+    </div>
+  </div>
+</footer>
+
+
+
+<script src="../../../site_libs/quarto-html/zenscroll-min.js"></script>
+</body></html>
