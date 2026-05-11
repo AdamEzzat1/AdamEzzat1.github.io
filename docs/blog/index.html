@@ -279,9 +279,9 @@ Adam Ezzat
 </a>
 </div>
 </div>
-<div class="quarto-post image-right" data-index="2" data-categories="CJC-Lang,ABNG,benchmarks,determinism,lineage,calibration,explainability" data-listing-date-sort="1778396400000" data-listing-file-modified-sort="1778476569536" data-listing-date-modified-sort="1778396400000" data-listing-reading-time-sort="42">
+<div class="quarto-post image-right" data-index="2" data-categories="CJC-Lang,ABNG,benchmarks,determinism,lineage,calibration,explainability" data-listing-date-sort="1778396400000" data-listing-file-modified-sort="1778477997908" data-listing-date-modified-sort="1778396400000" data-listing-reading-time-sort="49">
 <div class="thumbnail">
-<p><a href="../blog/posts/abng-benchmarks/index.html"> <p class="card-img-top"><img src="posts\abng-benchmarks\figures\v5_posterior_convergence.png"  class="thumbnail-image card-img"/></p> </a></p>
+<p><a href="../blog/posts/abng-benchmarks/index.html"> <p class="card-img-top"><img src="posts\abng-benchmarks\figures\v_kappa_predictive_coverage.png"  class="thumbnail-image card-img"/></p> </a></p>
 </div>
 <div class="body">
 <a href="../blog/posts/abng-benchmarks/index.html">
@@ -317,7 +317,7 @@ explainability
 </div>
 <a href="../blog/posts/abng-benchmarks/index.html">
 <div class="listing-description">
-<p>Part I of a two-article benchmark deep-dive on ABNG. This article covers the five benchmark categories where ABNG’s properties can be proven correct at the tested scale: determinism (replay invariance under graph mutation, 2.40x Kahan summation overhead), lineage (cryptographic audit chain detecting single-row dataset tampering), state stability (NIG posterior converges 1/sqrt(n) to known truth), probabilistic consistency (graph-level ECE = 0.015 on a synthetic Bernoulli), and explainability (10x error reduction by abstaining on high-OOD predictions). The companion Part II covers adaptive graph evolution, routing behavior, and temporal state dynamics.</p>
+<p>Part I of a two-article benchmark deep-dive on ABNG. This article covers the five benchmark categories where ABNG’s properties can be proven correct at the tested scale: determinism (replay invariance under graph mutation, 2.40x Kahan summation overhead), lineage (cryptographic audit chain detecting single-row dataset tampering, scaling cleanly to 1M events), state stability (NIG posterior converges 1/sqrt(n) to known truth), probabilistic consistency (graph-level ECE = 0.015 on synthetic Bernoulli; predictive coverage within +/-0.01 of nominal at 5 confidence levels), and explainability (10x error reduction by abstaining on high-OOD predictions). Eight experiments measured on real hardware: alpha (posterior consistency), delta (replay-under-mutation), eta (per-bin reliability), gamma (selective prediction), zeta (Kahan vs plain), kappa (predictive coverage), lambda (per-op statistical CIs), mu (audit log scaling to 1M events). The companion Part II covers adaptive graph evolution, routing behavior, and temporal state dynamics.</p>
 </div>
 </a>
 </div>

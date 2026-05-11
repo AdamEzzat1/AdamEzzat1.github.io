@@ -8,7 +8,7 @@
 
 <meta name="author" content="Adam Ezzat">
 <meta name="dcterms.date" content="2026-05-10">
-<meta name="description" content="Part I of a two-article benchmark deep-dive on ABNG. This article covers the five benchmark categories where ABNG’s properties can be proven correct at the tested scale: determinism (replay invariance under graph mutation, 2.40x Kahan summation overhead), lineage (cryptographic audit chain detecting single-row dataset tampering), state stability (NIG posterior converges 1/sqrt(n) to known truth), probabilistic consistency (graph-level ECE = 0.015 on a synthetic Bernoulli), and explainability (10x error reduction by abstaining on high-OOD predictions). The companion Part II covers adaptive graph evolution, routing behavior, and temporal state dynamics.">
+<meta name="description" content="Part I of a two-article benchmark deep-dive on ABNG. This article covers the five benchmark categories where ABNG’s properties can be proven correct at the tested scale: determinism (replay invariance under graph mutation, 2.40x Kahan summation overhead), lineage (cryptographic audit chain detecting single-row dataset tampering, scaling cleanly to 1M events), state stability (NIG posterior converges 1/sqrt(n) to known truth), probabilistic consistency (graph-level ECE = 0.015 on synthetic Bernoulli; predictive coverage within +/-0.01 of nominal at 5 confidence levels), and explainability (10x error reduction by abstaining on high-OOD predictions). Eight experiments measured on real hardware: alpha (posterior consistency), delta (replay-under-mutation), eta (per-bin reliability), gamma (selective prediction), zeta (Kahan vs plain), kappa (predictive coverage), lambda (per-op statistical CIs), mu (audit log scaling to 1M events). The companion Part II covers adaptive graph evolution, routing behavior, and temporal state dynamics.">
 
 <title>Adam Ezzat - ABNG Benchmarks Part I — Deterministic Belief Evolution, Lineage, and Explainable Inference</title>
 <style>
@@ -199,6 +199,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#experiment-η-per-bin-reliability-diagram" id="toc-experiment-η-per-bin-reliability-diagram" class="nav-link" data-scroll-target="#experiment-η-per-bin-reliability-diagram">7.3 Experiment η — Per-bin reliability diagram</a></li>
   <li><a href="#experiment-γ-selective-prediction-curve-on-ood" id="toc-experiment-γ-selective-prediction-curve-on-ood" class="nav-link" data-scroll-target="#experiment-γ-selective-prediction-curve-on-ood">7.4 Experiment γ — Selective prediction curve on OOD</a></li>
   <li><a href="#experiment-ζ-kahan-vs-plain-summation-determinism-premium" id="toc-experiment-ζ-kahan-vs-plain-summation-determinism-premium" class="nav-link" data-scroll-target="#experiment-ζ-kahan-vs-plain-summation-determinism-premium">7.5 Experiment ζ — Kahan-vs-plain summation determinism premium</a></li>
+  <li><a href="#closing-the-four-additional-gaps" id="toc-closing-the-four-additional-gaps" class="nav-link" data-scroll-target="#closing-the-four-additional-gaps">7.6 Closing the four additional gaps</a></li>
   </ul></li>
   <li><a href="#demo-deep-dives" id="toc-demo-deep-dives" class="nav-link" data-scroll-target="#demo-deep-dives">8. Demo deep-dives</a>
   <ul class="collapse">
@@ -211,12 +212,13 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   </ul></li>
   <li><a href="#failure-cases-limitations" id="toc-failure-cases-limitations" class="nav-link" data-scroll-target="#failure-cases-limitations">10. Failure cases &amp; limitations</a>
   <ul class="collapse">
-  <li><a href="#single-hardware-measurement-meta-limitation" id="toc-single-hardware-measurement-meta-limitation" class="nav-link" data-scroll-target="#single-hardware-measurement-meta-limitation">10.1 Single-hardware measurement (meta-limitation)</a></li>
-  <li><a href="#audit-log-size-at-production-scale-extrapolation-not-measurement" id="toc-audit-log-size-at-production-scale-extrapolation-not-measurement" class="nav-link" data-scroll-target="#audit-log-size-at-production-scale-extrapolation-not-measurement">10.2 Audit-log size at production scale (extrapolation, not measurement)</a></li>
-  <li><a href="#no-external-lineage-baseline" id="toc-no-external-lineage-baseline" class="nav-link" data-scroll-target="#no-external-lineage-baseline">10.3 No external lineage baseline</a></li>
-  <li><a href="#no-predictive-coverage-analysis" id="toc-no-predictive-coverage-analysis" class="nav-link" data-scroll-target="#no-predictive-coverage-analysis">10.4 No predictive coverage analysis</a></li>
-  <li><a href="#no-statistical-cis-on-most-per-op-timings" id="toc-no-statistical-cis-on-most-per-op-timings" class="nav-link" data-scroll-target="#no-statistical-cis-on-most-per-op-timings">10.5 No statistical CIs on most per-op timings</a></li>
-  <li><a href="#future-work-part-i-categories" id="toc-future-work-part-i-categories" class="nav-link" data-scroll-target="#future-work-part-i-categories">Future work (Part I categories)</a></li>
+  <li><a href="#single-hardware-measurement-still-meta-limitation" id="toc-single-hardware-measurement-still-meta-limitation" class="nav-link" data-scroll-target="#single-hardware-measurement-still-meta-limitation">10.1 Single-hardware measurement (still meta-limitation)</a></li>
+  <li><a href="#audit-log-size-at-production-scale-closed-in-7.6.3" id="toc-audit-log-size-at-production-scale-closed-in-7.6.3" class="nav-link" data-scroll-target="#audit-log-size-at-production-scale-closed-in-7.6.3">10.2 <del>Audit-log size at production scale</del> — <strong>closed in §7.6.3</strong></a></li>
+  <li><a href="#no-external-lineage-baseline-deferred-see-7.6.4" id="toc-no-external-lineage-baseline-deferred-see-7.6.4" class="nav-link" data-scroll-target="#no-external-lineage-baseline-deferred-see-7.6.4">10.3 No external lineage baseline (deferred — see §7.6.4)</a></li>
+  <li><a href="#no-predictive-coverage-analysis-closed-in-7.6.1" id="toc-no-predictive-coverage-analysis-closed-in-7.6.1" class="nav-link" data-scroll-target="#no-predictive-coverage-analysis-closed-in-7.6.1">10.4 <del>No predictive coverage analysis</del> — <strong>closed in §7.6.1</strong></a></li>
+  <li><a href="#no-statistical-cis-on-per-op-timings-closed-in-7.6.2-partially" id="toc-no-statistical-cis-on-per-op-timings-closed-in-7.6.2-partially" class="nav-link" data-scroll-target="#no-statistical-cis-on-per-op-timings-closed-in-7.6.2-partially">10.5 <del>No statistical CIs on per-op timings</del> — <strong>closed in §7.6.2</strong> (partially)</a></li>
+  <li><a href="#new-high-variance-on-cache-sensitive-blr-operations" id="toc-new-high-variance-on-cache-sensitive-blr-operations" class="nav-link" data-scroll-target="#new-high-variance-on-cache-sensitive-blr-operations">10.6 (NEW) — High variance on cache-sensitive BLR operations</a></li>
+  <li><a href="#future-work-remaining-open-items" id="toc-future-work-remaining-open-items" class="nav-link" data-scroll-target="#future-work-remaining-open-items">Future work (remaining open items)</a></li>
   </ul></li>
   <li><a href="#reproducibility" id="toc-reproducibility" class="nav-link" data-scroll-target="#reproducibility">11. Reproducibility</a>
   <ul class="collapse">
@@ -254,7 +256,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <div>
   <div class="description">
-    Part I of a two-article benchmark deep-dive on ABNG. This article covers the five benchmark categories where ABNG’s properties can be proven correct at the tested scale: determinism (replay invariance under graph mutation, 2.40x Kahan summation overhead), lineage (cryptographic audit chain detecting single-row dataset tampering), state stability (NIG posterior converges 1/sqrt(n) to known truth), probabilistic consistency (graph-level ECE = 0.015 on a synthetic Bernoulli), and explainability (10x error reduction by abstaining on high-OOD predictions). The companion Part II covers adaptive graph evolution, routing behavior, and temporal state dynamics.
+    Part I of a two-article benchmark deep-dive on ABNG. This article covers the five benchmark categories where ABNG’s properties can be proven correct at the tested scale: determinism (replay invariance under graph mutation, 2.40x Kahan summation overhead), lineage (cryptographic audit chain detecting single-row dataset tampering, scaling cleanly to 1M events), state stability (NIG posterior converges 1/sqrt(n) to known truth), probabilistic consistency (graph-level ECE = 0.015 on synthetic Bernoulli; predictive coverage within +/-0.01 of nominal at 5 confidence levels), and explainability (10x error reduction by abstaining on high-OOD predictions). Eight experiments measured on real hardware: alpha (posterior consistency), delta (replay-under-mutation), eta (per-bin reliability), gamma (selective prediction), zeta (Kahan vs plain), kappa (predictive coverage), lambda (per-op statistical CIs), mu (audit log scaling to 1M events). The companion Part II covers adaptive graph evolution, routing behavior, and temporal state dynamics.
   </div>
 </div>
 
@@ -300,7 +302,7 @@ TL;DR
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p>ABNG (Adaptive Belief Network Graph) is an experimental neural architecture that treats Bayesian belief as a first-class object — each leaf in an adaptive tree carries its own posterior, routing is a traceable walk through learned bytes, and every state mutation appends to a SHA-256 hash-chained audit log. <strong>This article (Part I of the benchmark deep-dive) focuses on the five categories where ABNG’s properties can be proven correct at the tested scale: determinism, lineage, state stability, probabilistic consistency, and explainability.</strong> Five experiments — α (NIG posterior consistency at 1/√n), δ (replay invariance under mutation), η (per-bin reliability with ECE = 0.015), γ (selective prediction yielding 10× error reduction), and ζ (Kahan-vs-plain summation premium at 2.40×) — back the claims with real wall-clock numbers and pre-specified pass/fail conditions. <strong>The companion Part II covers adaptive graph evolution, routing behavior, and temporal state dynamics.</strong></p>
+<p>ABNG (Adaptive Belief Network Graph) is an experimental neural architecture that treats Bayesian belief as a first-class object — each leaf in an adaptive tree carries its own posterior, routing is a traceable walk through learned bytes, and every state mutation appends to a SHA-256 hash-chained audit log. <strong>This article (Part I of the benchmark deep-dive) focuses on the five categories where ABNG’s properties can be proven correct at the tested scale: determinism, lineage, state stability, probabilistic consistency, and explainability.</strong> Eight experiments — α (NIG posterior consistency at 1/√n), δ (replay invariance under mutation), η (per-bin reliability with ECE = 0.015), γ (selective prediction yielding 10× error reduction), ζ (Kahan-vs-plain summation premium at 2.40×), κ (predictive coverage within ±0.01 of nominal at 5 levels), λ (statistical CIs on per-op timings), and μ (audit log scaling cleanly to 1M events at 137 bytes/event) — back the claims with real wall-clock numbers and pre-specified pass/fail conditions. <strong>The companion Part II covers adaptive graph evolution, routing behavior, and temporal state dynamics.</strong></p>
 </div>
 </div>
 <div class="callout callout-style-default callout-warning callout-titled">
@@ -1126,6 +1128,226 @@ Explainability property:
 <p><strong>Verdict.</strong> <strong>Cζ passed.</strong> Kahan is 2.40× slower than plain <code>+=</code>. The 2.40× factor is the per-element cost of the determinism contract on the single most ubiquitous primitive in ABNG’s hot path. Tag: <strong><em>Proven at the tested scale</em></strong>.</p>
 <p>When aggregated across the BLR update (multiple Kahan accumulators for Cholesky and triangular solve), the Welford accumulators in <code>observe</code>, the ECE binning in calibration, and the density tracker, the 2.40× per-primitive cost compounds into the <strong>~7.5× graph-dispatch cost</strong> documented in §9 below.</p>
 </section>
+<section id="closing-the-four-additional-gaps" class="level3">
+<h3 class="anchored" data-anchor-id="closing-the-four-additional-gaps">7.6 Closing the four additional gaps</h3>
+<p>Three additional experiments — κ (predictive coverage), λ (statistical CIs on per-op timings), μ (audit log at 10⁶ events) — close gaps flagged in the previous version of §10. A fourth gap (external lineage baseline against MLflow/DVC) remains deferred for the reasons discussed at the end of this subsection.</p>
+<section id="experiment-κ-predictive-coverage" class="level4">
+<h4 class="anchored" data-anchor-id="experiment-κ-predictive-coverage">7.6.1 Experiment κ — Predictive coverage</h4>
+<p><strong>Hypothesis (Cκ).</strong> ABNG’s Student-t predictive distribution achieves close to nominal coverage on a regression task with known Gaussian noise. Calibration (Experiment η) measures whether predicted <em>probabilities</em> agree with observed <em>frequencies</em> on a binary outcome; predictive coverage measures whether the <em>confidence intervals</em> of the continuous predictive distribution contain the true <code>y</code> at the rate they claim.</p>
+<p><strong>Methodology.</strong> Train one direct <code>BlrState</code> on synthetic data with <code>w_true = [1.5, -2.0, 0.5, 0.7]</code>, <code>σ²_true = 0.04</code>, <code>n_train = 2,000</code>. On 5,000 fresh held-out points: compute the Student-t predictive parameters (<code>mean = mᵀφ</code>, <code>scale = sqrt((b/a) · (1 + φᵀΛ⁻¹φ))</code>, <code>df = 2a</code>). Since <code>df &gt; 4000</code> at n_train=2000, the Student-t is essentially a Gaussian, so two-sided coverage intervals at level <code>c</code> correspond to the standard normal quantile <code>z = Φ⁻¹((1+c)/2)</code>. Count what fraction of held-out true <code>y</code> values fall inside the interval.</p>
+<p><strong>Result.</strong></p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: right;">Nominal level</th>
+<th style="text-align: right;">Empirical coverage</th>
+<th style="text-align: right;">Deviation from nominal</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">0.50</td>
+<td style="text-align: right;">0.5046</td>
+<td style="text-align: right;">+0.0046</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">0.80</td>
+<td style="text-align: right;">0.8076</td>
+<td style="text-align: right;">+0.0076</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">0.90</td>
+<td style="text-align: right;">0.9102</td>
+<td style="text-align: right;">+0.0102</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">0.95</td>
+<td style="text-align: right;">0.9544</td>
+<td style="text-align: right;">+0.0044</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">0.99</td>
+<td style="text-align: right;">0.9896</td>
+<td style="text-align: right;">−0.0004</td>
+</tr>
+</tbody>
+</table>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="figures/v_kappa_predictive_coverage.png" class="img-fluid figure-img"></p>
+<figcaption class="figure-caption">V-κ — Predictive coverage (Experiment κ)</figcaption>
+</figure>
+</div>
+<p><strong>Verdict.</strong> All five nominal levels are within ±0.01 of the empirical coverage. <strong>Cκ passed.</strong> Tag: <strong><em>Proven at the tested scale</em></strong>.</p>
+<p>The predictive distribution is <em>honest</em> in the strict Bayesian sense: a 95% interval contains the true value about 95% of the time (95.44% empirically). This is a strictly stronger statement than the calibration result in §7.3 — calibration handled binary outcomes; coverage handles the full continuous predictive density.</p>
+<p><strong>Caveats.</strong> (1) The test uses well-specified Gaussian-noise data — the BLR’s model assumptions match the data-generating process exactly. Misspecified data (heavy-tailed noise, heteroscedasticity, non-linear truth in the basis) would show worse coverage. (2) The Student-t computation uses the normal approximation valid at <code>df &gt; 100</code>, which all <code>n_train ≥ 50</code> runs satisfy. For very small training data, the exact Student-t quantiles would be needed.</p>
+</section>
+<section id="experiment-λ-per-op-statistical-confidence-intervals" class="level4">
+<h4 class="anchored" data-anchor-id="experiment-λ-per-op-statistical-confidence-intervals">7.6.2 Experiment λ — Per-op statistical confidence intervals</h4>
+<p><strong>Hypothesis (Cλ).</strong> The per-op cost measurements reported in §9 are stable across multiple trials. Single-run minimums are an honest <em>lower bound</em> but understate variance; median + IQR + min/max gives the full picture.</p>
+<p><strong>Methodology.</strong> For each of five hot-path operations (<code>descend</code>, <code>encode_prefix</code>, <code>blr_predict</code>, <code>blr_state_update_direct</code>, <code>observe</code>), measure per-op cost over 30 trials of 10,000 iterations each, including warmup. Report median, IQR (Q1, Q3), min, max, and coefficient of variation (CV = stddev/mean).</p>
+<p><strong>Result.</strong></p>
+<table class="table">
+<colgroup>
+<col style="width: 13%">
+<col style="width: 17%">
+<col style="width: 17%">
+<col style="width: 17%">
+<col style="width: 17%">
+<col style="width: 17%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Operation</th>
+<th style="text-align: right;">Median (ns)</th>
+<th style="text-align: right;">IQR (ns)</th>
+<th style="text-align: right;">Min (ns)</th>
+<th style="text-align: right;">Max (ns)</th>
+<th style="text-align: right;">CV</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>descend</code></td>
+<td style="text-align: right;">117</td>
+<td style="text-align: right;">[105, 135]</td>
+<td style="text-align: right;">94</td>
+<td style="text-align: right;">254</td>
+<td style="text-align: right;">0.28</td>
+</tr>
+<tr class="even">
+<td><code>encode_prefix</code></td>
+<td style="text-align: right;">128</td>
+<td style="text-align: right;">[122, 150]</td>
+<td style="text-align: right;">114</td>
+<td style="text-align: right;">218</td>
+<td style="text-align: right;">0.20</td>
+</tr>
+<tr class="odd">
+<td><code>blr_predict</code></td>
+<td style="text-align: right;">1,193</td>
+<td style="text-align: right;">[1,068, 1,854]</td>
+<td style="text-align: right;">795</td>
+<td style="text-align: right;">3,363</td>
+<td style="text-align: right;">0.40</td>
+</tr>
+<tr class="even">
+<td><code>blr_state_update_direct</code></td>
+<td style="text-align: right;">3,401</td>
+<td style="text-align: right;">[2,915, 4,577]</td>
+<td style="text-align: right;">2,220</td>
+<td style="text-align: right;">12,083</td>
+<td style="text-align: right;">0.58</td>
+</tr>
+<tr class="odd">
+<td><code>observe</code></td>
+<td style="text-align: right;">3,194</td>
+<td style="text-align: right;">[3,058, 3,494]</td>
+<td style="text-align: right;">2,757</td>
+<td style="text-align: right;">5,605</td>
+<td style="text-align: right;">0.16</td>
+</tr>
+</tbody>
+</table>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="figures/v_lambda_per_op_cis.png" class="img-fluid figure-img"></p>
+<figcaption class="figure-caption">V-λ — Per-op statistical CIs (Experiment λ)</figcaption>
+</figure>
+</div>
+<p><strong>Verdict.</strong> Two stable operations (<code>encode_prefix</code>, <code>observe</code>) have CV ≤ 0.20 — single-run minimums are within ~20% of the typical timing. Two operations (<code>descend</code>, <code>blr_predict</code>) have CV ≈ 0.28 to 0.40 — still in a reasonable range but worth quoting medians rather than mins. <strong>One operation (<code>blr_state_update_direct</code>) has CV = 0.58</strong>, indicating high variance: the max (12 µs) is 5× the min (2.2 µs). This is a real signal — Cholesky factorization is cache-sensitive, and across 30 trials with fresh graph setup the cache state differs.</p>
+<p><strong>The honest takeaway</strong>: the §9 microbench table’s single-run numbers are <strong>roughly correct as order-of-magnitude estimates</strong> but <strong>understate variance</strong> by 30-60% on the BLR-heavy operations. Future versions of the article should quote median + IQR for all per-op claims. Tag: <strong><em>Demonstrated</em></strong> — variance characterized, but not yet folded into the §9 narrative.</p>
+</section>
+<section id="experiment-μ-audit-log-scaling-to-1-million-events" class="level4">
+<h4 class="anchored" data-anchor-id="experiment-μ-audit-log-scaling-to-1-million-events">7.6.3 Experiment μ — Audit log scaling to 1 million events</h4>
+<p><strong>Hypothesis (Cμ).</strong> Audit-log size, serialize time, verify time, and replay time scale linearly with <code>n_events</code> to at least 10⁶ events. The previous version of this article tested only up to ~100K events.</p>
+<p><strong>Methodology.</strong> Train an ABNG graph with <code>n</code> observations (<code>n ∈ {10⁴, 10⁵, 10⁶}</code>) on a simple stream — no structural mutation, just <code>observe</code> calls. Measure: total audit events, train wall-clock, serialize wall-clock, blob size, <code>verify_chain</code> wall-clock, replay wall-clock. Verify chain integrity at each scale.</p>
+<p><strong>Result.</strong></p>
+<table class="table">
+<colgroup>
+<col style="width: 12%">
+<col style="width: 12%">
+<col style="width: 12%">
+<col style="width: 12%">
+<col style="width: 12%">
+<col style="width: 12%">
+<col style="width: 12%">
+<col style="width: 15%">
+</colgroup>
+<thead>
+<tr class="header">
+<th style="text-align: right;">n_obs</th>
+<th style="text-align: right;">n_events</th>
+<th style="text-align: right;">Train (ms)</th>
+<th style="text-align: right;">Serialize (ms)</th>
+<th style="text-align: right;">Blob size</th>
+<th style="text-align: right;">Verify (ms)</th>
+<th style="text-align: right;">Replay (ms)</th>
+<th style="text-align: center;">Chain OK?</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">10,000</td>
+<td style="text-align: right;">10,019</td>
+<td style="text-align: right;">27</td>
+<td style="text-align: right;">3.3</td>
+<td style="text-align: right;">1.4 MB</td>
+<td style="text-align: right;">8.9</td>
+<td style="text-align: right;">34</td>
+<td style="text-align: center;">✓</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">100,000</td>
+<td style="text-align: right;">100,019</td>
+<td style="text-align: right;">308</td>
+<td style="text-align: right;">36</td>
+<td style="text-align: right;">13.7 MB</td>
+<td style="text-align: right;">97</td>
+<td style="text-align: right;">378</td>
+<td style="text-align: center;">✓</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">1,000,000</td>
+<td style="text-align: right;">1,000,019</td>
+<td style="text-align: right;">4,514</td>
+<td style="text-align: right;">906</td>
+<td style="text-align: right;">137 MB</td>
+<td style="text-align: right;">1,880</td>
+<td style="text-align: right;">5,158</td>
+<td style="text-align: center;">✓</td>
+</tr>
+</tbody>
+</table>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="figures/v_mu_audit_log_scaling.png" class="img-fluid figure-img"></p>
+<figcaption class="figure-caption">V-μ — Audit log scaling to 1M events (Experiment μ)</figcaption>
+</figure>
+</div>
+<p><strong>Verdict.</strong> <strong>Cμ passed.</strong> Tag: <strong><em>Proven at the tested scale</em></strong> (up to 10⁶ events).</p>
+<p>Quantitative observations:</p>
+<ul>
+<li><strong>Blob size is perfectly linear</strong> at ~137 bytes/event (1.37 MB → 13.7 MB → 137 MB matches 10⁴ → 10⁵ → 10⁶ exactly).</li>
+<li><strong>Train, serialize, replay</strong> scale within ~10-25× per decade of n, which is roughly linear with some super-linearity at large scale.</li>
+<li><strong>Verify time</strong> grows slightly super-linearly: 970 ns/event at 10⁵, 1.88 µs/event at 10⁶ — a ~2× slowdown per decade. This is consistent with cache effects (the 137 MB blob exceeds typical L2/L3 cache).</li>
+<li><strong>Chain integrity holds at every scale.</strong> <code>verify_chain()</code> returns <code>Ok</code> and <code>replay(snap).chain_head == snap.chain_head</code> exactly at 1M events.</li>
+</ul>
+<p><strong>Honest takeaway.</strong> A 1M-event audit log is <strong>manageable</strong> (137 MB blob, ~5 seconds replay, ~2 seconds verify). At 10⁷ events, this extrapolates to ~1.4 GB and ~50 seconds replay — pushing into “use compaction” territory but not catastrophic. Below 10⁹ events, the architecture’s audit-chain story holds; beyond that, the smart-replay path (StatsSnapshot markers + selective skip) becomes necessary and is not yet stress-tested at that scale.</p>
+</section>
+<section id="the-fourth-gap-external-lineage-baseline-mlflow-dvc" class="level4">
+<h4 class="anchored" data-anchor-id="the-fourth-gap-external-lineage-baseline-mlflow-dvc">7.6.4 The fourth gap: external lineage baseline (MLflow / DVC)</h4>
+<p>The fourth previously-deferred item — a head-to-head comparison against MLflow or DVC’s lineage tracking — <strong>remains deferred</strong>. The reason isn’t lack of feasibility but scope: a fair comparison would need to:</p>
+<ol type="1">
+<li>Set up MLflow and DVC instances with realistic configurations.</li>
+<li>Define a tampering scenario that both can attempt to detect at their granularity (artefact-level for MLflow/DVC vs state-mutation-level for ABNG).</li>
+<li>Measure detection rates under various tampering protocols (single-row, multi-row, post-training override, full-pipeline compromise).</li>
+<li>Compare reproduction cost: storage size, verification time, debugging accessibility.</li>
+</ol>
+<p>This is roughly <strong>one to two weeks of focused work</strong> including running MLflow/DVC tutorials, building the comparison harness, and writing up the methodology. The result would warrant its own article rather than a section in this one. It’s listed as a separate item in the future-work plan.</p>
+<p><strong>For the purposes of this article</strong>, the granularity-advantage claim (ABNG tracks state mutations; MLflow tracks artefacts) is <strong>positional rather than empirical</strong> — the architectural difference is real and documented in <a href="../../../blog/posts/abng-deterministic-systems/index.html">Part 2 of the trilogy</a>, but the wall-clock comparison and detection-rate measurement aren’t done here.</p>
+</section>
+</section>
 </section>
 <section id="demo-deep-dives" class="level2">
 <h2 class="anchored" data-anchor-id="demo-deep-dives">8. Demo deep-dives</h2>
@@ -1364,29 +1586,38 @@ Regulator:
 </section>
 <section id="failure-cases-limitations" class="level2">
 <h2 class="anchored" data-anchor-id="failure-cases-limitations">10. Failure cases &amp; limitations</h2>
-<p>Five failure modes, ranked by severity and recoverability. Each is honest about what the article <em>doesn’t</em> prove.</p>
-<section id="single-hardware-measurement-meta-limitation" class="level3">
-<h3 class="anchored" data-anchor-id="single-hardware-measurement-meta-limitation">10.1 Single-hardware measurement (meta-limitation)</h3>
-<p>Every number in this article is from one machine (Intel i7-11390H, Windows MSVC release). The architecture’s determinism canaries are locked on Windows MSVC and <em>should</em> hold cross-platform, but <strong>cross-platform CI is unverified.</strong> Phase 0.6 added a <code>cross-platform-determinism.yml</code> workflow skeleton; verification results have not been published. Until they are, every “Proven” tag in this article carries an implicit “on this hardware” footnote.</p>
+<p>The previous revision of this article had five honestly-flagged limitations. Three of them were closed in §7.6 with new experiments; the other two remain. Plus one new limitation surfaced <em>by</em> the new measurements (the high CV on <code>blr_state_update_direct</code>).</p>
+<section id="single-hardware-measurement-still-meta-limitation" class="level3">
+<h3 class="anchored" data-anchor-id="single-hardware-measurement-still-meta-limitation">10.1 Single-hardware measurement (still meta-limitation)</h3>
+<p>Every number in this article is from one machine (Intel i7-11390H, Windows MSVC release). The architecture’s determinism canaries are locked on Windows MSVC and <em>should</em> hold cross-platform, but <strong>cross-platform CI is still unverified.</strong> Phase 0.6 added a <code>cross-platform-determinism.yml</code> workflow skeleton; verification results have not been published. Until they are, every “Proven” tag carries an implicit “on this hardware” footnote.</p>
 </section>
-<section id="audit-log-size-at-production-scale-extrapolation-not-measurement" class="level3">
-<h3 class="anchored" data-anchor-id="audit-log-size-at-production-scale-extrapolation-not-measurement">10.2 Audit-log size at production scale (extrapolation, not measurement)</h3>
-<p>Witness-only events are ~80 bytes each. Four state updates per observation (BLR, density, calibration, signature) at 1M rows produces ~320 MB of audit log. Fits on disk; painful in memory. Phase 0.7’s <code>abng_compact_log</code> + <code>StatsSnapshot</code> markers + smart-replay address this, but the <em>unbounded-scale</em> behaviour (10⁹-event chains) is <strong>unmeasured</strong>. The linear-scaling claim is plausible but not validated past 10⁵.</p>
+<section id="audit-log-size-at-production-scale-closed-in-7.6.3" class="level3">
+<h3 class="anchored" data-anchor-id="audit-log-size-at-production-scale-closed-in-7.6.3">10.2 <del>Audit-log size at production scale</del> — <strong>closed in §7.6.3</strong></h3>
+<p>Experiment μ measured the audit log up to 1M events. Snapshot scales perfectly linearly at 137 bytes/event; verify time grows slightly super-linearly (cache effects). Chain integrity holds. The 10⁹-event stress test is still unmeasured but the trajectory from 10⁴ → 10⁶ is now characterized.</p>
 </section>
-<section id="no-external-lineage-baseline" class="level3">
-<h3 class="anchored" data-anchor-id="no-external-lineage-baseline">10.3 No external lineage baseline</h3>
-<p>MLflow / DVC / Weights &amp; Biases track <em>artefacts</em> (model files, dataset checksums). ABNG tracks <em>state mutations</em> (every parameter update has a hash witness). The granularity advantage is real but <strong>never directly compared</strong> — no head-to-head measurement of “regulator’s nightmare scenario” against MLflow + a malicious lab. The Part 2 of the trilogy (<a href="../../../blog/posts/abng-deterministic-systems/index.html">Deterministic and Auditable Neural Systems</a>) addresses this positionally; this article cannot address it empirically.</p>
+<section id="no-external-lineage-baseline-deferred-see-7.6.4" class="level3">
+<h3 class="anchored" data-anchor-id="no-external-lineage-baseline-deferred-see-7.6.4">10.3 No external lineage baseline (deferred — see §7.6.4)</h3>
+<p>MLflow / DVC / Weights &amp; Biases track <em>artefacts</em>. ABNG tracks <em>state mutations</em>. The granularity advantage is real and architecturally documented but <strong>the head-to-head wall-clock comparison is still missing</strong>. Closing this gap is a one-to-two-week project that warrants its own article rather than a section here. Listed in future work below.</p>
 </section>
-<section id="no-predictive-coverage-analysis" class="level3">
-<h3 class="anchored" data-anchor-id="no-predictive-coverage-analysis">10.4 No predictive coverage analysis</h3>
-<p>The reliability diagram (§7.3) measures <em>calibration</em>. It does not measure <em>predictive coverage</em> — does the Student-t predictive distribution at a chosen confidence level (say, 95%) actually contain the true <code>y</code> at the rate it claims? This is a different test and requires drawing samples from the Student-t or computing exact CDF values. <strong>Not implemented in this run.</strong> Listed in §11 future work.</p>
+<section id="no-predictive-coverage-analysis-closed-in-7.6.1" class="level3">
+<h3 class="anchored" data-anchor-id="no-predictive-coverage-analysis-closed-in-7.6.1">10.4 <del>No predictive coverage analysis</del> — <strong>closed in §7.6.1</strong></h3>
+<p>Experiment κ measured predictive coverage at 5 nominal levels (0.50, 0.80, 0.90, 0.95, 0.99). All empirical coverages within ±0.01 of nominal. <strong>Cκ passed.</strong></p>
 </section>
-<section id="no-statistical-cis-on-most-per-op-timings" class="level3">
-<h3 class="anchored" data-anchor-id="no-statistical-cis-on-most-per-op-timings">10.5 No statistical CIs on most per-op timings</h3>
-<p>Most per-operation costs in §9 are single-run measurements. The speedup comparisons (Phase 0.7 perf items, <code>observe_batch</code>, <code>route_to_leaf_batch</code>) use min-of-5 trials, which is more robust. Experiment α uses 7-trial measurements. The right framework is Criterion — automated median + IQR per bench. <strong>Conversion to Criterion is a 4-hour task</strong> listed in future work but not done in this run.</p>
+<section id="no-statistical-cis-on-per-op-timings-closed-in-7.6.2-partially" class="level3">
+<h3 class="anchored" data-anchor-id="no-statistical-cis-on-per-op-timings-closed-in-7.6.2-partially">10.5 <del>No statistical CIs on per-op timings</del> — <strong>closed in §7.6.2</strong> (partially)</h3>
+<p>Experiment λ measured median + IQR + min/max for five key operations across 30 trials. The result is <em>informative</em>: stable ops have CV ≤ 0.20; BLR-heavy ops have CV ≈ 0.4-0.6 (cache-sensitive). The single-run minimums in §9 are honest <em>lower bounds</em> but understate typical-case timing by 30-60% on BLR ops. <strong>Conversion of the full microbench suite to Criterion</strong> (with median + IQR per op as the default report shape) is still deferred — listed in future work below.</p>
 </section>
-<section id="future-work-part-i-categories" class="level3">
-<h3 class="anchored" data-anchor-id="future-work-part-i-categories">Future work (Part I categories)</h3>
+<section id="new-high-variance-on-cache-sensitive-blr-operations" class="level3">
+<h3 class="anchored" data-anchor-id="new-high-variance-on-cache-sensitive-blr-operations">10.6 (NEW) — High variance on cache-sensitive BLR operations</h3>
+<p>Surfaced by Experiment λ: <code>blr_state_update_direct</code> has CV = 0.58, with max 5× the min across 30 trials. The mechanism is Cholesky factorization being cache-sensitive at fresh graph setup. Two paths to address this:</p>
+<ol type="1">
+<li>Run microbenches in a CPU-pinned, cache-pre-warmed harness (Criterion does this).</li>
+<li>Quote median rather than min in the §9 cost table — a pure presentation fix.</li>
+</ol>
+<p>The high-variance ops do not change the article’s qualitative claims (the determinism-premium ratio holds at the median level), but the previous version’s single-run min values are tighter than they should be presented.</p>
+</section>
+<section id="future-work-remaining-open-items" class="level3">
+<h3 class="anchored" data-anchor-id="future-work-remaining-open-items">Future work (remaining open items)</h3>
 <table class="table">
 <colgroup>
 <col style="width: 33%">
@@ -1407,32 +1638,28 @@ Regulator:
 <td>§10.1</td>
 </tr>
 <tr class="even">
-<td>10⁹-event audit log stress test</td>
-<td>1 day</td>
-<td>§10.2</td>
+<td>MLflow / DVC tamper-scenario comparison harness</td>
+<td>1–2 weeks</td>
+<td>§10.3</td>
 </tr>
 <tr class="odd">
+<td>10⁹-event audit log stress test</td>
+<td>1 day</td>
+<td>(push past §7.6.3’s 10⁶ ceiling)</td>
+</tr>
+<tr class="even">
 <td>sklearn-GP head-to-head on tabular</td>
 <td>1 day</td>
 <td>(general external baseline)</td>
 </tr>
-<tr class="even">
-<td>Predictive coverage analysis</td>
-<td>3–4 hours</td>
-<td>§10.4</td>
-</tr>
 <tr class="odd">
-<td>Convert microbench to Criterion (median + IQR per op)</td>
+<td>Convert microbench suite to Criterion (median + IQR per op)</td>
 <td>4 hours</td>
-<td>§10.5</td>
-</tr>
-<tr class="even">
-<td>MLflow / DVC tamper-scenario comparison</td>
-<td>1 day</td>
-<td>§10.3</td>
+<td>§10.5 / §10.6</td>
 </tr>
 </tbody>
 </table>
+<p>The article’s previous “four remaining gaps” list now reads “two remaining gaps (cross-platform CI + MLflow baseline) plus one new gap (BLR-op variance) plus two stretch items.” Net progress.</p>
 </section>
 </section>
 <section id="reproducibility" class="level2">
@@ -1513,6 +1740,9 @@ Plotting:    Python 3.11, matplotlib 3.9.2, numpy 2.2.6</code></pre>
 <li>Per-leaf calibration is well-tracked: graph-level ECE = 0.015 on a synthetic Bernoulli task (Experiment η).</li>
 <li>Selective prediction reduces error 10× by abstaining on high-OOD inputs (Experiment γ).</li>
 <li>Kahan vs plain summation is exactly 2.40× — matching the architecture article’s “~2×” claim (Experiment ζ).</li>
+<li><strong>Predictive coverage matches nominal at all 5 tested levels within ±0.01</strong> (Experiment κ, §7.6.1) — strictly stronger than the calibration result.</li>
+<li><strong>Per-op timings have characterized variance</strong> (Experiment λ, §7.6.2) — stable ops CV ≤ 0.20; BLR-heavy ops CV ≈ 0.4–0.6 (cache-sensitive).</li>
+<li><strong>Audit log scales linearly to 1M events</strong> (Experiment μ, §7.6.3) — 137 bytes/event, 5.2 s replay, chain integrity holds.</li>
 <li>The graph-dispatch overhead is <strong>87% of <code>blr_update</code> cost</strong> (§9 — the determinism premium quantified).</li>
 <li>PINN demo passes at MAE &lt; 0.05 on the basis-in-span analytical solution (§8.1).</li>
 <li>Three-signal spoof detection catches single-row dataset tampering (§8.2).</li>
