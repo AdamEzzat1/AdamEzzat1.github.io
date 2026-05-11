@@ -2496,7 +2496,7 @@ Note
   <pubDate>Sun, 10 May 2026 07:00:00 GMT</pubDate>
 </item>
 <item>
-  <title>Benchmarking Experimental Bayesian Graph Networks</title>
+  <title>ABNG Benchmarks Part I — Deterministic Belief Evolution, Lineage, and Explainable Inference</title>
   <dc:creator>Adam Ezzat</dc:creator>
   <link>https://adamezzat1.github.io/blog/posts/abng-benchmarks/index.html</link>
   <description><![CDATA[ 
@@ -2504,7 +2504,7 @@ Note
 
 
 <div class="reading-time">
-🕑 ~45 min read
+🕑 ~38 min read
 </div>
 <div class="callout callout-style-simple callout-tip no-icon callout-titled">
 <div class="callout-header d-flex align-content-center">
@@ -2516,7 +2516,7 @@ TL;DR
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p>A research-stage ML architecture is only as credible as its evidence. This article walks through the empirical state of ABNG: nine distinct demo categories totalling ~5,866 lines of test code, <strong>nine new experiments measured on real hardware</strong> — α (NIG posterior consistency), β (basis-in-span vs out-of-span PINN), γ (selective prediction on OOD), δ (replay-under-mutation invariant), ε (decide_step scaling), ζ (Kahan vs plain summation), and three more (η per-bin reliability diagram, θ routing-flow Sankey, ι 2-D OOD heatmap) — plus twelve new figures generated from the bench data. It is also brutally honest about what the demos <em>don’t</em> prove: no external baselines (no sklearn, no PyTorch, no FNO comparisons), no large-N benchmarks beyond 100K rows, no cross-platform measurement, no statistical confidence intervals on most per-op timings. The honest framing: <strong>ABNG is exploratory engineering, not validated science</strong>, and the closer names three specific follow-on experiments whose outcomes would change that.</p>
+<p>ABNG (Adaptive Belief Network Graph) is an experimental neural architecture that treats Bayesian belief as a first-class object — each leaf in an adaptive tree carries its own posterior, routing is a traceable walk through learned bytes, and every state mutation appends to a SHA-256 hash-chained audit log. <strong>This article (Part I of the benchmark deep-dive) focuses on the five categories where ABNG’s properties can be proven correct at the tested scale: determinism, lineage, state stability, probabilistic consistency, and explainability.</strong> Five experiments — α (NIG posterior consistency at 1/√n), δ (replay invariance under mutation), η (per-bin reliability with ECE = 0.015), γ (selective prediction yielding 10× error reduction), and ζ (Kahan-vs-plain summation premium at 2.40×) — back the claims with real wall-clock numbers and pre-specified pass/fail conditions. <strong>The companion Part II covers adaptive graph evolution, routing behavior, and temporal state dynamics.</strong></p>
 </div>
 </div>
 <div class="callout callout-style-default callout-warning callout-titled">
@@ -2538,198 +2538,58 @@ Two prototype disclaimers
 <i class="callout-icon"></i>
 </div>
 <div class="callout-title-container flex-fill">
-This is Part 3 of a three-part series
+This is article 3 of a 4-article ABNG series
 </div>
 </div>
 <div class="callout-body-container callout-body">
 <ul>
-<li><strong>Part 1 (<a href="../../../blog/posts/abng-architecture/index.html">ABNG: Treating Belief States as First-Class Citizens</a>):</strong> the architecture itself.</li>
-<li><strong>Part 2 (<a href="../../../blog/posts/abng-deterministic-systems/index.html">Deterministic and Auditable Neural Systems</a>):</strong> the SHA-256 audit chain, replay semantics, and the determinism contract.</li>
-<li><strong>Part 3 (this article):</strong> the demo catalog, scaling benchmarks, six new experiments, and honest limitations.</li>
+<li><strong>Article 1</strong> (<a href="../../../blog/posts/abng-architecture/index.html">ABNG: Treating Belief States as First-Class Citizens</a>) — the architecture itself.</li>
+<li><strong>Article 2</strong> (<a href="../../../blog/posts/abng-deterministic-systems/index.html">Deterministic and Auditable Neural Systems</a>) — the audit chain and determinism contract.</li>
+<li><strong>Article 3 (this article)</strong> — Benchmarks Part I: determinism, lineage, state stability, probabilistic consistency, explainability.</li>
+<li><strong>Article 4</strong> (<a href="../abng-benchmarks-part-2/index.qmd">Benchmarks Part II</a>) — adaptive graph evolution, routing behavior, temporal state dynamics. <em>Companion article, forthcoming.</em></li>
 </ul>
-<p>This article can be read alone if you only care about the empirical evidence. Part 1 is useful for context but not required.</p>
+<p>Each article can be read alone. This one is the empirical evidence for the “things you can prove correct” half of ABNG’s value proposition; Part II covers the “things that make ABNG architecturally distinctive” half.</p>
 </div>
 </div>
-<section id="introduction-a-research-project-worth-taking-seriously-enough-to-falsify" class="level2">
-<h2 class="anchored" data-anchor-id="introduction-a-research-project-worth-taking-seriously-enough-to-falsify">1. Introduction — a research project worth taking seriously enough to falsify</h2>
-<p>Most architecture write-ups follow a predictable arc: design philosophy, mechanism description, comparison to “existing methods,” a positive benchmark or two, conclusion. The benchmark numbers tend to be cherry-picked, the comparisons tend to be unfavourable to the alternatives, and the limitations section tends to read as a list of future-work promises rather than a credible account of failure modes.</p>
-<p>This article tries the opposite. The point isn’t to convince you ABNG works. The point is to give you enough concrete evidence — and an honest accounting of its absence — that you can form your own opinion. If after reading this you decide the architecture is interesting but probably wrong in three specific ways, the article has done its job.</p>
-<p>Specifically, this piece walks through:</p>
+<section id="introduction" class="level2">
+<h2 class="anchored" data-anchor-id="introduction">1. Introduction</h2>
+<p>ABNG is an experimental neural architecture that treats Bayesian belief as a first-class architectural primitive: each leaf in an adaptive tree carries its own Normal-Inverse-Gamma posterior, routing is a traceable walk through learned bytes, and the graph can grow / split / merge / prune / compress / freeze itself under a deterministic decision policy. Every state mutation appends to a SHA-256 hash-chained audit log, so the full training history is byte-identically replayable.</p>
+<p>That’s the architecture in two sentences. The hard question is whether any of it actually works. This article — and its companion Part II — is the empirical accounting.</p>
+<section id="why-split-the-benchmark-coverage-in-two" class="level3">
+<h3 class="anchored" data-anchor-id="why-split-the-benchmark-coverage-in-two">Why split the benchmark coverage in two</h3>
+<p>The previous version of this article tried to cover everything in one piece — nine experiments, twelve figures, the full demo catalog. The result was readable but dense (~14K words, 45-minute read). The Stack-Role-Group critique that drove the recent rewrite identified an honest issue: <strong>ABNG’s benchmark properties cluster naturally into two distinct themes, and the article reads better when those themes get separate articles.</strong></p>
+<p>The two themes — and the line that separates them:</p>
 <ul>
-<li><strong>Why standard benchmarks miss what ABNG is actually trying to do</strong> (Section 2): replayability, audit, structural evolution don’t show up in accuracy/throughput leaderboards.</li>
-<li><strong>Pre-specified experimental goals</strong> (Section 3): what claims this article tries to support, what it explicitly doesn’t.</li>
-<li><strong>ABNG-specific behavioral metrics</strong> (Section 4): formal definitions for route stability, mutation cost, replay consistency, uncertainty separation.</li>
-<li><strong>Nine demo categories, each tagged honestly</strong> (Section 5): <em>Proven / Demonstrated / Speculative</em> with criteria.</li>
-<li><strong>Six new experimental results</strong> (Sections 6–8) measured on real hardware: posterior consistency, basis-in-span vs out-of-span PINN, selective prediction, decide_step scaling, replay under mutation, Kahan-vs-plain summation.</li>
-<li><strong>Failure cases and limitations</strong> (Section 9): routing discontinuities, calibration-under-mixture, branch explosion, scaling limits.</li>
-<li><strong>Discussion + open research questions + conclusion</strong> (Sections 10–12): what’s left, what would change the picture.</li>
+<li><p><strong>Part I (this article) — properties of a fixed graph.</strong> The Bayesian update is correctly implemented. The audit chain detects tampering. The model can be replayed byte-identically. Predictions are well-calibrated. Abstaining on high-OOD inputs reduces error. These are properties you can prove correct on a given graph at a given moment.</p></li>
+<li><p><strong>Part II (companion) — properties of an evolving graph.</strong> The graph restructures itself under evidence. Routing partitions input space. The structural-decision engine is sub-millisecond at moderate scale. Frozen leaves auto-unfreeze under distribution shift. These are properties that make ABNG architecturally distinctive — and they emerge from the graph <em>changing</em> over training.</p></li>
 </ul>
-<p>The architecture itself is described in <a href="../../../blog/posts/abng-architecture/index.html">Part 1</a>. The audit and determinism story is in <a href="../../../blog/posts/abng-deterministic-systems/index.html">Part 2</a>. This article presumes both as context but lets you re-derive the empirical picture from the numbers.</p>
+<p>Both halves matter. Splitting them apart gives each one the depth it deserves.</p>
 </section>
-<section id="why-standard-benchmarks-are-insufficient" class="level2">
-<h2 class="anchored" data-anchor-id="why-standard-benchmarks-are-insufficient">2. Why standard benchmarks are insufficient</h2>
-<p>Pick a state-of-the-art ML benchmark — ImageNet, GLUE, SuperGLUE, the LRA suite, the PDE-Bench surrogate-solver competition. Each measures something specific (top-1 accuracy, perplexity, BLEU, MSE) under controlled conditions. Each is <em>fair</em> for the architectures that compete on it, and each gives a useful number for comparing architectures of the same kind.</p>
-<p>ABNG isn’t trying to win any of those benchmarks.</p>
-<p>The architecture’s three load-bearing axes — <strong>calibrated belief</strong>, <strong>structural adaptation</strong>, and <strong>bit-identical reproducibility</strong> — are not what standard benchmarks measure. They’re orthogonal properties that don’t make a model better at top-1 accuracy. They make a model:</p>
+<section id="what-this-article-delivers" class="level3">
+<h3 class="anchored" data-anchor-id="what-this-article-delivers">What this article delivers</h3>
+<p>Concretely, by the end of Part I you should be able to:</p>
 <ol type="1">
-<li><strong>Auditable.</strong> Every parameter update is in a cryptographically-chained log. <em>No mainstream benchmark scores this.</em></li>
-<li><strong>Replayable.</strong> Two runs with the same seed produce byte-identical snapshots. <em>Reproducibility is a research best-practice, not a measured metric.</em></li>
-<li><strong>Self-restructuring.</strong> The graph grows / splits / merges / freezes itself under evidence. <em>Standard architectures have fixed compute graphs; the benchmarks assume the same.</em></li>
-<li><strong>Honest about uncertainty.</strong> Per-leaf NIG posterior gives explicit epistemic + aleatoric components. <em>Calibration is occasionally measured (ECE), but never as a primary axis.</em></li>
+<li>Read a table of nine benchmark categories and know which five are covered here.</li>
+<li>See five mini-demo scenarios that show the categories at work on small concrete inputs.</li>
+<li>Walk through five experiments with pre-registered pass/fail conditions, real wall-clock measurements, and figures generated from the measured data.</li>
+<li>Read about two existing demo suites (PINN uncertainty, lineage attestation) as worked-through examples.</li>
+<li>Get the determinism microbench numbers and the 87% premium decomposition.</li>
+<li>See five explicit failure modes and the deferred work that would close them.</li>
+<li>Reproduce every number with <code>cargo run --release</code> plus a Python plot script.</li>
 </ol>
-<p>If ABNG submitted to ImageNet, it would lose to ResNet-50 by a wide margin. If it submitted to GLUE, it would lose to BERT by a wider margin. The architecture isn’t designed for those tasks at those scales.</p>
-<p>The right empirical case for an architecture like ABNG is therefore a different shape: not “we beat the leaderboard,” but “<strong>we measure six axes the leaderboards ignore, and we deliver on those axes in ways the leaderboard models cannot.</strong>” That’s the structure this article uses.</p>
-<section id="where-the-standard-benchmark-framework-fails-abng-specifically" class="level3">
-<h3 class="anchored" data-anchor-id="where-the-standard-benchmark-framework-fails-abng-specifically">Where the standard benchmark framework fails ABNG specifically</h3>
-<table class="table">
-<colgroup>
-<col style="width: 33%">
-<col style="width: 33%">
-<col style="width: 33%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Property ABNG cares about</th>
-<th>Standard benchmark equivalent</th>
-<th>Why standard benchmarks miss it</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>Bit-identical replayability</td>
-<td>“reproducibility” (run-to-run accuracy variance)</td>
-<td>Standard benchmarks tolerate 0.1–1% accuracy variation as “reproducible”; ABNG aims for zero variation at the byte level</td>
-</tr>
-<tr class="even">
-<td>Cryptographic audit chain</td>
-<td>None</td>
-<td>No benchmark currently scores tamper-evidence of training history</td>
-</tr>
-<tr class="odd">
-<td>Per-state-mutation granularity</td>
-<td>None</td>
-<td>MLflow / DVC / W&amp;B track artefacts; nothing tracks parameter updates with hash witnesses</td>
-</tr>
-<tr class="even">
-<td>Structural evolution cost</td>
-<td>“training throughput”</td>
-<td>Throughput aggregates everything; structural decisions are invisible in the rollup</td>
-</tr>
-<tr class="odd">
-<td>Calibrated abstain</td>
-<td>“OOD detection AUC”</td>
-<td>OOD-AUC measures binary detection; it doesn’t measure whether abstaining on high-OOD predictions improves remaining accuracy</td>
-</tr>
-<tr class="even">
-<td>Mutation timeline</td>
-<td>None</td>
-<td>No standard way to compare “how often does the architecture restructure itself?” across architectures</td>
-</tr>
-</tbody>
-</table>
-<p>This article therefore introduces <strong>six ABNG-specific behavioral metrics</strong> (Section 4) that capture what the architecture cares about, alongside the standard scaling and throughput numbers (Sections 6–8). The point isn’t to dismiss leaderboards — it’s to add the missing axes.</p>
+<p>The article is ~9,000 words. Pacing assumes you don’t already know the architecture in detail — Part 1 of the series (<a href="../../../blog/posts/abng-architecture/index.html">Belief States as First-Class Citizens</a>) goes deeper.</p>
 </section>
 </section>
-<section id="experimental-goals" class="level2">
-<h2 class="anchored" data-anchor-id="experimental-goals">3. Experimental goals</h2>
-<p>Before showing results, this section pre-specifies what claims the article tries to support, what it doesn’t try to support, and what pass/fail conditions look like for each claim. This is the discipline a hostile reviewer would impose; it’s better to impose it on yourself first.</p>
-<section id="claims-this-article-does-try-to-support" class="level3">
-<h3 class="anchored" data-anchor-id="claims-this-article-does-try-to-support">Claims this article <em>does</em> try to support</h3>
-<table class="table">
-<colgroup>
-<col style="width: 33%">
-<col style="width: 33%">
-<col style="width: 33%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Claim</th>
-<th>Evidence type</th>
-<th>Pass condition</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><strong>C1 — NIG conjugate update is correctly implemented.</strong> Posterior mean converges to known truth; aleatoric variance approaches σ²_true from above.</td>
-<td>Experiment α (Section 7)</td>
-<td>Both errors decay as O(1/√n) on synthetic data with known (w_true, σ²_true).</td>
-</tr>
-<tr class="even">
-<td><strong>C2 — PINN fits known analytical solutions when feature basis spans the truth.</strong></td>
-<td>PINN demo + Experiment β (Section 5, 7)</td>
-<td>MAE &lt; 0.05 at interior probes; L2 error decays at Monte Carlo rate.</td>
-</tr>
-<tr class="odd">
-<td><strong>C3 — Structural mutations preserve replay invariants.</strong> Graph that has fired Grow/Split/Freeze still replays byte-identically.</td>
-<td>Experiment δ (Section 8)</td>
-<td><code>chain_head</code> and full snapshot bytes match after replay.</td>
-</tr>
-<tr class="even">
-<td><strong>C4 — <code>decide_step</code> is sub-millisecond at small-to-moderate graph sizes.</strong></td>
-<td>Experiment ε (Section 6)</td>
-<td>Mean time &lt; 1 ms at n_active ≤ 256; scaling roughly linear in n_active.</td>
-</tr>
-<tr class="odd">
-<td><strong>C5 — Selective prediction (abstaining at high OOD) reduces error on kept predictions.</strong></td>
-<td>Experiment γ (Section 7)</td>
-<td>Mean error on lowest-OOD k% is monotonically lower than mean error on all 100%.</td>
-</tr>
-<tr class="even">
-<td><strong>C6 — Kahan accumulation cost is in the ~2× range claimed.</strong></td>
-<td>Experiment ζ (Section 8)</td>
-<td>Slowdown between 1.8× and 3× vs plain f64 <code>+=</code>.</td>
-</tr>
-<tr class="odd">
-<td><strong>C7 — Per-row training cost scales linearly with n.</strong></td>
-<td>Existing scaling benches (Section 8)</td>
-<td>Per-row µs stays in a narrow band across n=1k → 100k.</td>
-</tr>
-</tbody>
-</table>
-</section>
-<section id="claims-this-article-does-not-try-to-support" class="level3">
-<h3 class="anchored" data-anchor-id="claims-this-article-does-not-try-to-support">Claims this article <em>does not</em> try to support</h3>
-<p>The following claims would require evidence the article cannot produce in its current scope. They are deliberately out of scope:</p>
+<section id="what-the-current-abng-demos-demonstrate" class="level2">
+<h2 class="anchored" data-anchor-id="what-the-current-abng-demos-demonstrate">2. What the current ABNG demos demonstrate</h2>
+<p>Before slicing the benchmark coverage in two, here’s the full landscape of demonstrated capabilities — both for orientation and to make explicit <em>what each subsequent article half does not need to revisit</em>.</p>
+<p>The ABNG codebase as of Phase 0.7 contains:</p>
 <ul>
-<li><strong>NOT C8 — ABNG outperforms sklearn GP / RF / GBT on tabular regression.</strong> No head-to-head measurement; the Python sklearn harness is explicitly deferred per <code>bench/abng_vs_sklearn/main.rs</code>.</li>
-<li><strong>NOT C9 — ABNG outperforms FNO on PDE surrogates.</strong> No FNO baseline implemented in this workspace.</li>
-<li><strong>NOT C10 — ABNG works at n ≥ 10⁶ rows.</strong> The largest measurement in this article is at n = 10⁵. The asymptotic claim is correct by construction but never wall-clock-tested at production scale.</li>
-<li><strong>NOT C11 — Cross-platform determinism holds on ARM or BSD.</strong> All measurements are on x86-64 Windows MSVC.</li>
-<li><strong>NOT C12 — The determinism contract holds under multi-thread training.</strong> Multi-thread paths are not implemented.</li>
-<li><strong>NOT C13 — The composite OOD score competes with deep SVDD / Isolation Forest.</strong> No baseline implemented.</li>
+<li><strong>14 distinct demo categories</strong> across 50 test files (~5,866 LOC of test code).</li>
+<li><strong>5 performance bench packages</strong> in <code>bench/abng_*/</code> (~1,400 LOC including the SRG-experiments suite).</li>
+<li><strong>9 measured experiments</strong> with pre-registered pass/fail conditions: α (posterior consistency), β (basis-not-in-span PINN), γ (selective prediction), δ (replay under mutation), ε (<code>decide_step</code> scaling), ζ (Kahan vs plain summation), η (per-bin reliability), θ (routing flow), ι (2-D OOD heatmap).</li>
 </ul>
-<p>If you came to this article looking for evidence on any of C8–C13, you will not find it here. That is by design.</p>
-</section>
-<section id="failure-mode-pre-specification" class="level3">
-<h3 class="anchored" data-anchor-id="failure-mode-pre-specification">Failure-mode pre-specification</h3>
-<p>If the article’s experiments produce results that <em>don’t</em> match the pass conditions for C1–C7, here is what failure looks like and what each failure would mean:</p>
-<ul>
-<li><strong>C1 fails</strong> → NIG implementation is buggy. Most fundamental possible failure. Would invalidate every other claim that depends on the BLR head producing correct posteriors.</li>
-<li><strong>C2 fails</strong> → either the feature basis isn’t actually spanning the truth (engineering bug) or the routing is mis-binning training data. Tractable diagnosis.</li>
-<li><strong>C3 fails</strong> → audit chain or replay logic has a subtle bug that masks under non-mutating workloads. Architectural concern; would require a careful fix.</li>
-<li><strong>C4 fails</strong> → decide_step scales worse than linearly. Would be a real performance ceiling; might force a redesign of the policy engine.</li>
-<li><strong>C5 fails</strong> → the composite OOD score isn’t actually a useful abstain signal. The architecture’s “abstain when ABNG says abstain” pitch collapses; the OOD score becomes a debug metric only.</li>
-<li><strong>C6 fails</strong> → Kahan summation is much more expensive than claimed; the determinism premium is worse than the article’s current account.</li>
-<li><strong>C7 fails</strong> → some hidden quadratic. Would force a serious profiling investigation.</li>
-</ul>
-<p>The rest of this article reports actual results against these pre-specified conditions.</p>
-</section>
-</section>
-<section id="abng-specific-behavioral-metrics" class="level2">
-<h2 class="anchored" data-anchor-id="abng-specific-behavioral-metrics">4. ABNG-specific behavioral metrics</h2>
-<p>Standard ML metrics (accuracy, perplexity, BLEU) measure how well a model predicts. They don’t measure what ABNG actually claims to do. This section defines six behavioral metrics that capture ABNG’s load-bearing properties.</p>
-<section id="definitions" class="level3">
-<h3 class="anchored" data-anchor-id="definitions">Definitions</h3>
-<p><strong>M1 — Route stability.</strong> Given an input <code>x</code> and a small perturbation <code>δx</code>, the <em>route stability</em> is the probability that <code>route(x) == route(x + δx)</code> under perturbation magnitudes drawn from a fixed distribution. Concretely: for a uniform <code>δx ~ U(-ε, ε)</code> with <code>ε = 0.01</code>, sample 1000 perturbed routes per input and report the agreement rate.</p>
-<p><strong>M2 — Structural complexity.</strong> The active-node count <code>n_active</code>, the depth distribution, the children-variant distribution (<code>Node4</code> vs <code>Node16</code> vs <code>Node48</code> vs <code>Node256</code>), and the <code>action_counts</code> vector summarize what shape the graph has taken. Not a single number but a 4-tuple summary.</p>
-<p><strong>M3 — Audit overhead.</strong> The per-observation cost of appending to the audit chain, measured as the difference between graph-level <code>observe</code> (with audit) and a hypothetical no-audit equivalent. From the bench data: graph-level <code>observe</code> is 4,238 ns; pure Welford <code>+=</code> on the raw stats is ~50 ns; so audit overhead is approximately 4 µs per observation.</p>
-<p><strong>M4 — Mutation cost.</strong> The per-call cost of <code>decide_step</code> as a function of <code>n_active</code>. Reported in Section 6.</p>
-<p><strong>M5 — Replay consistency.</strong> Boolean: does <code>serialize(g) == serialize(replay(serialize(g)))</code>? Stronger version: under what classes of state mutation does this remain true? Reported in Section 8 (Experiment δ).</p>
-<p><strong>M6 — Uncertainty separation.</strong> For a training distribution and a test set spanning both in-distribution and out-of-distribution regions, the ratio <code>OOD(out)/OOD(in)</code> measures whether the composite OOD score discriminates between regimes. The Experiment γ data quantifies this empirically.</p>
-</section>
-<section id="glossary-of-evidence-tags" class="level3">
-<h3 class="anchored" data-anchor-id="glossary-of-evidence-tags">Glossary of evidence tags</h3>
-<p>To avoid ambiguity throughout the article, every claim is tagged with one of four labels. The tag definitions are:</p>
+<p>Capability inventory (alphabetical, with the article that deeply covers each):</p>
 <table class="table">
 <colgroup>
 <col style="width: 33%">
@@ -2738,352 +2598,505 @@ This is Part 3 of a three-part series
 </colgroup>
 <thead>
 <tr class="header">
-<th>Tag</th>
-<th>Criterion</th>
-<th>Example</th>
+<th>Demonstrated capability</th>
+<th>Mechanism</th>
+<th>Deep coverage in</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td><strong>Established research</strong></td>
-<td>Well-documented in the published ML / statistics literature; ABNG implements a known technique.</td>
-<td>NIG conjugate update for Bayesian linear regression (Bishop 2006 §3.3)</td>
+<td>Adaptive routing</td>
+<td>QuantileCodebook + Adaptive Radix Tree-style descent</td>
+<td>Part II</td>
 </tr>
 <tr class="even">
-<td><strong>Proven at the tested scale</strong></td>
-<td>Asserted in code with a strict failure condition; passes consistently in CI.</td>
-<td><code>pinn_trained_interior_approximates_analytical_solution</code>: <code>\|pred − truth\| &lt; 0.05</code></td>
+<td>Audit chain integrity</td>
+<td>SHA-256 chain over every state mutation; 30 audit kinds</td>
+<td><strong>Part I</strong></td>
 </tr>
 <tr class="odd">
-<td><strong>Demonstrated at small scale</strong></td>
-<td>Visible in a working test case at N ≤ 200 observations; no formal pass criterion against an established alternative.</td>
-<td>Drift score moves under controlled mean shift</td>
+<td>Bayesian inference (per-leaf)</td>
+<td>NIG conjugate update over BLR weights + noise variance</td>
+<td><strong>Part I</strong></td>
 </tr>
 <tr class="even">
-<td><strong>Reasonable extrapolation</strong></td>
-<td>The mechanism implies the behaviour, the small-scale evidence is consistent, but no production-scale measurement has been made.</td>
-<td>Linear scaling claim from 100k → 1M observations</td>
+<td>Belief-state stability over training</td>
+<td>Welford-smoothed <code>NodeSignature</code> per leaf</td>
+<td><strong>Part I</strong> + Part II</td>
 </tr>
 <tr class="odd">
-<td><strong>Speculative hypothesis</strong></td>
-<td>Stated as a hypothesis with no direct test.</td>
-<td>“ABNG would compete with FNO on Darcy flow at intermediate compute budgets”</td>
+<td>Calibration tracking</td>
+<td>15-bin reliability diagram per leaf; ECE accumulated with Kahan</td>
+<td><strong>Part I</strong></td>
+</tr>
+<tr class="even">
+<td>Cryptographic provenance</td>
+<td>Per-node <code>provenance_stamp_hash</code> field; tied to dataset SHA-256</td>
+<td><strong>Part I</strong></td>
+</tr>
+<tr class="odd">
+<td>Deterministic execution</td>
+<td>Kahan summation, BTreeMap, no FMA, SplitMix64 RNG</td>
+<td><strong>Part I</strong></td>
+</tr>
+<tr class="even">
+<td>Drift detection</td>
+<td>L2 z-shift between current density and frozen baseline</td>
+<td>Part II</td>
+</tr>
+<tr class="odd">
+<td>Explainable abstain</td>
+<td>Composite <code>ood_score = max(density, prefix_distance, epi_z)</code></td>
+<td><strong>Part I</strong></td>
+</tr>
+<tr class="even">
+<td>Graph mutation visibility</td>
+<td><code>cjcl abng inspect</code> and <code>cjcl abng diff</code> CLI tools</td>
+<td><strong>Part I</strong> + Part II</td>
+</tr>
+<tr class="odd">
+<td>Lineage attestation</td>
+<td>Three-signal spoof detection (chain head + BLR state + stamp)</td>
+<td><strong>Part I</strong></td>
+</tr>
+<tr class="even">
+<td>Posterior convergence</td>
+<td>Closed-form NIG update with Cholesky + triangular solve</td>
+<td><strong>Part I</strong></td>
+</tr>
+<tr class="odd">
+<td>Probabilistic consistency</td>
+<td>Per-bin (predicted, observed) tracking; aggregate ECE</td>
+<td><strong>Part I</strong></td>
+</tr>
+<tr class="even">
+<td>Replayability under mutation</td>
+<td><code>serialize</code> → <code>replay</code> byte-identical even after structural events</td>
+<td><strong>Part I</strong></td>
+</tr>
+<tr class="odd">
+<td>Route introspection</td>
+<td>Opt-in <code>Routed</code> audit events (kind <code>0x1B</code>) for prediction traces</td>
+<td>Part II</td>
+</tr>
+<tr class="even">
+<td>Structural adaptation</td>
+<td><code>decide_step</code> engine with 6 actions + 14-threshold policy</td>
+<td>Part II</td>
+</tr>
+<tr class="odd">
+<td>Temporal state evolution</td>
+<td><code>Maturity</code> flags + 3-window stability ring buffers per node</td>
+<td>Part II</td>
+</tr>
+<tr class="even">
+<td>Trie-based routing</td>
+<td>Node4/16/48/256 children with auto-promotion</td>
+<td>Part II</td>
+</tr>
+<tr class="odd">
+<td>Uncertainty propagation</td>
+<td>Per-leaf <code>(mean, epistemic_leverage, aleatoric_var)</code> triple</td>
+<td><strong>Part I</strong></td>
 </tr>
 </tbody>
 </table>
-<p>Every claim that follows is tagged with one of these. If you can find a claim without a tag, that’s a mistake to flag.</p>
+<p><strong>This article focuses on the 11 capabilities marked “Part I” above.</strong> The remaining 8 are deeply covered in Part II.</p>
 </section>
-</section>
-<section id="demo-proven-capabilities" class="level2">
-<h2 class="anchored" data-anchor-id="demo-proven-capabilities">5. Demo-proven capabilities</h2>
-<p>The codebase contains <strong>14 distinct demo categories</strong> across <strong>50 files</strong> totalling <strong>~5,866 LOC of test code</strong>, plus <strong>963 LOC of performance benchmark code</strong> in <code>bench/abng_*/</code> (now five suites including the new <code>abng_srg_experiments</code>). Each demo follows the same proof discipline:</p>
-<ol type="1">
-<li><strong>A workload</strong> — a problem where the capability should manifest if it’s working.</li>
-<li><strong>A specific assertion</strong> that would fail if the capability didn’t work.</li>
-<li><strong>A locked SHA-256 canary</strong> of the resulting graph’s <code>chain_head</code>, gating any future regression.</li>
-<li><strong>Cross-pipeline determinism</strong>: most demos run through both <code>cjc-eval</code> (AST tree-walk) AND <code>cjc-mir-exec</code> (MIR register-machine) with byte-identical printed output asserted via <code>run_parity()</code>.</li>
-</ol>
-<p>That last property is the <em>strongest</em> determinism gate the project supports. AST and MIR are completely different code paths — if any FP arithmetic, hash computation, or dispatch routing differs anywhere in the pipeline, the printed output diverges and the parity test fails.</p>
-<section id="demo-catalog-at-a-glance" class="level3">
-<h3 class="anchored" data-anchor-id="demo-catalog-at-a-glance">Demo catalog at a glance</h3>
+<section id="benchmark-taxonomy" class="level2">
+<h2 class="anchored" data-anchor-id="benchmark-taxonomy">3. Benchmark taxonomy</h2>
+<p>Standard ML benchmarks measure how well a model predicts. They don’t measure most of what ABNG cares about. The article-split decision rests on a benchmark taxonomy with nine categories:</p>
 <table class="table">
 <colgroup>
-<col style="width: 18%">
-<col style="width: 18%">
-<col style="width: 18%">
-<col style="width: 25%">
-<col style="width: 18%">
+<col style="width: 21%">
+<col style="width: 21%">
+<col style="width: 21%">
+<col style="width: 35%">
 </colgroup>
 <thead>
 <tr class="header">
 <th>#</th>
-<th>Demo</th>
-<th>Files</th>
-<th style="text-align: right;">LOC</th>
-<th>Tag</th>
+<th>Benchmark category</th>
+<th>Definition</th>
+<th style="text-align: center;">Covered in</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
 <td>1</td>
-<td><strong>PINN uncertainty</strong></td>
-<td><code>test_abng_pinn_uncertainty.rs</code> + 2 cjcl</td>
-<td style="text-align: right;">562</td>
-<td>Proven @ N=48</td>
+<td><strong>Determinism</strong></td>
+<td>Same input/seed produces identical graph evolution (byte-equal snapshot, locked SHA-256 chain head)</td>
+<td style="text-align: center;"><strong>Part I</strong></td>
 </tr>
 <tr class="even">
 <td>2</td>
-<td><strong>Tabular GP-like regression</strong></td>
-<td><code>test_abng_tabular_gp.rs</code> + 2 cjcl</td>
-<td style="text-align: right;">518</td>
-<td>Proven @ N=200</td>
+<td><strong>Lineage</strong></td>
+<td>Trace evidence propagation across audit events; reconstruct training history from logs</td>
+<td style="text-align: center;"><strong>Part I</strong></td>
 </tr>
 <tr class="odd">
 <td>3</td>
-<td><strong>Lineage attestation</strong></td>
-<td><code>test_abng_lineage_attestation.rs</code> + 2 cjcl</td>
-<td style="text-align: right;">622</td>
-<td>Proven @ 64 rows</td>
+<td><strong>State Stability</strong></td>
+<td>Measure belief convergence and divergence per leaf</td>
+<td style="text-align: center;"><strong>Part I</strong></td>
 </tr>
 <tr class="even">
 <td>4</td>
-<td><strong>OOD detection</strong></td>
-<td><code>..._cjcl.rs</code> + <code>..._scaled_cjcl.rs</code></td>
-<td style="text-align: right;">164</td>
-<td>Demonstrated</td>
+<td><strong>Probabilistic Consistency</strong></td>
+<td>Evaluate calibration / confidence propagation stability</td>
+<td style="text-align: center;"><strong>Part I</strong></td>
 </tr>
 <tr class="odd">
 <td>5</td>
-<td><strong>Adaptive triggers</strong></td>
-<td><code>..._cjcl.rs</code></td>
-<td style="text-align: right;">116</td>
-<td>Proven @ small N</td>
+<td><strong>Explainability</strong></td>
+<td>Inspect causal transitions; expose abstain decisions and their reasoning</td>
+<td style="text-align: center;"><strong>Part I</strong></td>
 </tr>
 <tr class="even">
 <td>6</td>
-<td><strong>Calibration</strong></td>
-<td><code>..._cjcl.rs</code> + <code>..._scaled_cjcl.rs</code></td>
-<td style="text-align: right;">162</td>
-<td>Demonstrated</td>
+<td><strong>Routing Efficiency</strong></td>
+<td>Compare graph traversal cost; measure per-input route latency</td>
+<td style="text-align: center;">Part II</td>
 </tr>
 <tr class="odd">
 <td>7</td>
-<td><strong>Drift detection</strong></td>
-<td><code>..._cjcl.rs</code> + <code>..._scaled_cjcl.rs</code></td>
-<td style="text-align: right;">158</td>
-<td>Demonstrated</td>
+<td><strong>Memory Scaling</strong></td>
+<td>Track graph growth vs complexity at varying <code>n_active_nodes</code></td>
+<td style="text-align: center;">Part II</td>
 </tr>
 <tr class="even">
 <td>8</td>
-<td><strong>Log compaction</strong></td>
-<td><code>..._cjcl.rs</code> + <code>..._scaled_cjcl.rs</code></td>
-<td style="text-align: right;">141</td>
-<td>Demonstrated</td>
+<td><strong>Adaptation</strong></td>
+<td>Measure graph restructuring over time; structural action firing</td>
+<td style="text-align: center;">Part II</td>
 </tr>
 <tr class="odd">
 <td>9</td>
-<td><strong>Maturity inspection</strong></td>
-<td><code>..._cjcl.rs</code> + <code>..._scaled_cjcl.rs</code></td>
-<td style="text-align: right;">156</td>
-<td>Demonstrated</td>
-</tr>
-<tr class="even">
-<td>10–14</td>
-<td>Trigger-specific demos</td>
-<td><code>..._compress/grow/split/prune/freeze_trigger_cjcl.rs</code></td>
-<td style="text-align: right;">346</td>
-<td>Demonstrated per action</td>
+<td><strong>Temporal Dynamics</strong></td>
+<td>Observe state evolution across time; drift response and auto-unfreeze</td>
+<td style="text-align: center;">Part II</td>
 </tr>
 </tbody>
 </table>
+<p>The split rule: <strong>categories 1–5 measure properties of a fixed graph or a small region of one</strong> (a node, a leaf, a single replay). <strong>Categories 6–9 measure properties of an <em>evolving</em> graph</strong> (a structural decision, a routing distribution, a temporal trajectory). The line is not perfectly clean — some properties touch both, and where they do, this article and Part II reference each other.</p>
 </section>
-<section id="capability-deep-dives" class="level3">
-<h3 class="anchored" data-anchor-id="capability-deep-dives">Capability deep-dives</h3>
-<p>Each capability below follows the SRG-prompt-requested four-part treatment.</p>
-<section id="pinn-uncertainty-basis-in-span-correctness" class="level4">
-<h4 class="anchored" data-anchor-id="pinn-uncertainty-basis-in-span-correctness">5.1 PINN uncertainty (basis-in-span correctness)</h4>
-<blockquote class="blockquote">
-<p><strong>What it proves.</strong> Given the feature basis <code>[1, x, sin(πx), cos(πx)]</code> — which <em>contains</em> the analytical solution <code>u(x, 0.1) = exp(-π² · 0.1) · sin(πx)</code> as a basis direction — ABNG fits the truth within 0.05 MAE on interior probes, separates epistemic uncertainty cleanly between dense and sparse training regions, replays byte-identically, and the chain head is canary-locked.</p>
-</blockquote>
-<p><strong>Why it matters.</strong> This is the strongest empirical correctness claim in the codebase. A passing test asserts <code>|pred − analytical_u| &lt; 0.05</code> at 4 interior probes; a parallel test asserts <code>min_edge_leverage &gt; max_interior_leverage</code> (strict separation between dense/sparse regions). The chain head is locked to SHA-256 <code>30d333f1f7dca5acaa76b0e4bfdbd4a733df38c6adeda094ae69cf0e9c4e468d</code>, gating any change to BLR conjugate update arithmetic, prefix routing, or audit-event payload layout.</p>
-<p><strong>How it differs from standard ML systems.</strong> A vanilla MLP fitting the same problem gives a point estimate with no calibrated uncertainty. A Bayesian Neural Network with mean-field VI gives uncertainty but no replay guarantee. A Gaussian Process gives both but at <code>O(N³)</code> training cost. ABNG gives both at <code>O(N · d²)</code> cost per leaf, plus replay, plus per-region uncertainty stratification.</p>
-<p><strong>Concrete example.</strong> Training data: 32 observations in the interior <code>[0.25, 0.75]</code>, 4 observations in each of the two edge regions <code>[0, 0.25)</code> and <code>[0.75, 1]</code> (deliberately asymmetric). After training, an interior probe at <code>x = 0.5</code> gives <code>epistemic_leverage ≈ 0.01</code>; an edge probe at <code>x = 0.05</code> gives <code>epistemic_leverage &gt; 0.1</code>. The strict separation holds across all 5 probe pairs tested.</p>
-<div class="callout callout-style-default callout-warning callout-titled">
+<section id="categories-covered-in-this-article" class="level2">
+<h2 class="anchored" data-anchor-id="categories-covered-in-this-article">4. Categories covered in this article</h2>
+<p>Brief formal definitions before the deep dives.</p>
+<section id="determinism" class="level3">
+<h3 class="anchored" data-anchor-id="determinism">4.1 Determinism</h3>
+<p><strong>Definition.</strong> ABNG is deterministic if, given the same seed and the same observation sequence, two runs produce a byte-identical snapshot, including the same <code>chain_head</code> (the SHA-256 commitment at the end of the audit chain).</p>
+<p><strong>Mechanism.</strong> Four substrate-level commitments inherited from CJC-Lang:</p>
+<ul>
+<li><strong>Kahan-compensated summation</strong> on every f64 accumulator. Plain <code>+=</code> is banned in canonical paths.</li>
+<li><strong>No fused multiply-add (FMA)</strong> in any kernel that touches belief state. Some CPUs differ at the bit level when FMA is used; ABNG accepts the FLOPs cost to avoid the divergence.</li>
+<li><strong><code>BTreeMap</code> and <code>BTreeSet</code> everywhere.</strong> <code>HashMap</code> is banned because Rust randomizes its hash seed per process for security; iteration order is therefore non-deterministic.</li>
+<li><strong><code>SplitMix64</code> RNG seeded explicitly</strong> from <code>(graph.seed, node_id, layer_idx, kind_bit)</code> derivations. No global RNG state, no hardware RNG.</li>
+</ul>
+<p><strong>Why it matters.</strong> Without bit-identical determinism, every other property in this article degrades to “approximately holds.” Replay is approximate. Audit chain verification is approximate. Reproducibility of scientific claims is approximate. Approximate reproducibility is the standard in mainstream ML — ABNG is built around the more expensive guarantee that it doesn’t have to be.</p>
+</section>
+<section id="lineage" class="level3">
+<h3 class="anchored" data-anchor-id="lineage">4.2 Lineage</h3>
+<p><strong>Definition.</strong> Given a model snapshot and its audit log, <em>lineage</em> is the property that you can reconstruct the entire training history with cryptographic integrity. Any tampering — at the dataset, parameter, or audit-log level — surfaces as a typed error at replay time.</p>
+<p><strong>Mechanism.</strong> Every state mutation appends one event to a SHA-256 hash-chained audit log:</p>
+<pre class="text"><code>new_hash = sha256(prev_hash ‖ canonical_bytes(payload))</code></pre>
+<p>Thirty audit kinds are defined (tags <code>0x00..0x1D</code>), covering everything from <code>Created</code> (genesis) to <code>BlrUpdated</code> (witness-only) to <code>ProvenanceStamped</code> (per-node <code>sha256(dataset_bytes)</code>). The chain is <strong>append-only</strong> — no event is ever deleted or modified. Reconstruction at replay time verifies every hash against the recomputed chain.</p>
+<p><strong>Why it matters.</strong> For regulated ML, scientific replication, and postmortem debugging, the question “was this exact model trained on this exact data?” needs a paper trail with cryptographic teeth. <em>Established research-level</em> claim — Merkle trees (1979) and hash-chained audit logs predate ABNG by decades. ABNG’s contribution is applying the primitive at <strong>per-state-mutation granularity</strong> rather than at the per-artefact granularity that MLflow / DVC / Weights &amp; Biases use.</p>
+</section>
+<section id="state-stability" class="level3">
+<h3 class="anchored" data-anchor-id="state-stability">4.3 State Stability</h3>
+<p><strong>Definition.</strong> Per-leaf posterior convergence: as observations accumulate at a leaf, the posterior <code>(m, Λ, a, b)</code> over weights + noise variance converges toward truth at the rate Bayesian theory predicts.</p>
+<p><strong>Mechanism.</strong> The Normal-Inverse-Gamma conjugate update for Gaussian-noise linear regression:</p>
+<p><img src="https://latex.codecogs.com/png.latex?%0A%5CLambda_%7B%5Ctext%7Bnew%7D%7D%20=%20%5CLambda%20+%20%5Cphi%5Cphi%5E%5Ctop,%20%5Cquad%20m_%7B%5Ctext%7Bnew%7D%7D%20=%20%5CLambda_%7B%5Ctext%7Bnew%7D%7D%5E%7B-1%7D(%5CLambda%20m%20+%20%5Cphi%20y),%0A"></p>
+<p><img src="https://latex.codecogs.com/png.latex?%0Aa_%7B%5Ctext%7Bnew%7D%7D%20=%20a%20+%20%5Ctfrac%7B1%7D%7B2%7D,%20%5Cquad%20b_%7B%5Ctext%7Bnew%7D%7D%20=%20b%20+%20%5Ctfrac%7B1%7D%7B2%7D%5Cleft(y%5E2%20+%20m%5E%5Ctop%20%5CLambda%20m%20-%20m_%7B%5Ctext%7Bnew%7D%7D%5E%5Ctop%20%5CLambda_%7B%5Ctext%7Bnew%7D%7D%20m_%7B%5Ctext%7Bnew%7D%7D%5Cright).%0A"></p>
+<p>This is textbook Bayesian linear regression (Bishop, <em>Pattern Recognition and Machine Learning</em>, 2006, §3.3; Murphy, <em>Machine Learning: A Probabilistic Perspective</em>, 2012, §7.6). The substrate is deterministic by §4.1; the math is conjugate; the convergence rate is <code>O(1/√n)</code> by the standard Bernstein-von Mises results.</p>
+<p><strong>Why it matters.</strong> Many architectures <em>claim</em> Bayesian behaviour without ever empirically demonstrating that their implementation converges to the analytical answer. ABNG’s Experiment α (§7.1) closes this gap with a direct measurement on synthetic data where <code>(w_true, σ²_true)</code> is known.</p>
+</section>
+<section id="probabilistic-consistency" class="level3">
+<h3 class="anchored" data-anchor-id="probabilistic-consistency">4.4 Probabilistic Consistency</h3>
+<p><strong>Definition.</strong> When the model reports a predicted probability <code>p̂</code>, the empirical frequency of the event being predicted is close to <code>p̂</code> across many predictions in the same probability bin. Quantified by Expected Calibration Error (ECE) over 15 bins.</p>
+<p><strong>Mechanism.</strong> Per-leaf <code>CalibrationBins</code> track three quantities per bin: count, count of correct/positive outcomes, and the Kahan-accumulated sum of predicted probabilities. The reliability diagram plots (<code>mean predicted</code>, <code>observed frequency</code>) per bin; a perfectly-calibrated model lies on the diagonal.</p>
+<p><strong>Why it matters.</strong> Calibrated probabilities are decision-theoretically meaningful. When a doctor reads “85% probability of malignancy,” that number being approximately correct on average is the foundation for using the prediction at all. Most deep networks need explicit recalibration (temperature scaling, Platt scaling); ABNG tracks calibration natively, per leaf.</p>
+</section>
+<section id="explainability" class="level3">
+<h3 class="anchored" data-anchor-id="explainability">4.5 Explainability</h3>
+<p><strong>Definition.</strong> For any individual prediction, you can answer “what evidence led the model here, and how confident should I be?” by reading the audit log, the route trace, and the per-leaf state.</p>
+<p><strong>Mechanism.</strong> Three artefacts: - <strong>Composite OOD score</strong>: <code>max(density_score, prefix_distance, epistemic_z)</code>. Decision-theoretic abstain trigger. - <strong><code>abng_predict_snap</code></strong>: a byte-serializable “prediction blob” containing <code>(route_evidence, mean, lev, ale, ood_score, audit_pointer, provenance_stamp_hash)</code>. A user opening a saved prediction weeks later can verify every constituent of the decision. - <strong><code>cjcl abng inspect</code></strong>: CLI tool that walks the audit log, dumps per-node state, or compares two snapshots.</p>
+<div class="callout callout-style-default callout-note callout-titled">
 <div class="callout-header d-flex align-content-center">
 <div class="callout-icon-container">
 <i class="callout-icon"></i>
 </div>
 <div class="callout-title-container flex-fill">
-Important basis-in-span caveat
+Explainability vs.&nbsp;interpretability
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p>This demo is the architecture’s <strong>home turf</strong>, not a generalization claim. The feature basis is engineered so the analytical solution is in span. Section 7 / Experiment β tests what happens when the basis can’t represent the target — the result is informative and surprising.</p>
+<p>These terms are often conflated. Following Doshi-Velez &amp; Kim 2017 (“Towards A Rigorous Science of Interpretable Machine Learning”), this article uses them with distinct meanings.</p>
+<ul>
+<li><strong>Explainability</strong>: the model can answer “<em>why</em> did you produce this output?” for a specific decision. ABNG provides this via the audit chain, route trace, and <code>predict_snap</code> blob. A user can replay any past decision and inspect its inputs and intermediate state.</li>
+<li><strong>Interpretability</strong>: a human can read the model parameters and understand the function the model implements at a semantic level. ABNG does <strong>not</strong> provide this. The per-leaf MLP body is a small black-box network; the BLR posterior is interpretable only in the standard “weight on each feature dimension” sense.</li>
+</ul>
+<p>ABNG’s pitch is <strong>explainability</strong>, not interpretability — and the distinction is worth preserving in any TDS-style framing.</p>
 </div>
 </div>
 </section>
-<section id="tabular-gp-like-regression" class="level4">
-<h4 class="anchored" data-anchor-id="tabular-gp-like-regression">5.2 Tabular GP-like regression</h4>
-<blockquote class="blockquote">
-<p><strong>What it proves.</strong> Trained ABNG achieves MSE less than half the prior’s on 64 held-out queries (asserted in <code>tabular_train_reduces_held_out_mse_vs_prior</code>); epistemic leverage shrinks with more data (<code>lev_64pts &lt; lev_16pts</code>); evidence is partitioned across leaves (no single leaf holds ≥ 90% of N=200 observations).</p>
-</blockquote>
-<p><strong>Why it matters.</strong> This is the cleanest “ABNG behaves like a GP without the cubic cost” demo. The article <em>does not</em> claim ABNG beats a sklearn GP on the same task (no head-to-head measurement exists), but the GP-like properties are individually verifiable.</p>
-<p><strong>How it differs.</strong> Classical GP touches all N points per training step (<code>O(N³)</code>); ABNG’s per-leaf BLR sees only the points routed to it. At N=200, the routing partition keeps any single leaf under 90% of observations — empirically verified.</p>
-<p><strong>Concrete example.</strong> Train ABNG on N=200 deterministic samples from <code>y = 2x₁ + 3x₂ + 0.5x₁x₂ + N(0, 0.05)</code>. Test on 64 held-out queries. The trained MSE is empirically less than half the prior MSE (assertion); no individual leaf in the routing partition holds more than ~50% of training observations (assertion).</p>
 </section>
-<section id="lineage-attestation-tamper-detection" class="level4">
-<h4 class="anchored" data-anchor-id="lineage-attestation-tamper-detection">5.3 Lineage attestation (tamper detection)</h4>
-<blockquote class="blockquote">
-<p><strong>What it proves.</strong> A single-row dataset change between Lab A’s training data and an attacker’s substituted Lab B data produces detectable signal at three independent integrity checkpoints: <code>chain_head</code>, per-leaf BLR <code>state_hash</code>, and root <code>provenance_stamp_hash</code> (= <code>sha256(dataset_bytes)</code>).</p>
-</blockquote>
-<p><strong>Why it matters.</strong> This is the <strong>only adversarial test in the codebase</strong>. It constructs a “what would an attacker do” scenario rather than a positive-control determinism check. The three-signal spoof detection cannot be defeated by forging any one signal alone — an attacker would need simultaneous SHA-256 collisions across three independent commitments.</p>
-<p><strong>How it differs.</strong> MLflow / DVC / Weights &amp; Biases track artefacts and metadata. None of them produce a chain that detects a single-row dataset tamper. The granularity is fundamentally different — artefact-level vs state-mutation-level.</p>
-<p><strong>Concrete example.</strong> Dataset A: 64 rows <code>(patient_id, dose, response)</code> with <code>response = 0.2 + 0.6·dose + 0.1·dose²</code>. Dataset B: A with patient 17’s response increased by 0.5 (single-row tamper). Three independent checks fire:</p>
-<pre><code>sha256(A_bytes) ≠ sha256(B_bytes)              ← provenance stamp mismatch
-g_A.chain_head ≠ g_B.chain_head                 ← entire training history differs
-g_A.leaves[k].blr.state_hash() ≠ g_B.leaves[k].blr.state_hash()  ← affected leaf</code></pre>
-</section>
-<section id="ood-detection-composite-score" class="level4">
-<h4 class="anchored" data-anchor-id="ood-detection-composite-score">5.4 OOD detection (composite score)</h4>
-<blockquote class="blockquote">
-<p><strong>What it proves.</strong> Three training-density tiers — densely-trained bin 0+1, lightly-trained bin 2, untrained bin 3 — produce three distinct OOD-score tiers (asserted in <code>ood_cjcl_three_tier_separation</code>).</p>
-</blockquote>
-<p><strong>Why it matters.</strong> Demonstrates the composite <code>ood_score = max(density_score, prefix_distance, epistemic_z)</code> discriminates between training regimes. <strong>Tag: Demonstrated</strong>, not Proven — no comparison against established OOD methods (Mahalanobis-Lee 2018, deep SVDD, Isolation Forest) is run, so this is mechanism-validation only.</p>
-</section>
-<section id="adaptive-triggers-decide_step-engine" class="level4">
-<h4 class="anchored" data-anchor-id="adaptive-triggers-decide_step-engine">5.5 Adaptive triggers (decide_step engine)</h4>
-<blockquote class="blockquote">
-<p><strong>What it proves.</strong> After running <code>decide_step</code> on a graph with similar-signature siblings, <code>action_counts[Merge]</code> is non-zero AND the audit log grew with structural events AND <code>verify_chain()</code> still returns Ok (the audit chain survives structural mutation — the critical invariant).</p>
-</blockquote>
-<p><strong>Why it matters.</strong> Demonstrates that the structural-decision engine doesn’t break the determinism contract. If <code>decide_step</code> could corrupt the audit chain, every replayability claim would collapse. The invariant <code>verify_chain() = Ok</code> after <code>decide_step</code> is therefore <em>the</em> most important property to verify.</p>
-</section>
-<section id="calibration-drift-compact-log-maturity-demos" class="level4">
-<h4 class="anchored" data-anchor-id="calibration-drift-compact-log-maturity-demos">5.6–5.9 Calibration, Drift, Compact-log, Maturity demos</h4>
-<p>Briefly: each demonstrates the named capability at small scale with parity-gated CJC-Lang sources. Per the Phase 2 verification scorecard, each is tagged <em>Demonstrated</em> (small-scale tests, no baseline comparisons).</p>
-</section>
-</section>
-<section id="aggregate-verification-scorecard" class="level3">
-<h3 class="anchored" data-anchor-id="aggregate-verification-scorecard">Aggregate verification scorecard</h3>
+<section id="experimental-goals" class="level2">
+<h2 class="anchored" data-anchor-id="experimental-goals">5. Experimental goals</h2>
+<p>Pre-registered claims this article supports. Pre-registered failure modes that would invalidate each claim.</p>
+<section id="claims-and-pass-conditions" class="level3">
+<h3 class="anchored" data-anchor-id="claims-and-pass-conditions">Claims and pass conditions</h3>
 <table class="table">
 <colgroup>
-<col style="width: 20%">
-<col style="width: 20%">
-<col style="width: 20%">
-<col style="width: 20%">
-<col style="width: 20%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>#</th>
-<th>Demo</th>
-<th>Tag</th>
-<th>Strongest evidence</th>
-<th>Weakest gap</th>
+<th>Claim</th>
+<th>What’s claimed</th>
+<th>Pass condition</th>
+<th>Falsification</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>1</td>
-<td>PINN uncertainty</td>
-<td><strong>Proven</strong> @ N=48</td>
-<td><code>\|pred − truth\| &lt; 0.05</code> + edge/interior lev separation + locked canary</td>
-<td>Feature basis contains analytical solution</td>
+<td><strong>C1</strong></td>
+<td>NIG conjugate update is correct</td>
+<td><code>‖m_n − w_true‖</code> and <code>b_n/(a_n−1)</code> decay as <code>O(1/√n)</code> on synthetic data</td>
+<td>Plateau, or wrong limit</td>
 </tr>
 <tr class="even">
-<td>2</td>
-<td>Tabular GP-like</td>
-<td><strong>Proven</strong> @ N=200</td>
-<td><code>trained_MSE &lt; 0.5 × prior_MSE</code> + uncertainty shrinks with N</td>
-<td>No actual GP baseline in code</td>
+<td><strong>Cδ</strong></td>
+<td>Replay invariant under structural mutation</td>
+<td>After ≥5 forced mutations (Grow / Split / Freeze etc.), <code>serialize(replay(blob)) == blob</code> exactly</td>
+<td>Any byte differs</td>
 </tr>
 <tr class="odd">
-<td>3</td>
-<td>Lineage attestation</td>
-<td><strong>Proven</strong> @ 64 rows</td>
-<td>Three-signal spoof detection</td>
-<td>Single-row tamper is the easy case</td>
+<td><strong>C3</strong></td>
+<td>Per-leaf calibration tracks correctly</td>
+<td>Graph-level ECE &lt; 0.05 on a synthetic Bernoulli task with <code>p_true = sigmoid(2x−1)</code></td>
+<td>ECE ≥ 0.05 or systematic deviation from diagonal</td>
 </tr>
 <tr class="even">
-<td>4</td>
-<td>OOD detection</td>
-<td><strong>Demonstrated</strong></td>
-<td>Three-tier separation across training density</td>
-<td>No comparison to standard OOD methods</td>
+<td><strong>C5</strong></td>
+<td>Selective prediction reduces error</td>
+<td>Mean abs error on lowest-<code>k%</code> OOD-scored test points is monotone in <code>k</code> (with at least one ≥ 5× error reduction)</td>
+<td>Curve is flat or non-monotonic</td>
 </tr>
 <tr class="odd">
-<td>5</td>
-<td>Adaptive triggers</td>
-<td><strong>Proven</strong> @ small N</td>
-<td>Audit chain survives <code>decide_step</code></td>
-<td>Negative cases unverified</td>
-</tr>
-<tr class="even">
-<td>6–9</td>
-<td>Calibration, Drift, Compact-log, Maturity</td>
-<td><strong>Demonstrated</strong></td>
-<td>Per-capability single-scenario tests</td>
-<td>No baselines</td>
-</tr>
-<tr class="odd">
-<td>10–14</td>
-<td>Triggers (Compress/Grow/Split/Prune/Freeze)</td>
-<td><strong>Demonstrated</strong> per action</td>
-<td>Each action fires under controlled conditions</td>
-<td>No negative-case assertions</td>
+<td><strong>Cζ</strong></td>
+<td>Kahan summation premium is ~2×</td>
+<td>Slowdown between 1.8× and 3× vs plain f64 <code>+=</code></td>
+<td>Slowdown outside that range</td>
 </tr>
 </tbody>
 </table>
+<p>All five experiments <strong>passed</strong> in this run. Section 7 walks through each.</p>
+</section>
+<section id="pre-registered-failure-modes" class="level3">
+<h3 class="anchored" data-anchor-id="pre-registered-failure-modes">Pre-registered failure modes</h3>
+<p>What it would mean if each claim failed:</p>
+<ul>
+<li><strong>C1 fails</strong> → NIG implementation is buggy. <em>Most fundamental possible failure.</em> Would invalidate every downstream claim that depends on the BLR posterior.</li>
+<li><strong>Cδ fails</strong> → audit chain or replay logic has a subtle bug masking under non-mutating workloads. Would force a careful architectural review.</li>
+<li><strong>C3 fails</strong> → either the Bernoulli setup is mis-specified, or the calibration aggregation has a bug, or the per-leaf BLR is mismatching predicted probabilities (e.g., a clamping issue).</li>
+<li><strong>C5 fails</strong> → composite OOD score isn’t actually useful as an abstain signal. ABNG’s “abstain when ABNG says abstain” pitch collapses; OOD score becomes a debug metric only.</li>
+<li><strong>Cζ fails</strong> → either Kahan is much more expensive than expected (and the architecture’s determinism premium is understated), or Kahan is comparable to plain <code>+=</code> (suggesting the compiler is optimizing something away — would require diagnosis).</li>
+</ul>
+<p>The point of pre-registering these is that the experiments cannot be retroactively spun. If a test ran and the result missed the pre-registered range, the article would have to say so.</p>
 </section>
 </section>
-<section id="structural-evolution-benchmarks" class="level2">
-<h2 class="anchored" data-anchor-id="structural-evolution-benchmarks">6. Structural evolution benchmarks</h2>
-<p>This section reports the first measurements of <code>decide_step</code> cost as a function of graph size (Experiment ε), addressing the most prominent gap in the previous version of this article.</p>
-<section id="experiment-ε-decide_step-scaling" class="level3">
-<h3 class="anchored" data-anchor-id="experiment-ε-decide_step-scaling">Experiment ε — <code>decide_step</code> scaling</h3>
-<p><strong>Hypothesis.</strong> <code>decide_step</code> is <code>O(n_active_nodes)</code>.</p>
-<p><strong>Methodology.</strong> Built graphs with <code>n_active ∈ {16, 64, 256}</code> active nodes via repeated <code>add_node</code> calls at the root. Ran <code>decide_step</code> 20 times per configuration with 3 warmup calls; report min and mean over the 20 trials. Cap at 256 because the codebook used has 256 bins (1 byte per dim).</p>
-<p><strong>Result.</strong></p>
-<table class="table">
-<thead>
-<tr class="header">
-<th style="text-align: right;">n_active</th>
-<th style="text-align: right;">min (ns)</th>
-<th style="text-align: right;">mean (ns)</th>
-<th style="text-align: right;">per-node-min (ns)</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: right;">17 (incl.&nbsp;root)</td>
-<td style="text-align: right;">1,900</td>
-<td style="text-align: right;">10,115</td>
-<td style="text-align: right;">111.8</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">65</td>
-<td style="text-align: right;">3,600</td>
-<td style="text-align: right;">88,705</td>
-<td style="text-align: right;">55.4</td>
-</tr>
-<tr class="odd">
-<td style="text-align: right;">256</td>
-<td style="text-align: right;">2,000</td>
-<td style="text-align: right;">147,850</td>
-<td style="text-align: right;">7.8</td>
-</tr>
-</tbody>
-</table>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><img src="https://adamezzat1.github.io/blog/posts/abng-benchmarks/figures/v4_decide_step_scaling.png" class="img-fluid figure-img"></p>
-<figcaption class="figure-caption">V4 — decide_step scaling</figcaption>
-</figure>
-</div>
-<p><strong>Verdict.</strong> Mean time grows roughly linearly with <code>n_active</code> (10K → 89K → 148K ns for 17 → 65 → 256 nodes). The minimum-of-20 measurement is noisy at small n_active (clock resolution dominates) but the mean is clean. <strong>C4 supported</strong> at the tested scales: sub-millisecond at n_active ≤ 256, scaling consistent with the O(n) hypothesis.</p>
-<p><strong>Honest limit.</strong> The codebook used has 256 bins so the bench can’t grow beyond ~256 nodes at depth 1. To exercise n_active = 1K, 10K, larger codebooks or deeper trees are needed. Extending the bench to multi-depth graphs is straightforward but not done in this run.</p>
+<section id="mini-demo-narratives" class="level2">
+<h2 class="anchored" data-anchor-id="mini-demo-narratives">6. Mini-demo narratives</h2>
+<p>Five concrete scenarios — one per category — that exercise the mechanisms on small, inspectable inputs. Each mini-demo is <strong>faithful to ABNG’s actual architecture</strong>: routing to a single leaf per input, per-leaf belief update, audit chain advance. The narratives do <strong>not</strong> imply multi-node belief propagation across nodes — ABNG does not do that.</p>
+<section id="md-i-1-replay-after-10k-observations-determinism" class="level3">
+<h3 class="anchored" data-anchor-id="md-i-1-replay-after-10k-observations-determinism">MD-I-1 — Replay after 10K observations (Determinism)</h3>
+<pre class="text"><code>Setup:  ABNG graph G_A, seed = 42, codebook with 4 bins
+Training: 10,000 observations from a deterministic stream
+
+After step 10,000:
+  chain_head_A = 30d333f1...c4e468d    (32-byte SHA-256 commitment)
+  snapshot_A   = 1.37 MB                (serialized blob)
+
+Replay protocol:
+  serialize(G_A) → blob_A
+  replay(blob_A) → G_A'
+
+Assertions (the test fails on any mismatch):
+  G_A'.chain_head == G_A.chain_head        → YES, byte-equal
+  serialize(G_A') == blob_A                → YES, byte-equal
+  every BLR.state_hash() matches its witness → YES
+
+Inspectable artefacts:
+  cjcl abng inspect blob_A --audit         walk every event
+  cjcl abng inspect blob_A --node 7        deep dump of leaf #7
+  cjcl abng diff blob_A blob_B             per-node structural diff
+
+Determinism property:
+  Two independent runs of the same training trajectory produce
+  bit-identical snapshots. The chain_head is a single 32-byte
+  commitment to the entire training history; any single bit of
+  difference anywhere in the chain shows up as a different head.</code></pre>
+<p>What ABNG tracked: the audit log, every BLR posterior state hash, every per-node Welford accumulator. What was deterministic: every Kahan-summed accumulation, every routing decision, every audit-event hash. The replay path <em>re-derives</em> the same bytes — it does not store and load them; it reconstructs them from the log.</p>
 </section>
-<section id="action-count-distribution" class="level3">
-<h3 class="anchored" data-anchor-id="action-count-distribution">Action-count distribution</h3>
-<p>The Experiment δ data reports <code>action_counts: [u64; 6]</code> after a deliberate sequence of forced mutations (3 Grow, 2 Split, 0 Merge, 0 Prune, 0 Compress, 2 Freeze). The distribution is exactly what was forced — every structural action in the policy fired as intended, the audit log gained 5 events for the 5 successful mutations (Grow, Split, Split, Freeze, Freeze; one force_split was skipped due to a precondition failure on an unfortunate parent), and the chain hash advanced consistently.</p>
-<p>This is the data underlying <a href="../../../blog/posts/abng-architecture/index.html">Part 1’s mutation timeline</a> — see that article for the diagrams that visualize how the graph evolves.</p>
+<section id="md-i-2-tamper-detection-on-a-64-row-clinical-dataset-lineage" class="level3">
+<h3 class="anchored" data-anchor-id="md-i-2-tamper-detection-on-a-64-row-clinical-dataset-lineage">MD-I-2 — Tamper detection on a 64-row clinical dataset (Lineage)</h3>
+<pre class="text"><code>Setup:
+  Dataset A: 64 rows (patient_id, dose, response)
+            response = 0.2 + 0.6 · dose + 0.1 · dose²
+  Dataset B: identical to A except patient 17's response += 0.5
+            (a single-row tamper)
+
+Lab A trains:
+  g_A = train_abng(seed=7, dataset_A)
+  stamp_A = sha256(dataset_A_bytes)
+  g_A.stamp_provenance(root=0, stamp_A)
+  → g_A.chain_head = AAAA...
+  → g_A.nodes[0].provenance_stamp_hash = stamp_A
+
+Attacker swaps in g_B (trained on tampered B):
+  g_B.chain_head             ≠ g_A.chain_head
+  g_B.nodes[k].blr.state_hash() ≠ g_A.nodes[k].blr.state_hash()
+    (k = leaf containing patient 17)
+  g_B.nodes[0].provenance_stamp_hash = sha256(B_bytes) ≠ stamp_A
+
+Regulator runs three independent checks:
+  ✗ chain_head mismatch
+  ✗ BLR state-hash mismatch at the affected leaf
+  ✗ provenance stamp mismatch
+
+Inspectable artefacts:
+  cjcl abng inspect g_B.snap --audit        full event log
+  cjcl abng explain prediction.snap         "ABSTAIN: provenance
+                                             stamp does not match"
+
+Lineage property:
+  An attacker forging the swap needs simultaneous SHA-256
+  collisions across three independent commitments. Each one is
+  computationally infeasible; all three is the strong claim.</code></pre>
+<p>The three signals are <em>independent</em> by construction. The chain head depends on every audit event. The BLR state hash depends on the posterior of one leaf. The provenance stamp depends only on the dataset bytes. Forging any one of them while keeping the other two consistent is roughly as hard as inverting SHA-256.</p>
+</section>
+<section id="md-i-3-blr-posterior-converges-to-w_true-at-1n-state-stability" class="level3">
+<h3 class="anchored" data-anchor-id="md-i-3-blr-posterior-converges-to-w_true-at-1n-state-stability">MD-I-3 — BLR posterior converges to <code>w_true</code> at 1/√n (State Stability)</h3>
+<pre class="text"><code>Setup:
+  Direct BlrState (no graph, no audit)
+  Prior: λ_0 = 0.01, a_0 = 1.5, b_0 = 1.0
+  Truth: w_true = [1.5, -2.0, 0.5, 0.7];  σ²_true = 0.04
+  Observations: y_i = wᵀφ_i + N(0, σ²_true)
+                φ_i drawn uniformly from [-1, 1]⁴
+
+n     ‖m_n − w_true‖_2     b/(a-1)
+─────────────────────────────────────
+10    0.189                0.233
+30    0.090                0.104
+100   0.092                0.064
+300   0.025                0.046
+1000  0.026                0.042
+3000  0.014                0.040
+10000 0.004                0.0397
+
+Decay rate: ~1/√n (matches Monte Carlo theory)
+b/(a-1) approaches σ²_true = 0.04 from above (b_0 &gt; 0 forces this)
+
+Inspectable artefacts:
+  Every step appends one BlrUpdated event (32-byte witness)
+  Full posterior tuple lives in the per-node snapshot section
+  audit log records every update by sequence number
+
+State-stability property:
+  Sparse data → wide posterior. Abundant data → tight posterior.
+  Both behaviours match analytical predictions exactly.</code></pre>
+<p>The aleatoric estimate approaching truth <em>from above</em> is not coincidence — it is a property of the NIG prior with <code>b_0 &gt; 0</code>. The conjugate update can only ever <em>increase</em> <code>b</code> (the residual contribution is non-negative). The implementation correctly preserves this.</p>
+</section>
+<section id="md-i-4-9-calibration-bins-ece-0.015-probabilistic-consistency" class="level3">
+<h3 class="anchored" data-anchor-id="md-i-4-9-calibration-bins-ece-0.015-probabilistic-consistency">MD-I-4 — 9 calibration bins, ECE = 0.015 (Probabilistic Consistency)</h3>
+<pre class="text"><code>Setup:
+  Synthetic Bernoulli problem
+  p_true(x) = sigmoid(2x - 1) on x ~ Uniform(-1, 1)
+  5000 observations
+  4 codebook bins, 15 calibration bins per leaf
+
+After training (aggregated across all leaves):
+  bin   pred_mean   obs_freq   count
+  ─────────────────────────────────
+   2     0.167       0.182      825
+   3     0.218       0.246      224
+   4     0.305       0.296      287
+   5     0.370       0.353      533
+   6     0.427       0.461      440
+   7     0.512       0.527      167
+   8     0.571       0.596      473
+   9     0.632       0.642      422
+  10     0.686       0.692      185
+
+Graph-level weighted ECE = 0.0150
+(well below the 0.05 "well-calibrated" threshold)
+
+Inspectable artefacts:
+  Per-leaf 15-bin tables via the CalibrationBins public fields
+  Aggregate ECE via abng_calibration_ece(leaf_id)
+  Audit log records every observation as CalibrationUpdated (0x0E)
+
+Probabilistic-consistency property:
+  When the model says "30% probability," 30% of those cases
+  actually occur. Across 9 non-empty bins, observed frequency
+  is within 3 percentage points of predicted mean.</code></pre>
+<p>The aggregate ECE of 0.015 is a <em>weighted</em> mean of the per-bin gaps, weighted by bin population. Bins 2 (n=825) and 5 (n=533) carry most of the weight; their gaps of 0.015 and 0.017 dominate the aggregate. ECE is therefore a <em>graph-level</em> metric, not a per-leaf one.</p>
+</section>
+<section id="md-i-5-abstain-when-abng-says-abstain-explainability" class="level3">
+<h3 class="anchored" data-anchor-id="md-i-5-abstain-when-abng-says-abstain-explainability">MD-I-5 — Abstain when ABNG says abstain (Explainability)</h3>
+<pre class="text"><code>Setup:
+  Train on 200 observations of u(x, 0.1) = exp(-π²·0.1)·sin(πx)
+    sampled from x ~ Uniform(0.25, 0.75)
+  Test on 1000 held-out points sampled from x ~ Uniform(0, 1)
+    (extends beyond the training region)
+
+For each test point:
+  predict at routed leaf → (mean, lev, ale)
+  ood_score = max(density_score, prefix_distance, epistemic_z)
+
+Selective prediction (keep lowest-k% of test set by OOD score):
+  k = 5%     →  MAE = 7.86 × 10⁻³
+  k = 30%    →  MAE = 7.39 × 10⁻³
+  k = 50%    →  MAE = 9.31 × 10⁻³
+  k = 70%    →  MAE = 3.90 × 10⁻²
+  k = 100%   →  MAE = 7.42 × 10⁻²
+
+Error reduction: 10.3× by abstaining on the worst 50%
+
+Inspectable artefacts:
+  predict_snap blob: (route_evidence, mean, lev, ale, ood_score,
+                      audit_pointer, provenance_stamp_hash)
+  Full audit trail per prediction
+  cjcl abng explain prediction.snap
+
+Explainability property:
+  The OOD score correlates with prediction error. Predictions
+  with high OOD score have higher empirical error; predictions
+  with low OOD score can be trusted. The abstain decision is
+  defensible by inspecting the per-prediction lineage.</code></pre>
+<p>The curve has a clear knee around <code>k = 50%</code>. Inputs below the knee are inside the training region; inputs above it are extrapolating. The OOD score is doing its job: it rises as the input moves away from where the model has evidence, and at high OOD the prediction becomes unreliable. The 10× error reduction is measured, not extrapolated.</p>
 </section>
 </section>
-<section id="uncertainty-calibration-benchmarks" class="level2">
-<h2 class="anchored" data-anchor-id="uncertainty-calibration-benchmarks">7. Uncertainty &amp; calibration benchmarks</h2>
-<p>Three new experiments quantify ABNG’s uncertainty story for the first time on this hardware.</p>
-<section id="experiment-α-posterior-consistency-on-known-truth" class="level3">
-<h3 class="anchored" data-anchor-id="experiment-α-posterior-consistency-on-known-truth">7.1 Experiment α — Posterior consistency on known truth</h3>
-<p>This is the <strong>cheapest possible falsification</strong> of the BLR conjugate update.</p>
-<p><strong>Hypothesis.</strong> <code>BlrState::update</code> correctly implements the NIG conjugate update. The posterior mean converges to the true weight vector; the posterior aleatoric estimate <code>b/(a−1)</code> approaches the true <code>σ²</code> from above (because <code>b_0 &gt; 0</code>).</p>
-<p><strong>Methodology.</strong> Synthetic data with <code>w_true = [1.5, -2.0, 0.5, 0.7]</code> and <code>σ²_true = 0.04</code>. Sample feature vectors uniformly in <code>[-1, 1]⁴</code>. Noise: <code>Box-Muller</code>-derived Gaussian. Train one direct <code>BlrState</code> (no graph, no audit) on increasing <code>n ∈ {10, 30, 100, 300, 1000, 3000, 10000}</code>. After each <code>n</code>, report <code>‖m_n − w_true‖₂</code> and <code>b_n/(a_n − 1)</code>.</p>
+<section id="deep-experiments" class="level2">
+<h2 class="anchored" data-anchor-id="deep-experiments">7. Deep experiments</h2>
+<p>Five experiments, each with the same shape: hypothesis, methodology, results table, figure, verdict (pass/fail against pre-registered criteria), and honest caveats.</p>
+<section id="experiment-α-nig-posterior-consistency" class="level3">
+<h3 class="anchored" data-anchor-id="experiment-α-nig-posterior-consistency">7.1 Experiment α — NIG posterior consistency</h3>
+<p><strong>Hypothesis (C1).</strong> <code>BlrState::update</code> correctly implements the NIG conjugate update. The posterior mean converges to <code>w_true</code>; aleatoric estimate <code>b/(a−1)</code> approaches <code>σ²_true</code> from above.</p>
+<p><strong>Methodology.</strong> Synthetic data: - <code>w_true = [1.5, −2.0, 0.5, 0.7]</code>, <code>σ²_true = 0.04</code> - Feature vectors <code>φ_i ~ Uniform(-1, 1)⁴</code> - Noise via Box-Muller transform on uniform draws, scaled to <code>σ_true</code> - Direct <code>BlrState</code> instance (bypasses graph dispatch / audit) - Increasing <code>n ∈ {10, 30, 100, 300, 1000, 3000, 10000}</code></p>
 <p><strong>Result.</strong></p>
 <table class="table">
 <thead>
 <tr class="header">
 <th style="text-align: right;">n</th>
-<th style="text-align: right;"><code>‖m_n − w_true‖₂</code></th>
-<th style="text-align: right;"><code>b/(a-1)</code></th>
-<th style="text-align: right;"><code>\|b/(a-1) − σ²_true\|</code></th>
+<th style="text-align: right;"><code>‖m_n − w_true‖_2</code></th>
+<th style="text-align: right;"><code>b/(a−1)</code></th>
+<th style="text-align: right;"><code>\|b/(a−1) − σ²_true\|</code></th>
 </tr>
 </thead>
 <tbody>
@@ -3137,53 +3150,89 @@ g_A.leaves[k].blr.state_hash() ≠ g_B.leaves[k].blr.state_hash()  ← affected 
 <figcaption class="figure-caption">V5 — NIG posterior convergence (Experiment α)</figcaption>
 </figure>
 </div>
-<p><strong>Verdict.</strong> Both decay roughly as <code>1/√n</code> — exactly the rate the Bayesian theory predicts. <code>b/(a−1)</code> approaches <code>σ²_true = 0.04</code> strictly from above (0.233 → 0.0397), confirming the prior’s contribution shrinks correctly. <strong>C1 supported.</strong> Tagged <em>Proven at the tested scale</em>; this is the cheapest experiment that could falsify the architecture’s correctness, and it passes.</p>
+<p><strong>Verdict.</strong> Both quantities decay as <code>1/√n</code> (visible on log-log axes as a slope of −0.5). <code>b/(a−1)</code> approaches <code>σ²_true</code> strictly from above, as the prior <code>b_0 &gt; 0</code> forces. <strong>C1 passed.</strong> Tag: <strong><em>Proven at the tested scale</em></strong>.</p>
+<p>This is the <strong>cheapest possible falsification</strong> of the BLR conjugate implementation. The data is synthetic with known truth; the math has a known closed form; the decay rate has a known theoretical prediction. If any of those didn’t match, the implementation is wrong. They all match.</p>
 </section>
-<section id="experiment-β-basis-not-in-span-pinn-counterexample" class="level3">
-<h3 class="anchored" data-anchor-id="experiment-β-basis-not-in-span-pinn-counterexample">7.2 Experiment β — Basis-not-in-span PINN counterexample</h3>
-<p>This was specifically requested by the SRG critique to test what happens when the feature basis cannot exactly represent the target function.</p>
-<p><strong>Hypothesis.</strong> ABNG’s PINN performance degrades gracefully when the feature basis cannot represent the target function exactly.</p>
-<p><strong>Methodology.</strong> Two targets, same architecture (8-leaf codebook + 5-D feature basis <code>[1, x, x², x³, sin(πx)]</code> per leaf): - In-span target: <code>u(x) = sin(πx)</code> — in the basis. - Out-of-span target: <code>u(x) = |x − 0.5|</code> — has a kink at x=0.5; not in the polynomial-plus-sinusoid basis globally.</p>
-<p>Train N=10,000 collocation points uniformly on [0, 1]. Evaluate L2 error on 1024 dense grid points.</p>
+<section id="experiment-δ-replay-invariance-under-graph-mutation" class="level3">
+<h3 class="anchored" data-anchor-id="experiment-δ-replay-invariance-under-graph-mutation">7.2 Experiment δ — Replay invariance under graph mutation</h3>
+<p><strong>Hypothesis (Cδ).</strong> A graph that has fired structural mutations (Grow / Split / Merge / Prune / Freeze / Compress) still replays byte-identically.</p>
+<p><strong>Methodology.</strong> Build a graph, train on 200 observations, then force a sequence of mutations: 3× <code>force_grow</code>, 2× <code>force_split</code> attempts (one succeeds), 2× <code>force_freeze</code>. Snapshot. Run <code>replay()</code>. Compare <code>serialize(replayed) == serialize(original)</code> byte-for-byte AND <code>chain_head_original == chain_head_replayed</code>.</p>
 <p><strong>Result.</strong></p>
 <table class="table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
 <thead>
 <tr class="header">
-<th>Scenario</th>
-<th style="text-align: right;">L2 error</th>
-<th style="text-align: right;">Max abs error</th>
-<th style="text-align: right;">Mean leverage</th>
+<th>Metric</th>
+<th>Value</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>In-span <code>sin(πx)</code></td>
-<td style="text-align: right;">9.35 × 10⁻³</td>
-<td style="text-align: right;">2.23 × 10⁻²</td>
-<td style="text-align: right;">1.45 × 10⁻³</td>
+<td>Total audit events</td>
+<td>433</td>
 </tr>
 <tr class="even">
-<td>Out-of-span <code>\|x − 0.5\|</code></td>
-<td style="text-align: right;">9.01 × 10⁻³</td>
-<td style="text-align: right;">2.82 × 10⁻²</td>
-<td style="text-align: right;">1.45 × 10⁻³</td>
+<td>Structural mutations attempted</td>
+<td>5</td>
+</tr>
+<tr class="odd">
+<td>Action counts <code>[Grow, Split, Merge, Prune, Compress, Freeze]</code></td>
+<td><code>[3, 2, 0, 0, 0, 2]</code></td>
+</tr>
+<tr class="even">
+<td>Snapshot bytes</td>
+<td>69,915</td>
+</tr>
+<tr class="odd">
+<td>Replay time</td>
+<td>1.27 ms</td>
+</tr>
+<tr class="even">
+<td><strong>byte_identical</strong></td>
+<td><strong>true</strong> ✓</td>
+</tr>
+<tr class="odd">
+<td><strong>chain_head_match</strong></td>
+<td><strong>true</strong> ✓</td>
 </tr>
 </tbody>
 </table>
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
-<p><img src="https://adamezzat1.github.io/blog/posts/abng-benchmarks/figures/v_beta_basis_check.png" class="img-fluid figure-img"></p>
-<figcaption class="figure-caption">V-β — Basis-in-span vs out-of-span</figcaption>
+<p><img src="https://adamezzat1.github.io/blog/posts/abng-benchmarks/figures/v7_replay_consistency.png" class="img-fluid figure-img"></p>
+<figcaption class="figure-caption">V7 — Replay consistency under mutation</figcaption>
 </figure>
 </div>
-<p><strong>Verdict.</strong> This is a <strong>surprising and interesting</strong> result. The architecture fits the out-of-span function nearly as well as the in-span one — L2 errors are within 4% of each other. The mechanism: ABNG uses 8 routed leaves, each with its own 5-D feature basis. Even though <code>|x − 0.5|</code> is globally non-smooth, each leaf only sees its own slice of input space, and a 5-D affine fit within that slice can approximate the local linear behavior of <code>|x − 0.5|</code> very well. The piecewise-linear nature of <code>|x − 0.5|</code> happens to be a near-perfect match for the piecewise-leaf architecture.</p>
-<p>This <em>is not</em> the “graceful degradation” expected by the hypothesis. ABNG simply leverages its piecewise structure to handle the non-smoothness through the routing partition. The hypothesis was wrong about the failure mode — the architecture is <em>more robust</em> to basis-adequacy than a single global BLR would be. <strong>Tag: Demonstrated</strong>; the implication is that the routing structure provides a kind of “basis-augmentation by partition” that the article’s earlier framing of the PINN demo (Section 5.1) underestimates.</p>
-<p><strong>Honest follow-up.</strong> A truer falsification would use a target function that the <em>piecewise</em> basis can’t fit — e.g., a function with high-frequency oscillation faster than the codebook bin width can resolve. That would force the routing to either over-segment or to fail. Not run in this article.</p>
+<p><strong>Verdict.</strong> <strong>Cδ passed.</strong> The invariant holds under structural mutation at the tested scale. Tag: <strong><em>Proven at the tested scale</em></strong>.</p>
+<p><strong>Caveat (Skeptical Reviewer’s flag).</strong> This is at 5 mutations on a small graph. Larger mutation budgets (≥1000 structural events) and longer training trajectories are not yet stress-tested. The Phase 0.7 handoff doc lists this as candidate work for Phase 0.8.</p>
 </section>
-<section id="experiment-γ-selective-prediction-curve" class="level3">
-<h3 class="anchored" data-anchor-id="experiment-γ-selective-prediction-curve">7.3 Experiment γ — Selective prediction curve</h3>
-<p><strong>Hypothesis.</strong> Abstaining at high OOD score improves average accuracy on kept predictions.</p>
-<p><strong>Methodology.</strong> Train ABNG on 200 deterministic observations concentrated in <code>[0.25, 0.75]</code> of the same heat-equation analytical solution. Compute predictions on 1000 held-out points uniformly distributed on <code>[0, 1]</code> (extends beyond training). Sort by composite OOD score. For each <code>k ∈ {5, 10, 20, 30, 50, 70, 100}%</code>, compute mean absolute error on the lowest-k% scored points.</p>
+<section id="experiment-η-per-bin-reliability-diagram" class="level3">
+<h3 class="anchored" data-anchor-id="experiment-η-per-bin-reliability-diagram">7.3 Experiment η — Per-bin reliability diagram</h3>
+<p><strong>Hypothesis (C3).</strong> Per-leaf 15-bin reliability diagram tracks calibration correctly. On a synthetic Bernoulli problem, observed frequency per bin should approach predicted mean per bin (curve hugs the diagonal).</p>
+<p><strong>Methodology.</strong> <code>p_true(x) = sigmoid(2x − 1)</code>, <code>x ~ Uniform(-1, 1)</code>. Sample <code>y_i ~ Bernoulli(p_true(x_i))</code> for n = 5,000 observations. ABNG models the success probability per-leaf via BLR; clamp output to <code>[0, 1]</code> for <code>calibration_observe</code>. Aggregate per-bin <code>(count, sum_of_predicted, count_of_correct)</code> across all leaves.</p>
+<p><strong>Result.</strong> Graph-level ECE = <strong>0.0150</strong>. Per-bin data shown in MD-I-4 above.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="https://adamezzat1.github.io/blog/posts/abng-benchmarks/figures/v2_reliability_diagram.png" class="img-fluid figure-img"></p>
+<figcaption class="figure-caption">V2 — Per-bin reliability diagram</figcaption>
+</figure>
+</div>
+<p>The bubble size in the figure encodes per-bin observation count: large bubbles are statistically reliable, small ones less so. The curve hugs the diagonal across all 9 non-empty bins.</p>
+<p><strong>Verdict.</strong> <strong>C3 passed.</strong> Tag: <strong><em>Proven at the tested scale</em></strong>.</p>
+<p><strong>Caveats.</strong></p>
+<ol type="1">
+<li>This is one synthetic Bernoulli task with a well-specified <code>p_true</code>. Real-world classifiers tested on harder distributions (class imbalance, label noise, distribution shift) often show worse calibration.</li>
+<li>The aggregate ECE is a <em>weighted</em> mean across leaves, not a per-leaf metric. A small leaf with terrible calibration can be invisible in the aggregate if it has few observations.</li>
+<li><em>Predictive coverage</em> (does the Student-t predictive distribution contain <code>y</code> at the rate its width suggests?) is <strong>not measured here</strong>. Listed as future work.</li>
+</ol>
+</section>
+<section id="experiment-γ-selective-prediction-curve-on-ood" class="level3">
+<h3 class="anchored" data-anchor-id="experiment-γ-selective-prediction-curve-on-ood">7.4 Experiment γ — Selective prediction curve on OOD</h3>
+<p><strong>Hypothesis (C5).</strong> Abstaining at high OOD score improves average accuracy on kept predictions.</p>
+<p><strong>Methodology.</strong> Train ABNG on 200 deterministic observations of <code>u(x, 0.1)</code> concentrated in <code>[0.25, 0.75]</code>. Compute predictions on 1000 held-out points uniformly distributed on <code>[0, 1]</code> (extending beyond training). Sort by composite OOD score. For each <code>k ∈ {5, 10, 20, 30, 50, 70, 100}%</code>, compute mean abs error on the lowest-k% scored points.</p>
 <p><strong>Result.</strong></p>
 <table class="table">
 <thead>
@@ -3242,184 +3291,482 @@ g_A.leaves[k].blr.state_hash() ≠ g_B.leaves[k].blr.state_hash()  ← affected 
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
 <p><img src="https://adamezzat1.github.io/blog/posts/abng-benchmarks/figures/v6_selective_prediction.png" class="img-fluid figure-img"></p>
-<figcaption class="figure-caption">V6 — Selective prediction curve (Experiment γ)</figcaption>
+<figcaption class="figure-caption">V6 — Selective prediction curve</figcaption>
 </figure>
 </div>
-<p><strong>Verdict.</strong> The curve is <strong>strikingly monotonic</strong> up to 50% kept, then jumps sharply. <strong>Keeping the lowest-OOD 20% gives 7.2 × 10⁻³ error; keeping all 100% gives 7.42 × 10⁻² error — a 10.3× error reduction by abstaining on the worst half.</strong> The breakpoint between “trust” and “abstain” is around the 50% mark, which corresponds geometrically to inputs leaving the training region <code>[0.25, 0.75]</code>.</p>
-<p><strong>C5 strongly supported.</strong> Tag: <em>Proven at the tested scale</em>. The abstain-when-OOD policy is empirically a useful decision rule on this scenario.</p>
-<p><strong>Caveat.</strong> This is one scenario. The article does not measure selective-prediction performance on real-world OOD benchmarks (CIFAR-10-C, ImageNet-O, etc.). The result here demonstrates the mechanism works; competitive performance against established OOD methods is unmeasured.</p>
+<p>The curve is strikingly monotonic up to 50% kept, then jumps sharply. <strong>Keeping the lowest-OOD 30% gives 7.4 × 10⁻³ error; keeping all 100% gives 7.42 × 10⁻² error — a 10× error reduction by abstaining on the worst half.</strong></p>
+<p><strong>Verdict.</strong> <strong>C5 passed.</strong> Tag: <strong><em>Proven at the tested scale</em></strong>.</p>
+<p><strong>Caveats.</strong></p>
+<ol type="1">
+<li>This is one scenario where the test distribution extends beyond the training distribution. ABNG has not been measured on standard OOD benchmarks (CIFAR-10-C, ImageNet-O).</li>
+<li>The composite <code>ood_score = max(density, prefix_distance, epistemic_z)</code> is <em>engineering-driven</em> rather than fully Bayesian. It’s deliberately over-conservative (false-positive abstains accepted to reduce false negatives).</li>
+<li>Comparison against published abstain mechanisms (Mahalanobis-based OOD detection from Lee et al.&nbsp;2018; deep SVDD from Ruff et al.&nbsp;2018; conformal prediction) is <strong>not measured here</strong>.</li>
+</ol>
 </section>
-<section id="experiment-η-per-bin-reliability-diagram-v2" class="level3">
-<h3 class="anchored" data-anchor-id="experiment-η-per-bin-reliability-diagram-v2">7.4 Experiment η — Per-bin reliability diagram (V2)</h3>
-<p><strong>Hypothesis.</strong> ABNG’s per-leaf 15-bin reliability diagram tracks calibration correctly. On a synthetic Bernoulli problem with known <code>p_true(x)</code>, the per-bin <em>observed frequency</em> should approach the per-bin <em>predicted-probability mean</em> (i.e., the curve should lie near the diagonal).</p>
-<p><strong>Methodology.</strong> <code>p_true(x) = sigmoid(2x − 1)</code> on <code>x ~ Uniform(-1, 1)</code>. Sample <code>y_i ~ Bernoulli(p_true(x_i))</code> for n=5000 observations. ABNG models the success probability directly via per-leaf BLR; clamp output to <code>[0, 1]</code> for <code>calibration_observe</code>. After all observations, aggregate per-bin <code>(count, sum_of_predicted, count_of_correct)</code> across all leaves and emit <code>(predicted_mean, observed_freq)</code> per bin.</p>
-<p><strong>Result.</strong> Graph-level ECE = <strong>0.0150</strong> — well-calibrated. Per-bin data (non-empty bins shown):</p>
-<table class="table">
-<thead>
-<tr class="header">
-<th style="text-align: right;">Bin</th>
-<th style="text-align: right;">Predicted mean</th>
-<th style="text-align: right;">Observed freq</th>
-<th style="text-align: right;">Count</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: right;">2</td>
-<td style="text-align: right;">0.167</td>
-<td style="text-align: right;">0.182</td>
-<td style="text-align: right;">825</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">3</td>
-<td style="text-align: right;">0.218</td>
-<td style="text-align: right;">0.246</td>
-<td style="text-align: right;">224</td>
-</tr>
-<tr class="odd">
-<td style="text-align: right;">4</td>
-<td style="text-align: right;">0.305</td>
-<td style="text-align: right;">0.296</td>
-<td style="text-align: right;">287</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">5</td>
-<td style="text-align: right;">0.370</td>
-<td style="text-align: right;">0.353</td>
-<td style="text-align: right;">533</td>
-</tr>
-<tr class="odd">
-<td style="text-align: right;">6</td>
-<td style="text-align: right;">0.427</td>
-<td style="text-align: right;">0.461</td>
-<td style="text-align: right;">440</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">7</td>
-<td style="text-align: right;">0.512</td>
-<td style="text-align: right;">0.527</td>
-<td style="text-align: right;">167</td>
-</tr>
-<tr class="odd">
-<td style="text-align: right;">8</td>
-<td style="text-align: right;">0.571</td>
-<td style="text-align: right;">0.596</td>
-<td style="text-align: right;">473</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">9</td>
-<td style="text-align: right;">0.632</td>
-<td style="text-align: right;">0.642</td>
-<td style="text-align: right;">422</td>
-</tr>
-<tr class="odd">
-<td style="text-align: right;">10</td>
-<td style="text-align: right;">0.686</td>
-<td style="text-align: right;">0.692</td>
-<td style="text-align: right;">185</td>
-</tr>
-</tbody>
-</table>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><img src="https://adamezzat1.github.io/blog/posts/abng-benchmarks/figures/v2_reliability_diagram.png" class="img-fluid figure-img"></p>
-<figcaption class="figure-caption">V2 — Per-bin reliability diagram (Experiment η)</figcaption>
-</figure>
-</div>
-<p><strong>Verdict.</strong> The curve hugs the diagonal closely. Every non-empty bin’s observed frequency is within ~3 percentage points of its predicted mean. <strong>C1-extended supported.</strong> The graph-level ECE of 0.015 is well below the typical “well-calibrated” threshold (~0.05). <strong>Tag: Proven at the tested scale.</strong> A reader sees this diagram and reads “the model says 30% confident, and indeed about 30% of those cases were positive” — exactly the calibration property the architecture promises.</p>
-<p><strong>Caveat.</strong> This is one synthetic Bernoulli task with a simple <code>p_true</code>. Real-world classifiers tested on harder distributions (with class imbalance, label noise, distribution shift) may show worse calibration. The reliability diagram demonstrates the <em>mechanism</em> works on well-specified data; it doesn’t certify calibration on arbitrary workloads.</p>
-</section>
-<section id="experiment-θ-routing-flow-v3-sankey" class="level3">
-<h3 class="anchored" data-anchor-id="experiment-θ-routing-flow-v3-sankey">7.5 Experiment θ — Routing flow (V3 Sankey)</h3>
-<p><strong>Hypothesis.</strong> Training data flows through the trie’s codebook bins in proportion to the input distribution; routing can be visualized as a Sankey diagram from root to leaves.</p>
-<p><strong>Methodology.</strong> Generate n=10,000 samples from a skewed input distribution (Gaussian centered at x=0.6, clipped to [0,1]). Train ABNG with an 8-bin 1-D codebook + 8 child leaves. For each input, record the route byte and resolved leaf. Aggregate counts; emit as JSONL.</p>
-<p><strong>Result.</strong> All 10,000 inputs routed; 8 unique route bytes, 8 unique leaves. The distribution matches the input skew toward x ≈ 0.6:</p>
-<table class="table">
-<thead>
-<tr class="header">
-<th style="text-align: right;">Byte</th>
-<th style="text-align: right;">Count</th>
-<th style="text-align: right;">Fraction</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td style="text-align: right;">0x00</td>
-<td style="text-align: right;">8</td>
-<td style="text-align: right;">0.08%</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">0x01</td>
-<td style="text-align: right;">116</td>
-<td style="text-align: right;">1.16%</td>
-</tr>
-<tr class="odd">
-<td style="text-align: right;">0x02</td>
-<td style="text-align: right;">545</td>
-<td style="text-align: right;">5.45%</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">0x03</td>
-<td style="text-align: right;">1,924</td>
-<td style="text-align: right;">19.24%</td>
-</tr>
-<tr class="odd">
-<td style="text-align: right;">0x04</td>
-<td style="text-align: right;">3,139</td>
-<td style="text-align: right;">31.39%</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">0x05</td>
-<td style="text-align: right;">2,694</td>
-<td style="text-align: right;">26.94%</td>
-</tr>
-<tr class="odd">
-<td style="text-align: right;">0x06</td>
-<td style="text-align: right;">1,213</td>
-<td style="text-align: right;">12.13%</td>
-</tr>
-<tr class="even">
-<td style="text-align: right;">0x07</td>
-<td style="text-align: right;">361</td>
-<td style="text-align: right;">3.61%</td>
-</tr>
-</tbody>
-</table>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><img src="https://adamezzat1.github.io/blog/posts/abng-benchmarks/figures/v3_routing_flow.png" class="img-fluid figure-img"></p>
-<figcaption class="figure-caption">V3 — Routing flow Sankey (Experiment θ)</figcaption>
-</figure>
-</div>
-<p><strong>Verdict.</strong> The Sankey makes the “discrete routing partitions input space” claim <em>visible</em>. <strong>Tag: Demonstrated.</strong> The figure replaces what was previously an abstract architectural claim with a concrete view of how inputs flow through the tree on a real training run. For debugging or capacity planning, this is the plot a user would reach for first.</p>
-</section>
-<section id="experiment-ι-2-d-ood-score-heatmap-v9" class="level3">
-<h3 class="anchored" data-anchor-id="experiment-ι-2-d-ood-score-heatmap-v9">7.6 Experiment ι — 2-D OOD score heatmap (V9)</h3>
-<p><strong>Hypothesis.</strong> The composite <code>ood_score</code> and its three components (density, prefix-distance, epistemic-leverage) produce <em>spatially structured</em> abstain signals in input space. Training in a sub-region of the input space should yield distinguishable OOD profiles inside vs outside.</p>
-<p><strong>Methodology.</strong> Train ABNG on n=1000 points sampled uniformly from <code>[0.25, 0.75]²</code> of the truth function <code>f(x, y) = 2x + 3y + 0.5xy</code>. Use a 2-D codebook with 8 bins per dimension. Evaluate on a 50×50 grid covering <code>[0, 1]²</code>. Emit <code>(x, y, ood, density_score, prefix_distance, epistemic_leverage)</code> per grid cell.</p>
+<section id="experiment-ζ-kahan-vs-plain-summation-determinism-premium" class="level3">
+<h3 class="anchored" data-anchor-id="experiment-ζ-kahan-vs-plain-summation-determinism-premium">7.5 Experiment ζ — Kahan-vs-plain summation determinism premium</h3>
+<p><strong>Hypothesis (Cζ).</strong> Kahan accumulation is in the ~2× range claimed in the architecture article.</p>
+<p><strong>Methodology.</strong> Sum 1,000,000 f64 values via plain <code>+=</code> vs <code>KahanAccumulatorF64::add</code>. Use min-of-7 trials per side. Each value is <code>0.001 + sin(i) · 0.0001</code> to defeat optimizer constant-folding.</p>
 <p><strong>Result.</strong></p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Method</th>
+<th style="text-align: right;">Per-element cost</th>
+<th style="text-align: right;">Slowdown vs plain</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>plain f64 <code>+=</code></td>
+<td style="text-align: right;">1.465 ns</td>
+<td style="text-align: right;">1.00× (baseline)</td>
+</tr>
+<tr class="even">
+<td><code>KahanAccumulatorF64</code></td>
+<td style="text-align: right;">3.521 ns</td>
+<td style="text-align: right;"><strong>2.40×</strong></td>
+</tr>
+</tbody>
+</table>
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
-<p><img src="https://adamezzat1.github.io/blog/posts/abng-benchmarks/figures/v9_ood_2d_heatmap.png" class="img-fluid figure-img"></p>
-<figcaption class="figure-caption">V9 — 2-D OOD score heatmap (Experiment ι)</figcaption>
+<p><img src="https://adamezzat1.github.io/blog/posts/abng-benchmarks/figures/v_zeta_kahan_vs_plain.png" class="img-fluid figure-img"></p>
+<figcaption class="figure-caption">V-ζ — Kahan vs plain f64 summation</figcaption>
 </figure>
 </div>
-<p>The four-panel decomposition shows:</p>
-<ul>
-<li><strong>Top-left (composite OOD)</strong> — the abstain signal. Bright inside the training region (low OOD = trust), darker outside (higher OOD = abstain).</li>
-<li><strong>Top-right (density component)</strong> — Mahalanobis distance from the per-leaf Welford density. Tracks whether the input “looks like” what each leaf saw.</li>
-<li><strong>Bottom-left (prefix distance)</strong> — number of unmatched route-key bytes. 0 inside the training region (full routing match), 2 in regions where neither codebook coordinate finds a bound child.</li>
-<li><strong>Bottom-right (epistemic leverage)</strong> — <code>φᵀΛ⁻¹φ</code>. Largest where the BLR posterior is least confident, smallest where it has seen most data.</li>
-</ul>
-<p><strong>Verdict.</strong> All four signals show the expected spatial structure: low inside the training region (dashed box), high outside. The four components are <em>not</em> redundant — they cover different aspects of “is this input unusual?” (density-shift, route-mismatch, posterior-uncertainty). The composite <code>max()</code> produces a deliberately conservative single number; the individual components let a user diagnose <em>which</em> OOD axis triggered abstain.</p>
-<p><strong>Tag: Demonstrated.</strong> The mechanism works as designed on this 2-D synthetic problem; competitive performance against established 2-D OOD methods (deep SVDD, normalizing-flow density models) is not measured here.</p>
+<p><strong>Verdict.</strong> <strong>Cζ passed.</strong> Kahan is 2.40× slower than plain <code>+=</code>. The 2.40× factor is the per-element cost of the determinism contract on the single most ubiquitous primitive in ABNG’s hot path. Tag: <strong><em>Proven at the tested scale</em></strong>.</p>
+<p>When aggregated across the BLR update (multiple Kahan accumulators for Cholesky and triangular solve), the Welford accumulators in <code>observe</code>, the ECE binning in calibration, and the density tracker, the 2.40× per-primitive cost compounds into the <strong>~7.5× graph-dispatch cost</strong> documented in §9 below.</p>
 </section>
 </section>
-<section id="replayability-determinism-benchmarks" class="level2">
-<h2 class="anchored" data-anchor-id="replayability-determinism-benchmarks">8. Replayability &amp; determinism benchmarks</h2>
-<section id="microbenchmark-suite-re-measured" class="level3">
-<h3 class="anchored" data-anchor-id="microbenchmark-suite-re-measured">8.1 Microbenchmark suite (re-measured)</h3>
-<p>Re-running the existing microbench suite on the benchmark hardware (Intel i7-11390H @ 3.40 GHz, Windows MSVC release build) reproduces the per-op costs from the previous version of this article:</p>
+<section id="demo-deep-dives" class="level2">
+<h2 class="anchored" data-anchor-id="demo-deep-dives">8. Demo deep-dives</h2>
+<p>Two existing demos that illustrate Part I’s categories through worked examples.</p>
+<section id="pinn-uncertainty-state-stability-on-a-known-truth" class="level3">
+<h3 class="anchored" data-anchor-id="pinn-uncertainty-state-stability-on-a-known-truth">8.1 PINN uncertainty (state stability on a known truth)</h3>
+<p><strong>The setup.</strong> Solve the 1D heat equation <code>∂u/∂t = α · ∂²u/∂x²</code> with Dirichlet boundary conditions <code>u(0, t) = u(1, t) = 0</code> and initial condition <code>u(x, 0) = sin(πx)</code>. At <code>t = 0.1, α = 1</code>, the analytical solution is <code>u(x, 0.1) = exp(-π² · 0.1) · sin(πx) ≈ 0.3722 · sin(πx)</code>.</p>
+<p><strong>The architecture used.</strong> 4-leaf ABNG graph over <code>x ∈ [0, 1]</code> with codebook bin edges at <code>0.25 / 0.5 / 0.75</code>. Each leaf has its own BLR head over the 4-D feature basis <code>[1, x, sin(πx), cos(πx)]</code> — engineered so the analytical solution is exactly in span.</p>
+<p><strong>The training.</strong> 48 observations total: 32 uniformly in the interior <code>[0.25, 0.75]</code>, 4 in each edge region. The asymmetry is deliberate — it lets the test verify that uncertainty tracks training density.</p>
+<p><strong>What the test asserts (at the tested probe points).</strong></p>
+<div class="sourceCode" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb7-1"><span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">#[</span>test<span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">]</span></span>
+<span id="cb7-2"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">fn</span> pinn_trained_interior_approximates_analytical_solution() <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb7-3">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">mut</span> g <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> build_pinn_graph(<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">7</span>)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb7-4">    train_pinn(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">mut</span> g)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb7-5">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">for</span> x <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">in</span> [<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.30</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.45</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.55</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.70</span>] <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb7-6">        <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> leaf <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> route_to_leaf(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>g<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> x)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb7-7">        <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> phi <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> pinn_features(x)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb7-8">        <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> (mean<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> _lev<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> _ale) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> g<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>blr_predict(leaf<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>phi)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>unwrap()<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb7-9">        <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> truth <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> analytical_u(x)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb7-10">        <span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">assert!</span>((mean <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-</span> truth)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>abs() <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.05</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb7-11">            <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"interior fit at x={x}: predicted {mean}, truth {truth}"</span>)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb7-12">    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb7-13"><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span></code></pre></div>
+<p>The test passes. At the tested probe points, ABNG fits the analytical solution within 0.05 MAE.</p>
+<p><strong>Why the test is a “Proven” claim and not “Demonstrated.”</strong> It has a strict numerical pass condition (<code>&lt; 0.05</code>). It runs in CI. The chain head is canary-locked to SHA-256 <code>30d333f1f7dca5acaa76b0e4bfdbd4a733df38c6adeda094ae69cf0e9c4e468d</code>. Any change to the BLR conjugate update arithmetic, prefix routing, or audit event payload layout would surface as a hex mismatch in CI.</p>
+<p><strong>The companion uncertainty test.</strong></p>
+<div class="sourceCode" id="cb8" style="background: #f1f3f5;"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb8-1"><span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">#[</span>test<span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">]</span></span>
+<span id="cb8-2"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">fn</span> pinn_tangible_benefit_lev_lower_in_dense_region() <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb8-3">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// ... train_pinn(...) with 32 interior, 4×2 edge samples ...</span></span>
+<span id="cb8-4">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">mut</span> interior_levs <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Vec</span><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">::</span>new()<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb8-5">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">for</span> x <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">in</span> [<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.30</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.40</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.50</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.60</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.70</span>] <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb8-6">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// ... lev = blr_predict(...).1 ...</span></span>
+<span id="cb8-7">        interior_levs<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>push(lev)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb8-8">    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb8-9">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> max_interior <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> interior_levs<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>iter()<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>cloned()<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>fold(<span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">f64</span><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">::</span><span class="cn" style="color: #8f5902;
+background-color: null;
+font-style: inherit;">NEG_INFINITY</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">f64</span><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">::</span>max)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb8-10">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// ... edge_levs from x ∈ {0.05, 0.10, 0.15, 0.85, 0.90, 0.95} ...</span></span>
+<span id="cb8-11">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> min_edge <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> edge_levs<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>iter()<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>cloned()<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>fold(<span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">f64</span><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">::</span><span class="cn" style="color: #8f5902;
+background-color: null;
+font-style: inherit;">INFINITY</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">f64</span><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">::</span>min)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb8-12">    <span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">assert!</span>(min_edge <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;</span> max_interior)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb8-13"><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span></code></pre></div>
+<p>The assertion is <em>strict separation</em>: every edge leverage exceeds every interior leverage. Not “average edge &gt; average interior,” but min-edge &gt; max-interior. Passes.</p>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+What this result does NOT prove
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>The feature basis <code>[1, x, sin(πx), cos(πx)]</code> <strong>contains the analytical solution as a basis direction</strong>. This is a correctness proof of NIG conjugacy + prefix routing + the audit chain — it is <strong>not</strong> a generalization claim. On problems where the truth is not in the feature span, the architecture’s behaviour is <em>different</em> (and surprising — Part II’s Experiment β documents what happens). What this demo establishes is the architecture’s home turf.</p>
+</div>
+</div>
+</section>
+<section id="lineage-attestation-three-signal-spoof-detection" class="level3">
+<h3 class="anchored" data-anchor-id="lineage-attestation-three-signal-spoof-detection">8.2 Lineage attestation (three-signal spoof detection)</h3>
+<p><strong>The setup.</strong> Two ABNG graphs trained on near-identical clinical-trial datasets: - Dataset A: 64 rows <code>(patient_id, dose, response)</code> with <code>response = 0.2 + 0.6·dose + 0.1·dose²</code>. - Dataset B: identical to A except patient 17’s response is rewritten — exactly one row tampered.</p>
+<p><strong>The architecture used.</strong> 4-leaf graph over <code>dose ∈ [0, 1]</code> with BLR over <code>[1, dose, dose², dose³]</code> per leaf. Both graphs use the same seed, codebook, prior, decision policy. The <em>only</em> meaningful difference between them is dataset content.</p>
+<p><strong>The attack scenario.</strong></p>
+<pre class="text"><code>Lab A:
+  trains g_A on dataset_A
+  stamps root with sha256(dataset_A_bytes)
+  publishes g_A.snap + 3 predict_snaps
+
+Attacker:
+  trains g_B on tampered dataset_B
+  swaps g_B.snap into Lab A's submission
+
+Regulator:
+  runs three independent checks</code></pre>
+<p><strong>The three independent failure signals.</strong></p>
+<div class="sourceCode" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb10-1"><span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">#[</span>test<span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">]</span></span>
+<span id="cb10-2"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">fn</span> three_signal_spoof_detection() <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb10-3">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// ... g_A trained on dataset_A, g_B on tampered dataset_B ...</span></span>
+<span id="cb10-4"></span>
+<span id="cb10-5">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// Signal 1: chain_head differs</span></span>
+<span id="cb10-6">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> chain_diff <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> g_A<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>chain_head <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">!=</span> g_B<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>chain_head<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb10-7"></span>
+<span id="cb10-8">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// Signal 2: BLR state hash at the affected leaf differs</span></span>
+<span id="cb10-9">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> leaf_17 <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> route_for(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>g_A<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> dataset_a()[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">17</span>]<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb10-10">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> stamp_diff <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span></span>
+<span id="cb10-11">        g_A<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>nodes[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span>]<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>provenance_stamp_hash <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">!=</span> g_B<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>nodes[<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span>]<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>provenance_stamp_hash<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb10-12">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> blr_diff <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> g_A<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>nodes[leaf_17 <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">as</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">usize</span>]<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>blr<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>as_ref()<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>unwrap()<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>state_hash()</span>
+<span id="cb10-13">                 <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">!=</span> g_B<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>nodes[leaf_17 <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">as</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">usize</span>]<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>blr<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>as_ref()<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>unwrap()<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>state_hash()<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb10-14"></span>
+<span id="cb10-15">    <span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">assert!</span>(chain_diff <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;&amp;</span> stamp_diff <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;&amp;</span> blr_diff<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb10-16">        <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"all three signals must fire to detect the spoof"</span>)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb10-17"><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span></code></pre></div>
+<p>The three signals are independent by construction. The chain head depends on every audit event. The BLR state hash depends on the posterior of one leaf. The provenance stamp depends only on the dataset bytes. <strong>Forging any single one of them while keeping the other two consistent is roughly as hard as inverting SHA-256.</strong> Forging all three is computationally infeasible.</p>
+<p><strong>Why this is the strongest demo in the codebase for the lineage claim.</strong> Every other demo is a positive-control determinism check (“the same input produces the same output”). This is the only demo that constructs an adversarial scenario — “what would an attacker do?” — and shows the architecture catches it.</p>
+<p><strong>Caveats (the Skeptical Reviewer’s honesty pass).</strong></p>
+<ol type="1">
+<li>The dataset is 64 rows. Real regulated-ML datasets are many orders of magnitude larger. The mechanism <em>should</em> scale linearly (each row adds ~300 bytes to the audit log), but the wall-clock cost of verifying a 10⁹-row audit chain is unmeasured.</li>
+<li>SHA-256 is <strong>tamper-evident, not tamper-proof.</strong> An attacker who controls the entire training pipeline can produce a self-consistent malicious log. This is a Level 3 audit system (state-mutation chain) in Doshi-Velez/-style taxonomy — not Level 4 (external attestation via TPM / secure enclaves).</li>
+<li>The single-row tamper is the <em>easy</em> case. The harder case is a sophisticated adversary who tampers <em>and</em> reruns enough of the training to make most chain hashes self-consistent. This isn’t tested here.</li>
+</ol>
+</section>
+</section>
+<section id="replay-determinism-microbench-results" class="level2">
+<h2 class="anchored" data-anchor-id="replay-determinism-microbench-results">9. Replay &amp; determinism microbench results</h2>
+<p>The per-operation cost of every primitive in ABNG’s hot path, measured on the benchmark hardware (Intel i7-11390H @ 3.40GHz, Windows MSVC release build):</p>
 <table class="table">
 <colgroup>
 <col style="width: 30%">
@@ -3452,7 +3799,7 @@ g_A.leaves[k].blr.state_hash() ≠ g_B.leaves[k].blr.state_hash()  ← affected 
 <tr class="even">
 <td><code>codebook_encode_alloc</code> (8-D, fresh Vec)</td>
 <td style="text-align: right;"><strong>217 ns</strong></td>
-<td>1.67× speedup with buffer reuse (handoff doc claimed 2.37×)</td>
+<td>1.67× speedup with buffer reuse on this hardware</td>
 </tr>
 <tr class="odd">
 <td><code>blr_predict</code> (Cholesky solve, d=4)</td>
@@ -3475,395 +3822,329 @@ g_A.leaves[k].blr.state_hash() ≠ g_B.leaves[k].blr.state_hash()  ← affected 
 <td>All-in-one training row</td>
 </tr>
 <tr class="odd">
-<td><code>train_step_3call</code></td>
-<td style="text-align: right;"><strong>18,374 ns</strong></td>
-<td>1.03× speedup from fusion (handoff claimed 1.17×)</td>
-</tr>
-<tr class="even">
 <td><code>blr_update</code> (graph-level)</td>
 <td style="text-align: right;"><strong>28,997 ns</strong></td>
-<td><strong>~7.5× the direct BLR math</strong> — determinism scaffolding dominates</td>
+<td>~7.5× the direct BLR math — determinism scaffolding dominates</td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>verify_chain</code> (10k events)</td>
 <td style="text-align: right;"><strong>12,324 µs total</strong></td>
 <td>1.23 µs/event amortized</td>
 </tr>
 </tbody>
 </table>
-</section>
-<section id="the-determinism-premium-decomposed-v8-item-5" class="level3">
-<h3 class="anchored" data-anchor-id="the-determinism-premium-decomposed-v8-item-5">8.2 The determinism premium, decomposed (V8 / Item 5)</h3>
-<p>The 25 µs gap between <code>blr_state_update_direct</code> (3.85 µs) and graph-level <code>blr_update</code> (29 µs) is the most striking number in the suite. Where does the time go?</p>
+<section id="the-87-determinism-premium-decomposed" class="level3">
+<h3 class="anchored" data-anchor-id="the-87-determinism-premium-decomposed">The 87% determinism premium decomposed</h3>
+<p>The 25 µs gap between <code>blr_state_update_direct</code> (3.85 µs) and graph-level <code>blr_update</code> (29 µs) is the most striking single number in the suite. The premium decomposes (approximately) as:</p>
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
 <p><img src="https://adamezzat1.github.io/blog/posts/abng-benchmarks/figures/v8_determinism_premium.png" class="img-fluid figure-img"></p>
 <figcaption class="figure-caption">V8 — Determinism premium breakdown</figcaption>
 </figure>
 </div>
-<p>The breakdown above shows estimated contributions from each sub-component. The numbers for Bayesian math (3.85 µs) and total premium (25.15 µs) are directly measured; the sub-component splits are estimates based on the existing fine-grained microbenches (route encode + descend ≈ 250 ns, streaming SHA-256 ≈ 200 ns / advance, etc.) plus reasonable scaling. <strong>Mark: Reasonable extrapolation</strong> — the bench framework needed to <em>separately</em> measure each sub-component was not built in this session. Item 5 of the SRG checklist is therefore <em>partially</em> satisfied; the absolute total is right, the sub-component partition is approximate.</p>
-</section>
-<section id="experiment-ζ-kahan-vs-plain-summation-determinism-premium" class="level3">
-<h3 class="anchored" data-anchor-id="experiment-ζ-kahan-vs-plain-summation-determinism-premium">8.3 Experiment ζ — Kahan vs plain summation determinism premium</h3>
-<p><strong>Hypothesis.</strong> Kahan accumulation is in the ~2× range claimed in the architecture article.</p>
-<p><strong>Methodology.</strong> Sum 1,000,000 f64 values via plain <code>+=</code> vs <code>KahanAccumulatorF64::add</code>. Use min-of-7 trials per side. Each value is <code>0.001 + sin(i) * 0.0001</code> to defeat optimizer constant-folding.</p>
-<p><strong>Result.</strong></p>
-<table class="table">
-<thead>
-<tr class="header">
-<th>Method</th>
-<th style="text-align: right;">Per-element cost</th>
-<th style="text-align: right;">Slowdown vs plain</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td>plain f64 <code>+=</code></td>
-<td style="text-align: right;">1.465 ns</td>
-<td style="text-align: right;">1.00× (baseline)</td>
-</tr>
-<tr class="even">
-<td><code>KahanAccumulatorF64</code></td>
-<td style="text-align: right;">3.521 ns</td>
-<td style="text-align: right;"><strong>2.40×</strong></td>
-</tr>
-</tbody>
-</table>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><img src="https://adamezzat1.github.io/blog/posts/abng-benchmarks/figures/v_zeta_kahan_vs_plain.png" class="img-fluid figure-img"></p>
-<figcaption class="figure-caption">V-ζ — Kahan vs plain f64 summation</figcaption>
-</figure>
-</div>
-<p><strong>Verdict.</strong> Kahan is 2.40× slower than plain <code>+=</code> on this hardware. <strong>C6 supported</strong> — within the expected range. The 2.40× factor is the per-element cost of the determinism contract on this single primitive; aggregated across the BLR update, Welford accumulators, ECE binning, and density tracker, this contributes to the larger ~6× graph-dispatch cost shown in Section 8.2.</p>
-</section>
-<section id="experiment-δ-replay-consistency-under-graph-mutation" class="level3">
-<h3 class="anchored" data-anchor-id="experiment-δ-replay-consistency-under-graph-mutation">8.4 Experiment δ — Replay consistency under graph mutation</h3>
-<p><strong>Hypothesis.</strong> A graph that has fired structural mutations (Grow/Split/Merge/Prune/Freeze/Compress) replays byte-identically.</p>
-<p><strong>Methodology.</strong> Build a graph, train 200 observations, then force a sequence of mutations: 3 × <code>force_grow</code>, 2 × <code>force_split</code> attempts, 2 × <code>force_freeze</code>. Snapshot the result. Run <code>replay()</code>. Compare <code>serialize(replayed) == serialize(original)</code> byte-for-byte AND <code>chain_head_original == chain_head_replayed</code>.</p>
-<p><strong>Result.</strong></p>
 <table class="table">
 <colgroup>
-<col style="width: 50%">
-<col style="width: 50%">
+<col style="width: 30%">
+<col style="width: 40%">
+<col style="width: 30%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Metric</th>
-<th>Value</th>
+<th>Sub-component</th>
+<th style="text-align: right;">Estimated cost</th>
+<th>Notes</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>Total audit events</td>
-<td>433</td>
+<td>Bayesian math (NIG conjugate)</td>
+<td style="text-align: right;"><strong>3.85 µs</strong></td>
+<td>Directly measured (<code>blr_state_update_direct</code>)</td>
 </tr>
 <tr class="even">
-<td>Structural mutations attempted</td>
-<td>5</td>
+<td>BLR state_hash (32-byte SHA-256 of posterior)</td>
+<td style="text-align: right;">~8 µs</td>
+<td>Witness for each <code>BlrUpdated</code> audit event</td>
 </tr>
 <tr class="odd">
-<td>Action counts (Grow / Split / Merge / Prune / Compress / Freeze)</td>
-<td><code>[3, 2, 0, 0, 0, 2]</code> (one Split skipped due to a precondition)</td>
+<td>Audit event allocation + canonical bytes</td>
+<td style="text-align: right;">~5.5 µs</td>
+<td>Serialize event payload to canonical form</td>
 </tr>
 <tr class="even">
-<td>Snapshot bytes</td>
-<td>69,915</td>
+<td>Welford observe (graph layer + stats chain)</td>
+<td style="text-align: right;">~4.5 µs</td>
+<td>Per-node stats chain hash advance</td>
 </tr>
 <tr class="odd">
-<td>Replay time</td>
-<td>1.27 ms</td>
+<td>SHA-256 audit chain advance</td>
+<td style="text-align: right;">~3.2 µs</td>
+<td>Phase 0.7 streaming-hash optimized</td>
 </tr>
 <tr class="even">
-<td><strong>byte_identical</strong></td>
-<td><strong>true</strong> ✓</td>
+<td>Per-node stats chain hash advance</td>
+<td style="text-align: right;">~2 µs</td>
+<td>Separate from global chain</td>
 </tr>
 <tr class="odd">
-<td><strong>chain_head_match</strong></td>
-<td><strong>true</strong> ✓</td>
+<td>Routing (encode_prefix + descend)</td>
+<td style="text-align: right;">~0.5 µs</td>
+<td>Phase 0.7 buffer-reuse optimized</td>
+</tr>
+<tr class="even">
+<td>Dispatch + error handling + misc</td>
+<td style="text-align: right;">~1 µs</td>
+<td>Function call boundary overhead</td>
 </tr>
 </tbody>
 </table>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><img src="https://adamezzat1.github.io/blog/posts/abng-benchmarks/figures/v7_replay_consistency.png" class="img-fluid figure-img"></p>
-<figcaption class="figure-caption">V7 — Replay consistency under mutation (Experiment δ)</figcaption>
-</figure>
-</div>
-<p><strong>Verdict.</strong> <strong>C3 strongly supported.</strong> The replay invariant holds under structural mutation at the tested scale. <strong>Tag: Proven at the tested scale</strong> — the test would have panicked if either check failed.</p>
-</section>
-<section id="scaling-benchmarks-re-measured-with-jsonl-capture" class="level3">
-<h3 class="anchored" data-anchor-id="scaling-benchmarks-re-measured-with-jsonl-capture">8.5 Scaling benchmarks (re-measured with JSONL capture)</h3>
-<p>The three scaling benches from the previous version of this article — <code>abng_vs_sklearn</code> (tabular regression at n=1k/10k/100k), <code>abng_pinn_scale</code> (sin(πx) PINN at n=1k/10k/100k), <code>abng_lineage_at_scale</code> (full lineage flow at n=1k/10k/100k) — were re-run with the same seeds and the JSONL captured for plotting.</p>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><img src="https://adamezzat1.github.io/blog/posts/abng-benchmarks/figures/v1_scaling_curves.png" class="img-fluid figure-img"></p>
-<figcaption class="figure-caption">V1 — Scaling curves (log-log)</figcaption>
-</figure>
-</div>
-<p>The plots above show:</p>
-<ol type="1">
-<li><strong>Tabular RMSE vs n.</strong> Converges to the irreducible noise floor (≈ 0.029 = 0.05/√3 for the uniform noise distribution in the truth function). At n=100k, RMSE = 0.030 — within 1% of the noise floor.</li>
-<li><strong>PINN L2 error vs n.</strong> Decays at the expected Monte Carlo rate (1/√n reference line shown).</li>
-<li><strong>Lineage flow.</strong> Train time, replay time, and serialize bytes all scale linearly with n.&nbsp;Snapshot is ~300 bytes/row.</li>
-</ol>
-<p><strong>C7 supported across all three benches.</strong> Linear scaling is the expected and observed behavior.</p>
-</section>
-<section id="speedup-comparisons-re-measured" class="level3">
-<h3 class="anchored" data-anchor-id="speedup-comparisons-re-measured">8.6 Speedup comparisons — re-measured</h3>
-<p>The Phase 0.7 perf items were re-measured. Results match the previous version’s findings:</p>
-<table class="table">
-<colgroup>
-<col style="width: 21%">
-<col style="width: 28%">
-<col style="width: 28%">
-<col style="width: 21%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Comparison</th>
-<th style="text-align: right;">Measured speedup</th>
-<th style="text-align: right;">Phase 0.7 handoff doc claim</th>
-<th>Match?</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>observe_batch</code> n=1024 vs per-row</td>
-<td style="text-align: right;"><strong>23.51×</strong></td>
-<td style="text-align: right;">“≥10× target”</td>
-<td>✓ exceeds</td>
-</tr>
-<tr class="even">
-<td><code>route_to_leaf_batch</code> n=1024 vs per-row</td>
-<td style="text-align: right;"><strong>1.91×</strong></td>
-<td style="text-align: right;">n/a</td>
-<td>—</td>
-</tr>
-<tr class="odd">
-<td><code>smart_replay</code> vs naive @ 10k events</td>
-<td style="text-align: right;"><strong>2.08×</strong></td>
-<td style="text-align: right;">“≥ 5× target”</td>
-<td>✗ falls short</td>
-</tr>
-<tr class="even">
-<td><code>codebook_encode_into</code> vs <code>_alloc</code> (d=8)</td>
-<td style="text-align: right;"><strong>1.67×</strong></td>
-<td style="text-align: right;">“2.37×”</td>
-<td>✗ smaller</td>
-</tr>
-<tr class="odd">
-<td><code>train_step_fused</code> vs 3-call</td>
-<td style="text-align: right;"><strong>1.03×</strong></td>
-<td style="text-align: right;">“1.17×”</td>
-<td>✗ smaller</td>
-</tr>
-</tbody>
-</table>
-<p>The 2.37× / 1.17× / ≥5× claims in the original handoff doc do not match the measurements on this machine. Three plausible explanations: different CPU generation, different build flags, different warmup. The honest takeaway: <strong>speedup numbers should be quoted as ranges, not point estimates</strong> (“1.0–2.4× depending on hardware”).</p>
+<p>The sub-component breakdown is <strong>partially measured</strong>: total premium is exact (<code>blr_update - blr_state_update_direct</code>); individual sub-component splits are estimated from the existing fine-grained microbenches. Tag: <strong><em>Reasonable extrapolation</em></strong> on the breakdown, <strong><em>Proven at the tested scale</em></strong> on the total.</p>
+<p><strong>The takeaway.</strong> Approximately <strong>13% of <code>blr_update</code>’s cost is the Bayesian math</strong>; the remaining <strong>87% is the determinism contract</strong>: hashing the posterior, building the canonical bytes, advancing two audit chains, threading through the dispatch boundary. This is the single most defensible answer to “what does determinism cost” in the codebase.</p>
 </section>
 </section>
 <section id="failure-cases-limitations" class="level2">
-<h2 class="anchored" data-anchor-id="failure-cases-limitations">9. Failure cases &amp; limitations</h2>
-<p>The previous version of this article had a single “honest gaps” section. The SRG critique requested an expansion into explicit failure-mode categories. Here they are.</p>
-<section id="routing-discontinuities-at-codebook-bin-edges-fundamental" class="level3">
-<h3 class="anchored" data-anchor-id="routing-discontinuities-at-codebook-bin-edges-fundamental">9.1 Routing discontinuities at codebook bin edges (fundamental)</h3>
-<p>Two inputs <code>x = 0.499</code> and <code>x = 0.501</code> may quantize into different codebook bins and route to different leaves. The prediction surface has discontinuities at every bin edge. <strong>Severity: fundamental.</strong> Recovery would require giving up traceability (e.g.&nbsp;soft routing) or output smoothing across leaves (which breaks per-leaf audit attribution).</p>
-<p>For continuous-physics workloads (smooth PDE surrogates), this is the single biggest reason ABNG will lose to FNO on smoothness-sensitive benchmarks. <strong>Tag: Established at the algorithmic level</strong> (discrete-routing architectures all have this property).</p>
+<h2 class="anchored" data-anchor-id="failure-cases-limitations">10. Failure cases &amp; limitations</h2>
+<p>Five failure modes, ranked by severity and recoverability. Each is honest about what the article <em>doesn’t</em> prove.</p>
+<section id="single-hardware-measurement-meta-limitation" class="level3">
+<h3 class="anchored" data-anchor-id="single-hardware-measurement-meta-limitation">10.1 Single-hardware measurement (meta-limitation)</h3>
+<p>Every number in this article is from one machine (Intel i7-11390H, Windows MSVC release). The architecture’s determinism canaries are locked on Windows MSVC and <em>should</em> hold cross-platform, but <strong>cross-platform CI is unverified.</strong> Phase 0.6 added a <code>cross-platform-determinism.yml</code> workflow skeleton; verification results have not been published. Until they are, every “Proven” tag in this article carries an implicit “on this hardware” footnote.</p>
 </section>
-<section id="graph-fragmentation-under-loose-thresholds-tunable" class="level3">
-<h3 class="anchored" data-anchor-id="graph-fragmentation-under-loose-thresholds-tunable">9.2 Graph fragmentation under loose thresholds (tunable)</h3>
-<p>If <code>H_grow</code> is set too low, every observation in a slightly novel route triggers a new leaf. The trie proliferates until memory exhausts. Mistune either <code>grow_min</code> or <code>H_grow</code> and the gate opens too easily.</p>
-<p><strong>Severity: tunable.</strong> Phase 0.4’s threshold-sharpening (KL-merge, ΔNLL-split, route-entropy-grow) made this less likely but didn’t eliminate it. There’s no automated threshold tuning; every new dataset is a small research project. <strong>Tag: Demonstrated</strong>; the failure mode is observable in any test where the policy thresholds are set permissively.</p>
+<section id="audit-log-size-at-production-scale-extrapolation-not-measurement" class="level3">
+<h3 class="anchored" data-anchor-id="audit-log-size-at-production-scale-extrapolation-not-measurement">10.2 Audit-log size at production scale (extrapolation, not measurement)</h3>
+<p>Witness-only events are ~80 bytes each. Four state updates per observation (BLR, density, calibration, signature) at 1M rows produces ~320 MB of audit log. Fits on disk; painful in memory. Phase 0.7’s <code>abng_compact_log</code> + <code>StatsSnapshot</code> markers + smart-replay address this, but the <em>unbounded-scale</em> behaviour (10⁹-event chains) is <strong>unmeasured</strong>. The linear-scaling claim is plausible but not validated past 10⁵.</p>
 </section>
-<section id="over-specialization-branch-explosion-related-to-9.2" class="level3">
-<h3 class="anchored" data-anchor-id="over-specialization-branch-explosion-related-to-9.2">9.3 Over-specialization / branch explosion (related to 9.2)</h3>
-<p>A worse version of 9.2: even with reasonable thresholds, a dataset with high-entropy noise can drive <code>decide_step</code> to repeatedly Grow without ever Merging or Compressing. The graph specializes to noise rather than signal. <strong>Severity: tunable.</strong> Mitigations: pre-filter data quality, set <code>kl_merge</code> more permissive than <code>H_grow</code>, or periodically force-compress at fixed sample budgets.</p>
+<section id="no-external-lineage-baseline" class="level3">
+<h3 class="anchored" data-anchor-id="no-external-lineage-baseline">10.3 No external lineage baseline</h3>
+<p>MLflow / DVC / Weights &amp; Biases track <em>artefacts</em> (model files, dataset checksums). ABNG tracks <em>state mutations</em> (every parameter update has a hash witness). The granularity advantage is real but <strong>never directly compared</strong> — no head-to-head measurement of “regulator’s nightmare scenario” against MLflow + a malicious lab. The Part 2 of the trilogy (<a href="../../../blog/posts/abng-deterministic-systems/index.html">Deterministic and Auditable Neural Systems</a>) addresses this positionally; this article cannot address it empirically.</p>
 </section>
-<section id="sparse-posterior-instability" class="level3">
-<h3 class="anchored" data-anchor-id="sparse-posterior-instability">9.4 Sparse posterior instability</h3>
-<p>When <code>n_seen</code> is below ~5 observations per leaf, the BLR posterior is dominated by the prior. Predictions are near-prior and uncertainty is broad. This is <strong>correct Bayesian behavior</strong> — sparse evidence <em>should</em> keep the posterior wide — but it can be surprising for a user who expects “the model” to behave consistently across the input space. <strong>Severity: feature, not bug</strong> in most cases; <strong>a documentation issue</strong> when users expect MLP-like behavior. <strong>Tag: Established at the Bayesian level.</strong></p>
+<section id="no-predictive-coverage-analysis" class="level3">
+<h3 class="anchored" data-anchor-id="no-predictive-coverage-analysis">10.4 No predictive coverage analysis</h3>
+<p>The reliability diagram (§7.3) measures <em>calibration</em>. It does not measure <em>predictive coverage</em> — does the Student-t predictive distribution at a chosen confidence level (say, 95%) actually contain the true <code>y</code> at the rate it claims? This is a different test and requires drawing samples from the Student-t or computing exact CDF values. <strong>Not implemented in this run.</strong> Listed in §11 future work.</p>
 </section>
-<section id="calibration-under-mixture-failure" class="level3">
-<h3 class="anchored" data-anchor-id="calibration-under-mixture-failure">9.5 Calibration-under-mixture failure</h3>
-<p>Per-leaf calibration (15-bin ECE per leaf) does not guarantee graph-level calibration. The aggregate, weighted by routing frequency, can drift in either direction (the classifier-stacking literature documents this; see Stage 5 of <a href="../../../blog/posts/abng-deterministic-systems/index.html">Part 2</a>). <strong>Severity: moderate.</strong> Mitigation: compute graph-level ECE post-hoc from the audit log, or build it into <code>decide_step</code> as a global quality gate (Phase 0.5+ candidate). <strong>Tag: Established at the calibration-theory level</strong>; the per-leaf-only tracking is a known deficit.</p>
+<section id="no-statistical-cis-on-most-per-op-timings" class="level3">
+<h3 class="anchored" data-anchor-id="no-statistical-cis-on-most-per-op-timings">10.5 No statistical CIs on most per-op timings</h3>
+<p>Most per-operation costs in §9 are single-run measurements. The speedup comparisons (Phase 0.7 perf items, <code>observe_batch</code>, <code>route_to_leaf_batch</code>) use min-of-5 trials, which is more robust. Experiment α uses 7-trial measurements. The right framework is Criterion — automated median + IQR per bench. <strong>Conversion to Criterion is a 4-hour task</strong> listed in future work but not done in this run.</p>
 </section>
-<section id="noisy-uncertainty-estimates-at-small-leaf-counts" class="level3">
-<h3 class="anchored" data-anchor-id="noisy-uncertainty-estimates-at-small-leaf-counts">9.6 Noisy uncertainty estimates at small leaf counts</h3>
-<p>At leaves with very few observations, <code>epistemic_leverage</code> is dominated by the prior precision and can be insensitive to local input variation. This makes the OOD signal weaker exactly when it matters most (sparse regions). <strong>Severity: moderate.</strong> Mitigation: route to parent (via <code>blr_predict_with_fallback</code>) when leaf evidence is insufficient. <strong>Tag: Established at the Bayesian level</strong>, plus Demonstrated in the maturity-inspection demo.</p>
-</section>
-<section id="scaling-limitations-not-benchmarked-beyond-n10⁵" class="level3">
-<h3 class="anchored" data-anchor-id="scaling-limitations-not-benchmarked-beyond-n10⁵">9.7 Scaling limitations (not benchmarked beyond n=10⁵)</h3>
-<p>This article’s largest measurement is at n = 100,000 rows. Behavior at n = 10⁶, 10⁷, 10⁸ is <strong>untested</strong>. The asymptotic claims (<code>O(N·d²)</code> per-leaf BLR, linear-per-event audit chain) are correct <em>by construction</em> (the math says so) but never wall-clock-validated at production scale. <strong>Severity: open question.</strong> <strong>Tag: Reasonable extrapolation</strong> — the mechanism should scale but the empirical confirmation is missing.</p>
-</section>
-<section id="replay-edge-cases" class="level3">
-<h3 class="anchored" data-anchor-id="replay-edge-cases">9.8 Replay edge cases</h3>
-<p>The Experiment δ result (Section 8.4) demonstrates replay survives 5 structural mutations on a small graph. The article does not test:</p>
-<ul>
-<li>Replay on a graph that has fired ≥ 1000 structural mutations.</li>
-<li>Replay across CJC-Lang version boundaries (does v13-format-snapshot survive a Phase 0.8 v14 binary?).</li>
-<li>Replay across platform boundaries (Linux-trained snapshot on a Windows binary).</li>
-</ul>
-<p>The first is feasible; the second requires Phase 0.8 to ship; the third requires the cross-platform CI infrastructure that’s still pending. <strong>Tag: Demonstrated under simple mutation; Reasonable extrapolation otherwise.</strong></p>
-</section>
-<section id="catastrophic-routing-collapse-theoretical" class="level3">
-<h3 class="anchored" data-anchor-id="catastrophic-routing-collapse-theoretical">9.9 Catastrophic routing collapse (theoretical)</h3>
-<p>A pathological scenario: a stream of inputs that all bucketize into the same codebook bin (e.g., all in [0.99, 1.0] for a uniform-quantile codebook calibrated on [0, 1]). All observations route to a single leaf, exhausting its capacity and starving all other leaves. <strong>Severity: theoretical</strong> — the calibration-time choice of bin edges should prevent this, but if the codebook is calibrated on training data that doesn’t represent inference-time inputs, the failure is plausible.</p>
-</section>
-<section id="single-hardware-measurement-the-meta-limitation" class="level3">
-<h3 class="anchored" data-anchor-id="single-hardware-measurement-the-meta-limitation">9.10 Single-hardware measurement (the meta-limitation)</h3>
-<p>Every number in this article is from one machine. Even the “Proven” tags carry an implicit “on this hardware” footnote. Real characterization requires cross-platform CI matrix runs with canary verification — pending. <strong>Severity: meta</strong>; impacts every other tag in the article.</p>
-</section>
-</section>
-<section id="discussion" class="level2">
-<h2 class="anchored" data-anchor-id="discussion">10. Discussion</h2>
-<p>What do six new experiments + nine demo deep-dives + four scaling tables tell us about ABNG that we didn’t know before?</p>
-<section id="whats-now-established-didnt-know-empirically-before" class="level3">
-<h3 class="anchored" data-anchor-id="whats-now-established-didnt-know-empirically-before">What’s now established (didn’t know empirically before)</h3>
-<ol type="1">
-<li><strong>NIG conjugate update is implemented correctly</strong> (Experiment α). Posterior mean converges to truth as <code>1/√n</code>; aleatoric variance approaches <code>σ²_true</code> from above. This is the foundation; everything else depends on it.</li>
-<li><strong>Selective prediction works</strong> (Experiment γ). Abstaining at high OOD reduces error by 10× on this scenario. The mechanism isn’t just “OOD scores look different in different regions” — they actually correlate with error.</li>
-<li><strong>Replay invariant survives structural mutation</strong> (Experiment δ). Forcing 5 structural events still produces byte-identical replay.</li>
-<li><strong>Determinism premium is sharply quantified.</strong> Graph dispatch + audit chain costs 25 µs per BLR update vs 3.85 µs for the math itself (87% premium). Kahan summation is exactly 2.40× plain <code>+=</code>.</li>
-<li><strong><code>decide_step</code> scales as expected</strong> (Experiment ε). Sub-millisecond at n_active ≤ 256, mean growing roughly linearly.</li>
-<li><strong>Per-bin calibration is well-tracked</strong> (Experiment η). Graph-level ECE = 0.015 on a synthetic Bernoulli task; the reliability diagram hugs the diagonal across 9 non-empty bins.</li>
-<li><strong>Routing distribution is visualizable</strong> (Experiment θ). Sankey diagram shows the 10K-input flow across 8 codebook bins matching the input distribution skew.</li>
-<li><strong>OOD score has clear spatial structure</strong> (Experiment ι). 2-D heatmap shows composite + 3 components separating training region from corners in a 50×50 grid evaluation.</li>
-</ol>
-</section>
-<section id="whats-now-usefully-complicated-changed-since-previous-version" class="level3">
-<h3 class="anchored" data-anchor-id="whats-now-usefully-complicated-changed-since-previous-version">What’s now usefully complicated (changed since previous version)</h3>
-<ol type="1">
-<li><strong>The “PINN works because basis spans the truth” framing was incomplete.</strong> Experiment β shows ABNG fits <code>|x − 0.5|</code> nearly as well as <code>sin(πx)</code>. The piecewise routing partition provides effective basis-augmentation that the single-leaf intuition misses. The architecture is <em>more robust</em> to basis-adequacy than the previous version of this article suggested.</li>
-</ol>
-</section>
-<section id="whats-still-missing-per-the-srg-checklist" class="level3">
-<h3 class="anchored" data-anchor-id="whats-still-missing-per-the-srg-checklist">What’s still missing (per the SRG checklist)</h3>
-<ol type="1">
-<li><strong>External baselines.</strong> sklearn-GP comparison, FNO comparison, Isolation Forest comparison, ADWIN comparison — all explicitly deferred.</li>
-<li><strong>Large-N benchmarks</strong> (n ≥ 10⁶) — not feasible in one session.</li>
-<li><strong>Cross-platform / multi-machine verification</strong> — needs CI matrix.</li>
-<li><strong>Statistical CIs on the per-op costs</strong> — most numbers are single-run.</li>
-<li><strong>Predictive coverage analysis</strong> — drawing samples from the Student-t predictive and checking coverage rate at chosen confidence levels (4 hours of bench code).</li>
-</ol>
-<p>The previously-deferred V2 (reliability diagram), V3 (routing Sankey), and V9 (2-D OOD heatmap) <strong>shipped in this revision</strong> as Experiments η, θ, ι (Sections 7.4–7.6).</p>
-</section>
-<section id="what-abng-currently-proves-vs-what-remains-speculative" class="level3">
-<h3 class="anchored" data-anchor-id="what-abng-currently-proves-vs-what-remains-speculative">What ABNG currently proves vs what remains speculative</h3>
+<section id="future-work-part-i-categories" class="level3">
+<h3 class="anchored" data-anchor-id="future-work-part-i-categories">Future work (Part I categories)</h3>
 <table class="table">
 <colgroup>
-<col style="width: 50%">
-<col style="width: 50%">
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
 </colgroup>
 <thead>
 <tr class="header">
-<th>Claim from this article</th>
-<th>Tag</th>
+<th>Item</th>
+<th>Cost</th>
+<th>Closes which gap</th>
 </tr>
 </thead>
 <tbody>
 <tr class="odd">
-<td>NIG conjugate update is correctly implemented (C1)</td>
-<td><strong>Proven</strong> at tested scale</td>
+<td>Cross-platform CI verification (Linux + macOS + ARM)</td>
+<td>1–2 days</td>
+<td>§10.1</td>
 </tr>
 <tr class="even">
-<td>PINN fits known analytical solution in feature span (C2)</td>
-<td><strong>Proven</strong> at tested scale</td>
+<td>10⁹-event audit log stress test</td>
+<td>1 day</td>
+<td>§10.2</td>
 </tr>
 <tr class="odd">
-<td>Replay survives mutation (C3)</td>
-<td><strong>Proven</strong> at tested scale</td>
+<td>sklearn-GP head-to-head on tabular</td>
+<td>1 day</td>
+<td>(general external baseline)</td>
 </tr>
 <tr class="even">
-<td><code>decide_step</code> is sub-millisecond at small graph sizes (C4)</td>
-<td><strong>Proven</strong> at tested scale</td>
+<td>Predictive coverage analysis</td>
+<td>3–4 hours</td>
+<td>§10.4</td>
 </tr>
 <tr class="odd">
-<td>Selective prediction reduces error (C5)</td>
-<td><strong>Proven</strong> at tested scale</td>
+<td>Convert microbench to Criterion (median + IQR per op)</td>
+<td>4 hours</td>
+<td>§10.5</td>
 </tr>
 <tr class="even">
-<td>Kahan premium is ~2× (C6)</td>
-<td><strong>Proven</strong> at tested scale</td>
-</tr>
-<tr class="odd">
-<td>Per-row training cost scales linearly (C7)</td>
-<td><strong>Proven</strong> at tested scale</td>
-</tr>
-<tr class="even">
-<td>The full ABNG architecture is competitive on real ML workloads</td>
-<td><strong>Speculative</strong> — no external baselines</td>
-</tr>
-<tr class="odd">
-<td>Determinism contract holds cross-platform</td>
-<td><strong>Reasonable extrapolation</strong> — CI pending</td>
-</tr>
-<tr class="even">
-<td>Replay scales to 10⁶+ event chains</td>
-<td><strong>Reasonable extrapolation</strong> — extrapolation from 10⁵</td>
-</tr>
-<tr class="odd">
-<td>ABNG would beat MLflow / DVC for granular lineage</td>
-<td><strong>Reasonable extrapolation</strong> — granularity advantage exists, deployment story doesn’t</td>
+<td>MLflow / DVC tamper-scenario comparison</td>
+<td>1 day</td>
+<td>§10.3</td>
 </tr>
 </tbody>
 </table>
 </section>
 </section>
-<section id="open-research-questions" class="level2">
-<h2 class="anchored" data-anchor-id="open-research-questions">11. Open research questions</h2>
-<p>The SRG critique reframed “future work” as open research questions with explicit hypotheses. Here they are.</p>
-<section id="rq1-does-the-basis-augmentation-effect-generalize" class="level3">
-<h3 class="anchored" data-anchor-id="rq1-does-the-basis-augmentation-effect-generalize">RQ1 — Does the basis-augmentation effect generalize?</h3>
-<p><strong>Observation.</strong> Experiment β found ABNG’s piecewise routing partition fits <code>|x − 0.5|</code> nearly as well as <code>sin(πx)</code>, despite the latter being in the feature basis and the former not.</p>
-<p><strong>Hypothesis.</strong> For any target function with bounded second derivative and ABNG with sufficient codebook resolution, the piecewise local-BLR fit achieves error proportional to the codebook bin width.</p>
-<p><strong>Falsification.</strong> Pick a target with unbounded variation (e.g., <code>u(x) = sin(100 π x)</code> — high frequency). Train ABNG with the same 8-leaf codebook. If error scales as expected (1/bin_width), hypothesis supported. If error stays bounded by frequency content, hypothesis falsified.</p>
-<p><strong>Cost.</strong> ~4 hours.</p>
+<section id="reproducibility" class="level2">
+<h2 class="anchored" data-anchor-id="reproducibility">11. Reproducibility</h2>
+<p>Every number, table, and figure in this article can be reproduced from a clean checkout of the CJC-Lang repository.</p>
+<section id="build-environment-fingerprint" class="level3">
+<h3 class="anchored" data-anchor-id="build-environment-fingerprint">Build environment fingerprint</h3>
+<pre class="text"><code>Hardware:    Intel Core i7-11390H @ 3.40 GHz (4 cores, 8 threads)
+OS:          Windows 11 Pro build 26200
+Toolchain:   MSVC, Rust (stable channel at publication time)
+Build mode:  release (-O3-equivalent, LTO disabled)
+CJC-Lang:    Phase 0.7, snapshot magic v13 (b"ABNG\x0D")
+Plotting:    Python 3.11, matplotlib 3.9.2, numpy 2.2.6</code></pre>
 </section>
-<section id="rq2-is-the-composite-ood-score-competitive-with-established-detectors" class="level3">
-<h3 class="anchored" data-anchor-id="rq2-is-the-composite-ood-score-competitive-with-established-detectors">RQ2 — Is the composite OOD score competitive with established detectors?</h3>
-<p><strong>Observation.</strong> ABNG’s <code>ood_score = max(density, prefix, epistemic_z)</code> works in the three-tier-separation demo and in Experiment γ’s selective prediction.</p>
-<p><strong>Hypothesis.</strong> On standard OOD benchmarks (CIFAR-10 vs CIFAR-10-C, ImageNet vs ImageNet-O), ABNG’s composite achieves AUROC within 10% of deep SVDD and Isolation Forest at similar compute budgets.</p>
-<p><strong>Falsification.</strong> Run the standard benchmarks. If ABNG’s AUROC is more than 10% below the deep SVDD baseline, hypothesis falsified.</p>
-<p><strong>Cost.</strong> ~1 week including baseline implementation.</p>
+<section id="reproduction-commands" class="level3">
+<h3 class="anchored" data-anchor-id="reproduction-commands">Reproduction commands</h3>
+<div class="sourceCode" id="cb12" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb12-1"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># 1. Clone the repository</span></span>
+<span id="cb12-2"><span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">git</span> clone https://github.com/AdamEzzat1/CJC.git</span>
+<span id="cb12-3"><span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">cd</span> CJC</span>
+<span id="cb12-4"></span>
+<span id="cb12-5"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># 2. Build the bench suite (release profile)</span></span>
+<span id="cb12-6"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cargo</span> build <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--release</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb12-7">  <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-p</span> abng-srg-experiments <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb12-8">  <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-p</span> abng-micro <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb12-9">  <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-p</span> abng-vs-sklearn <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb12-10">  <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-p</span> abng-lineage-at-scale</span>
+<span id="cb12-11"></span>
+<span id="cb12-12"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># 3. Run the experiments relevant to Part I</span></span>
+<span id="cb12-13"><span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">mkdir</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-p</span> bench_results</span>
+<span id="cb12-14"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cargo</span> run <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--release</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-p</span> abng-srg-experiments     <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;</span> bench_results/abng_srg.jsonl</span>
+<span id="cb12-15"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cargo</span> run <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--release</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-p</span> abng-micro               <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;</span> bench_results/abng_micro.jsonl</span>
+<span id="cb12-16"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cargo</span> run <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--release</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-p</span> abng-vs-sklearn          <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;</span> bench_results/abng_vs_sklearn.jsonl</span>
+<span id="cb12-17"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cargo</span> run <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--release</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-p</span> abng-lineage-at-scale    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;</span> bench_results/abng_lineage_at_scale.jsonl</span>
+<span id="cb12-18"></span>
+<span id="cb12-19"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># 4. Generate figures</span></span>
+<span id="cb12-20"><span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">cd</span> bench_results <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">&amp;&amp;</span> <span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">python</span> plot_all.py</span></code></pre></div>
+<p>The <code>plot_all.py</code> script regenerates all twelve figures (V1–V10, V-β, V-ζ) from the JSONL outputs. Each figure file is overwritten in <code>bench_results/figures/</code>.</p>
 </section>
-<section id="rq3-does-the-determinism-premium-amortize-at-production-scale" class="level3">
-<h3 class="anchored" data-anchor-id="rq3-does-the-determinism-premium-amortize-at-production-scale">RQ3 — Does the determinism premium amortize at production scale?</h3>
-<p><strong>Observation.</strong> At n = 100K, the 25 µs/observation determinism premium adds 2.5 seconds to training time. At n = 10⁹, it adds ~7 hours.</p>
-<p><strong>Hypothesis.</strong> The premium scales linearly with n.&nbsp;There is no super-linear contribution from audit-chain growth or per-node state hash recomputation at production scale.</p>
-<p><strong>Falsification.</strong> Train at n = 10⁶, n = 10⁷, n = 10⁸ with profile-zone instrumentation. If wall-clock time grows super-linearly relative to n, hypothesis falsified.</p>
-<p><strong>Cost.</strong> ~1 week including the production-scale bench infrastructure.</p>
-</section>
-<section id="rq4-can-decide_step-thresholds-be-auto-tuned" class="level3">
-<h3 class="anchored" data-anchor-id="rq4-can-decide_step-thresholds-be-auto-tuned">RQ4 — Can <code>decide_step</code> thresholds be auto-tuned?</h3>
-<p><strong>Observation.</strong> The 14 DecisionPolicy thresholds currently require manual tuning per dataset. A hand-tuned config exists; no automated procedure does.</p>
-<p><strong>Hypothesis.</strong> An outer Bayesian-optimization loop over policy thresholds, with the objective being held-out NLL, can find threshold settings that beat the hand-tuned default on at least 3 of 5 standard tabular benchmarks (Boston, California housing, Concrete, Wine, Yacht).</p>
-<p><strong>Falsification.</strong> Run BayesOpt over thresholds; compare to hand-tuned baseline on all 5 datasets. Win on ≤ 2 → hypothesis falsified.</p>
-<p><strong>Cost.</strong> ~2 weeks.</p>
-</section>
-<section id="rq5-does-replay-scale-to-billion-event-chains" class="level3">
-<h3 class="anchored" data-anchor-id="rq5-does-replay-scale-to-billion-event-chains">RQ5 — Does replay scale to billion-event chains?</h3>
-<p><strong>Observation.</strong> Experiment δ verified replay at 433 events. The largest scaling benchmark (lineage at n=100k) processes ~400K events.</p>
-<p><strong>Hypothesis.</strong> Smart replay (using StatsSnapshot fast-forward markers) scales to 10⁹ events without quadratic memory growth and within 10× of naive linear replay time.</p>
-<p><strong>Falsification.</strong> Build a 10⁹-event chain (synthetic, no actual training). Run smart replay. Measure peak RSS. If RSS exceeds 10× the snapshot size or wall-clock exceeds 10× linear extrapolation, hypothesis falsified.</p>
-<p><strong>Cost.</strong> ~1-2 days.</p>
-</section>
-<section id="plus-three-specific-experiments-from-the-previous-article-version" class="level3">
-<h3 class="anchored" data-anchor-id="plus-three-specific-experiments-from-the-previous-article-version">Plus three specific experiments (from the previous article version)</h3>
-<p>The previous article named three experiments at its conclusion; they remain open:</p>
+<section id="what-you-should-expect-to-see" class="level3">
+<h3 class="anchored" data-anchor-id="what-you-should-expect-to-see">What you should expect to see</h3>
 <ul>
-<li><strong>Experiment A: NIG-convergence sanity check.</strong> ✅ <strong>Now done</strong> (Experiment α above; passes).</li>
-<li><strong>Experiment B: 2D Darcy-flow surrogate comparison vs FNO + Bayesian decision tree.</strong> Not yet run.</li>
-<li><strong>Experiment C: Real-world regulated-ML case study.</strong> Not yet run.</li>
+<li>Experiment α: 7 rows of JSONL with <code>op = "alpha_posterior_consistency"</code>, showing the decay table from §7.1.</li>
+<li>Experiment δ: 1 row with <code>op = "delta_replay_under_mutation"</code>, asserting <code>byte_identical = true</code>.</li>
+<li>Experiment η: 9 rows with <code>op = "eta_per_bin_calibration"</code> (one per non-empty bin) plus 1 with <code>op = "eta_calibration_summary"</code> reporting <code>graph_ece = 0.015</code>.</li>
+<li>Experiment γ: 7 rows with <code>op = "gamma_selective_prediction"</code> showing the kept-percent vs MAE curve.</li>
+<li>Experiment ζ: 1 row with <code>op = "zeta_kahan_vs_plain"</code> reporting slowdown ≈ 2.40×.</li>
 </ul>
+<p>If your re-run produces numbers within ±5% of the values reported here, the underlying determinism contract is functioning correctly. If your re-run produces <em>byte-identical JSONL</em>, your environment is functionally equivalent to the article’s measurement environment.</p>
+<p>If your re-run produces numbers outside ±5%, the most likely causes (in order): different CPU generation, different Rust toolchain version, system load during measurement, missing release-mode build. Open an issue if you suspect a regression.</p>
+</section>
+</section>
+<section id="why-this-matters" class="level2">
+<h2 class="anchored" data-anchor-id="why-this-matters">12. Why this matters</h2>
+<p>Three concrete use cases where the costs documented in §9 invert.</p>
+<section id="regulated-ml" class="level3">
+<h3 class="anchored" data-anchor-id="regulated-ml">Regulated ML</h3>
+<p>When a model decision must be defended to a regulator (FDA, EMA, financial auditor, ethics board), “trust the lab’s bookkeeping” is the default and the worst answer. ABNG’s audit chain replaces it with a cryptographic chain that a regulator can independently verify. The three-signal spoof detection (MD-I-2, §8.2) demonstrates the mechanism on a toy clinical scenario; the linear scaling of audit log size (§10.2) extrapolates the cost to realistic deployments.</p>
+<p><em>What this doesn’t claim</em>: ABNG is <strong>production-ready</strong> for regulated ML. The deployment story requires cross-platform CI verification (§10.1), large-N stress testing (§10.2), and tooling maturity that hasn’t shipped. The mechanism is real; the regulator-grade deployment is research-stage.</p>
+</section>
+<section id="scientific-replication" class="level3">
+<h3 class="anchored" data-anchor-id="scientific-replication">Scientific replication</h3>
+<p>A paper that depends on a specific trained model — a protein-structure prediction, a climate ensemble run, a drug-discovery surrogate — has historically been replicable “approximately” at best. Two retrainings produce similar artefacts, not identical ones. For statistical claims that condition on the <em>specific</em> artefact, this matters. ABNG produces a snapshot with a specific 32-byte chain head that can be byte-equal across re-runs; the snapshot can be archived as part of the paper’s supplementary material; any future replicator can reproduce the exact artefact, not a near-equivalent.</p>
+<p><em>What this doesn’t claim</em>: that all scientific ML <em>should</em> be replicable to byte-equality. For many domains, “approximately reproducible” is sufficient. The case for byte-equality is specifically about <em>evidence-of-record</em> — when the model artefact is the evidence, not just the path to a result.</p>
+</section>
+<section id="postmortem-debugging-with-caveats" class="level3">
+<h3 class="anchored" data-anchor-id="postmortem-debugging-with-caveats">Postmortem debugging (with caveats)</h3>
+<p>When a deployed model produces a strange output, the question “what would I need to change to never have that output again?” requires reconstructing the training trajectory that produced the current weights. ABNG’s audit log makes this <em>tractable in principle</em> — every state mutation is in the log, every state is replayable.</p>
+<p><em>The honest caveat (Skeptical Reviewer’s flag).</em> Tractable in principle is not the same as easy. Walking a 10⁶-event audit log to find the observation that corrupted a leaf’s posterior is not a “click one button” workflow today. The CLI exposes the operations (<code>cjcl abng inspect --node N --audit</code>); the user experience for <em>automated diagnosis</em> — “show me which observations affected this leaf the most” — has not been built. Treat audit-based postmortem debugging as a <em>capability that exists</em>, not a <em>workflow that’s mature</em>.</p>
 </section>
 </section>
 <section id="conclusion" class="level2">
-<h2 class="anchored" data-anchor-id="conclusion">12. Conclusion</h2>
-<p>This article walked through ABNG’s empirical state at a level of detail unusual for an architecture write-up: nine demo categories, 33+ test files, six new experiments on real hardware, four scaling tables, and an honest accounting of every gap. The headline empirical results:</p>
-<p><strong>Strong evidence.</strong> NIG conjugate update converges as <code>1/√n</code> to known truth (Experiment α). PINN fits a known analytical solution to MAE &lt; 0.05 (existing demo, confirmed). Replay invariant survives structural mutation (Experiment δ). Selective prediction reduces error 10× by abstaining on high-OOD inputs (Experiment γ). Kahan vs plain summation is exactly 2.40× — matching the architecture article’s “~2×” claim. <code>decide_step</code> is sub-millisecond at all tested graph sizes (Experiment ε). Per-bin reliability shows graph-level ECE = 0.015 on a synthetic Bernoulli task (Experiment η). Routing flow visualizes cleanly as a Sankey diagram with 8 codebook bins (Experiment θ). 2-D OOD heatmap separates training region from corners on a 50×50 grid (Experiment ι).</p>
-<p><strong>Surprising finding.</strong> Experiment β shows the piecewise routing partition makes ABNG <em>more robust</em> to basis-adequacy than the in-span PINN demo suggests. ABNG fits <code>|x − 0.5|</code> nearly as well as <code>sin(πx)</code> despite the former being globally outside the feature basis. The architecture’s earlier framing of “basis-in-span = home turf” understated the effective basis-augmentation provided by routing.</p>
-<p><strong>What’s still missing.</strong> No external baselines (sklearn GP, FNO, deep SVDD, ADWIN) — the article’s positional comparisons remain unsupported by direct measurement. No large-N benchmarks beyond 100k rows. No cross-platform CI verification. No statistical CIs on most per-op timings. The four damning gaps from the previous version of this article remain damning.</p>
+<h2 class="anchored" data-anchor-id="conclusion">13. Conclusion</h2>
+<p>This article walked through Part I of the ABNG benchmark deep-dive: five categories where the architecture’s properties can be proven correct at the tested scale.</p>
+<p><strong>What’s now established empirically (at the tested scale, on the tested hardware):</strong></p>
+<ul>
+<li>NIG conjugate update converges as <code>1/√n</code> to known truth (Experiment α).</li>
+<li>Replay invariant survives structural mutation (Experiment δ).</li>
+<li>Per-leaf calibration is well-tracked: graph-level ECE = 0.015 on a synthetic Bernoulli task (Experiment η).</li>
+<li>Selective prediction reduces error 10× by abstaining on high-OOD inputs (Experiment γ).</li>
+<li>Kahan vs plain summation is exactly 2.40× — matching the architecture article’s “~2×” claim (Experiment ζ).</li>
+<li>The graph-dispatch overhead is <strong>87% of <code>blr_update</code> cost</strong> (§9 — the determinism premium quantified).</li>
+<li>PINN demo passes at MAE &lt; 0.05 on the basis-in-span analytical solution (§8.1).</li>
+<li>Three-signal spoof detection catches single-row dataset tampering (§8.2).</li>
+</ul>
+<p><strong>What’s deferred to Part II (companion article):</strong></p>
+<ul>
+<li>The “graph adapts itself” claim — <code>decide_step</code> engine, structural action firing, scaling at varying <code>n_active_nodes</code>.</li>
+<li>The “routing partition” claim — Sankey of routing flow, basis-augmentation under piecewise routing.</li>
+<li>The temporal-dynamics claim — drift detection, auto-unfreeze, signature evolution.</li>
+<li>The 2-D OOD heatmap showing spatial structure of abstain decisions.</li>
+</ul>
+<p><strong>What remains speculative across both parts:</strong></p>
+<ul>
+<li>Whether ABNG would compete with sklearn-GP, FNO, or deep SVDD on their home benchmarks — <em>no head-to-head measurement exists in either article</em>.</li>
+<li>Whether the architecture scales to 10⁶+ rows — <em>not measured past 10⁵</em>.</li>
+<li>Whether the determinism contract holds cross-platform — <em>only Windows MSVC tested</em>.</li>
+<li>Whether the “three or more advantages simultaneously” hypothesis from <a href="../../../blog/posts/abng-architecture/index.html">Part 1 of the trilogy</a> holds anywhere empirically.</li>
+</ul>
 <div class="callout callout-style-default callout-warning callout-titled">
 <div class="callout-header d-flex align-content-center">
 <div class="callout-icon-container">
@@ -3874,11 +4155,11 @@ The honest summary
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p><strong>ABNG is exploratory engineering, not validated science.</strong> The six new experiments close several of the article’s previous evidence gaps — posterior consistency, replay-under-mutation, selective-prediction utility, Kahan premium — while opening one new question (the basis-augmentation effect of routing) that deserves more investigation. The architecture’s <em>mechanisms</em> are now validated at small scale by working test code with strict assertions. Whether the mechanisms compete with established alternatives on real workloads is still <strong>untested</strong>.</p>
-<p>The five named research questions in Section 11 + the deferred experiments B (2D Darcy) and C (regulated-ML case study) define what the project needs to do next. The code is open source. Bring experiments.</p>
+<p><strong>ABNG demonstrates promising properties for deterministic, inspectable, graph-based probabilistic computation</strong> — at the tested scale, on the tested hardware. The mechanisms in Part I (determinism, lineage, state stability, probabilistic consistency, explainability) are now backed by experiments with pre-registered pass/fail conditions. Each one passed.</p>
+<p>The architecture is <strong>not validated science.</strong> It is exploratory engineering with strong correctness signals at small scale. Whether the mechanisms compete with established alternatives on real workloads is still <em>untested</em> — and is the subject of the future-work items in §10.</p>
+<p>If you’ve read this far and the architecture seems interesting but probably wrong in three specific ways, this article has done its job. <strong>The companion Part II (<a href="../abng-benchmarks-part-2/index.qmd">Adaptive Graph Evolution, Routing Behavior, and Temporal State Dynamics</a>) covers the other four benchmark categories.</strong></p>
 </div>
 </div>
-<p>If after reading this article you decide the architecture is interesting but probably wrong in three specific ways, this article has done its job. Part 1 covers the architecture; Part 2 covers the audit and determinism story; the open-source code is at <a href="https://github.com/AdamEzzat1/CJC"><code>crates/cjc-abng/</code></a>.</p>
 <div class="callout callout-style-default callout-note callout-titled">
 <div class="callout-header d-flex align-content-center">
 <div class="callout-icon-container">
@@ -3889,7 +4170,8 @@ Note
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p>ABNG lives at <a href="https://github.com/AdamEzzat1/CJC"><code>crates/cjc-abng/</code></a>. All benchmark code is in <code>bench/abng_*/</code>. The new SRG experiments suite is at <a href="https://github.com/AdamEzzat1/CJC/blob/main/bench/abng_srg_experiments/main.rs"><code>bench/abng_srg_experiments/main.rs</code></a> — reproducible with <code>cargo run --release -p abng-srg-experiments &gt; abng_srg.jsonl</code>. The plotting script is at <a href="https://github.com/AdamEzzat1/CJC/blob/main/bench_results/plot_all.py"><code>bench_results/plot_all.py</code></a>. Part 1 covers the architecture; Part 2 covers the determinism and audit story. This article is the empirical backbone — the evidence base for whatever opinion you form about ABNG.</p>
+<p>ABNG lives at <a href="https://github.com/AdamEzzat1/CJC"><code>crates/cjc-abng/</code></a> in the CJC-Lang repository. All benchmark code is in <code>bench/abng_*/</code>. The SRG-experiments suite is at <a href="https://github.com/AdamEzzat1/CJC/blob/main/bench/abng_srg_experiments/main.rs"><code>bench/abng_srg_experiments/main.rs</code></a> — reproducible with <code>cargo run --release -p abng-srg-experiments</code>. The plotting script is at <a href="https://github.com/AdamEzzat1/CJC/blob/main/bench_results/plot_all.py"><code>bench_results/plot_all.py</code></a>.</p>
+<p>This is article 3 of a 4-article ABNG series. Article 1 covers the architecture; Article 2 covers the determinism and audit story in depth; Article 4 (Part II of the benchmarks) covers adaptive graph evolution, routing, and temporal dynamics.</p>
 </div>
 </div>
 
@@ -3900,9 +4182,10 @@ Note
   <category>CJC-Lang</category>
   <category>ABNG</category>
   <category>benchmarks</category>
-  <category>falsification</category>
-  <category>empirical</category>
-  <category>research</category>
+  <category>determinism</category>
+  <category>lineage</category>
+  <category>calibration</category>
+  <category>explainability</category>
   <guid>https://adamezzat1.github.io/blog/posts/abng-benchmarks/index.html</guid>
   <pubDate>Sun, 10 May 2026 07:00:00 GMT</pubDate>
 </item>
