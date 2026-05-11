@@ -5,21 +5,14 @@ author: "Adam Ezzat"
 date: "2026-05-10"
 date-modified: "2026-05-10"
 categories: [CJC-Lang, ABNG, Bayesian, architecture, research, draft]
-description: "A research-commentary rewrite of the ABNG architecture story for a Towards Data Science submission. ABNG is an experimental Adaptive Belief Network Graph — a routed mixture of Bayesian Linear Regression experts on an adaptive trie, with deterministic execution and a SHA-256 audit chain. This post covers what the architecture is, where it sits in the modern ML landscape, how it works internally, what it might (or might not) actually be good for, and what experiments would falsify it. The complete 9-section article, drafted under a multi-role verification loop."
+description: "A research-commentary rewrite of the ABNG architecture story for a Towards Data Science submission. ABNG is an experimental Adaptive Belief Network Graph — a routed mixture of Bayesian Linear Regression experts on an adaptive tree, with deterministic execution and a SHA-256 audit chain. This post covers what the architecture is, where it sits in the modern ML landscape, how it works internally, what it might (or might not) actually be good for, and what experiments would falsify it. The complete 9-section article, drafted under a multi-role verification loop."
 ---
 
 <div class="reading-time">&#128337; ~55 min read</div>
 
-<div class="stats-row">
-<div class="stat"><span class="number">9/9</span><span class="stat-label">sections</span></div>
-<div class="stat"><span class="number">9</span><span class="stat-label">diagrams</span></div>
-<div class="stat"><span class="number">~18K</span><span class="stat-label">words</span></div>
-<div class="stat"><span class="number">v13</span><span class="stat-label">snapshot magic</span></div>
-</div>
-
 ::: {.callout-tip appearance="minimal"}
 ## TL;DR
-ABNG (Adaptive Belief Network Graph) is an experimental architecture that treats *belief states* as a first-class object: each node in an adaptive trie carries its own Bayesian Linear Regression posterior, routing is a traceable walk through learned bytes, the graph can grow / split / merge / prune / compress / freeze under a deterministic policy, and every state mutation appends to a SHA-256 hash-chained audit log so the training history is replayable bit-for-bit. This piece walks through what the architecture is, the neighbourhood it sits in, how it works internally, what it might be good for (with caveats), what could go wrong, where it sits in the literature, and what experiments would falsify it. **ABNG is exploratory engineering, not validated science.** No published benchmarks yet — the closer names three specific experiments whose outcomes would change the project's direction.
+ABNG (Adaptive Belief Network Graph) is an experimental architecture that treats *belief states* as a first-class object: each node in an adaptive tree carries its own Bayesian Linear Regression posterior, routing is a traceable walk through learned bytes, the graph can grow / split / merge / prune / compress / freeze under a deterministic policy, and every state mutation appends to a SHA-256 hash-chained audit log so the training history is replayable bit-for-bit. This piece walks through what the architecture is, the neighbourhood it sits in, how it works internally, what it might be good for (with caveats), what could go wrong, where it sits in the literature, and what experiments would falsify it. **ABNG is exploratory engineering, not validated science.** No published benchmarks yet — the closer names three specific experiments whose outcomes would change the project's direction.
 :::
 
 ::: {.callout-warning}
@@ -184,7 +177,7 @@ Before getting into ABNG's specifics, it helps to know the neighbourhood. The ar
 | **Bayesian Neural Network** | Weight posteriors | **Yes (defining)** | No | Hard; sampling-dependent | Small, uncertainty-critical tasks |
 | **Liquid Neural Network** | Continuous-time ODE state | No | No (sparse but fixed) | Hard | Compact controllers, time series |
 | **Neural Operator** | Function-space mapping | No (Bayesian variants exist) | No | Hard | PDE surrogates, physics |
-| **ABNG (this article)** | Routed per-node Bayesian heads on an adaptive trie | **Yes (per-node BLR posterior)** | **Yes (Grow/Split/Merge/Prune/Compress/Freeze)** | **Bit-identical by construction (x86-64 today)** | *Hypothesis: scientific & safety-critical ML; empirically unverified* |
+| **ABNG (this article)** | Routed per-node Bayesian heads on an adaptive tree | **Yes (per-node BLR posterior)** | **Yes (Grow/Split/Merge/Prune/Compress/Freeze)** | **Bit-identical by construction (x86-64 today)** | *Hypothesis: scientific & safety-critical ML; empirically unverified* |
 
 The last column for ABNG is, deliberately, a hypothesis — not a result. The rest of the table reflects what each family actually demonstrates in the literature today.
 
@@ -192,11 +185,11 @@ The last column for ABNG is, deliberately, a hypothesis — not a result. The re
 
 ABNG is best understood as a **deliberate recombination**, not a new family. Three lineages meet in the design:
 
-1. **Graph Neural Networks** give it the per-node feature-vector mental model and the message-passing intuition. But ABNG's graph is a *learned routing trie*, not an input-supplied topology, and it changes shape during training under the structural decision policy.
+1. **Graph Neural Networks** give it the per-node feature-vector mental model and the message-passing intuition. But ABNG's graph is a *learned routing tree*, not an input-supplied topology, and it changes shape during training under the structural decision policy.
 
 2. **Bayesian Neural Networks** give it the calibrated-uncertainty target. ABNG localizes the Bayesian machinery: instead of a global weight posterior, each leaf node carries a small **Bayesian Linear Regression head** with a Normal-Inverse-Gamma prior, updated in closed form. Strictly speaking this places ABNG closer to a **routed mixture of Bayesian Linear Regression experts** — what the older literature on Bayesian committee machines and products of local experts (Tresp 2000; Cao & Fleet 2014) was reaching for — than to a full Bayesian Neural Network. The uncertainty estimate is local, conditional on routing, *not* a posterior over the whole model.
 
-3. **Mixture-of-Experts** gives it the conditional-compute intuition: only the routed leaf produces a prediction, and only that leaf's posterior is updated. But MoE routers learn a soft gating function and the expert population is fixed; ABNG's router walks a discrete, deterministic trie over quantile-encoded features, and the population of experts (leaves) is itself adaptive — Grow, Split, Merge, Prune, Compress, Freeze. (A reader who tracks Adaptive Computation Time, Pondernet, or Universal Transformers will recognize the dynamic-compute family resemblance, but ABNG adapts at the *training-graph* level rather than the per-token-inference level.)
+3. **Mixture-of-Experts** gives it the conditional-compute intuition: only the routed leaf produces a prediction, and only that leaf's posterior is updated. But MoE routers learn a soft gating function and the expert population is fixed; ABNG's router walks a discrete, deterministic tree over quantile-encoded features, and the population of experts (leaves) is itself adaptive — Grow, Split, Merge, Prune, Compress, Freeze. (A reader who tracks Adaptive Computation Time, Pondernet, or Universal Transformers will recognize the dynamic-compute family resemblance, but ABNG adapts at the *training-graph* level rather than the per-token-inference level.)
 
 ABNG combines these lineages with two further commitments that are uncommon in any of them:
 
@@ -224,7 +217,7 @@ This section walks through ABNG's mechanisms from the inside out, starting with 
 
 ## The one-sentence mental model
 
-> *ABNG is a routed mixture of Bayesian experts arranged as a trie, where the trie itself adapts during training under a deterministic policy, and every state change is recorded in a hash-chained audit log.*
+> *ABNG is a routed mixture of Bayesian experts arranged as a tree, where the tree itself adapts during training under a deterministic policy, and every state change is recorded in a hash-chained audit log.*
 
 Each clause maps to a mechanism. The rest of the section unpacks them in order.
 
@@ -233,7 +226,7 @@ Each clause maps to a mechanism. The rest of the section unpacks them in order.
 flowchart LR
     X["Feature vector x"] --> CB["QuantileCodebook<br/>(per-dim bin edges)"]
     CB --> RK["Route key<br/>(byte sequence)"]
-    RK --> TR["Adaptive trie<br/>Node4/16/48/256"]
+    RK --> TR["Adaptive tree<br/>Node4/16/48/256"]
     TR --> LF["Routed leaf node"]
     LF --> MLP["per-node MLP<br/>feature extractor"]
     MLP --> BLR["Bayesian Linear<br/>Regression head"]
@@ -250,10 +243,10 @@ ABNG installs a **`QuantileCodebook`** once, before any node is added. For each 
 
 Why a discrete byte route instead of a learned soft router? Two reasons. First, it makes the routing path *traceable*: you can write the exact byte sequence into an audit event and replay the descent later. Second, the byte representation aligns naturally with the Adaptive Radix Tree (ART) children layout that ABNG uses for its graph topology.
 
-The graph itself is a trie. Each node carries an `AdaptiveChildren` payload that takes one of five forms — `None`, `Node4`, `Node16`, `Node48`, `Node256` — and **auto-promotes** to the next size when full. This is mechanically identical to ART's well-known children layout; ABNG borrows the structure and replaces the database-key payload with belief-graph children indexed by route-key bytes.
+The graph itself is a tree. Each node carries an `AdaptiveChildren` payload that takes one of five forms — `None`, `Node4`, `Node16`, `Node48`, `Node256` — and **auto-promotes** to the next size when full. This is mechanically identical to ART's well-known children layout; ABNG borrows the structure and replaces the database-key payload with belief-graph children indexed by route-key bytes.
 
 ```{mermaid}
-%%| fig-cap: "Figure 2 — A small ABNG trie. Inner nodes use the ART children layout (Node4/16/48/256); leaves (dashed) carry the MLP + BLR machinery. The route key [0x07, 0x01, 0xAA, …] would descend to leaf B1a."
+%%| fig-cap: "Figure 2 — A small ABNG tree. Inner nodes use the ART children layout (Node4/16/48/256); leaves (dashed) carry the MLP + BLR machinery. The route key [0x07, 0x01, 0xAA, …] would descend to leaf B1a."
 flowchart TD
     R["Root<br/>(Node16)"]
     R -->|byte 0x03| A["Node A<br/>(Node4)"]
@@ -464,7 +457,7 @@ Even with witness-only events at ~80 bytes apiece, four state updates per observ
 
 ## Temporal evolution
 
-The trie isn't static even at fixed graph size: per-node state evolves with every observation. A leaf's BLR posterior tightens, its density tracker accumulates mass, its calibration bins fill. Three *time-aware* pieces of state are worth calling out explicitly:
+The tree isn't static even at fixed graph size: per-node state evolves with every observation. A leaf's BLR posterior tightens, its density tracker accumulates mass, its calibration bins fill. Three *time-aware* pieces of state are worth calling out explicitly:
 
 - **`NodeSignature`** — a 32-byte Welford-smoothed summary across four channels (prediction, uncertainty, calibration, routing).
 - **`Maturity` flags** — `samples_seen`, `calibration_stable`, `uncertainty_stable`, `trust_level`. Once `uncertainty_stable` first holds, the leaf's expected epistemic variance is *auto-captured* and becomes the denominator in the calibrated OOD ratio.
@@ -555,7 +548,7 @@ Every line in this routine maps to a real `abng_*` builtin in `cjc-runtime` and 
 
 ::: {.callout-tip appearance="minimal"}
 ## Key Takeaways — Section 3
-- **Routing is discrete and traceable**: a learned codebook converts features to bytes; the trie descends one byte at a time.
+- **Routing is discrete and traceable**: a learned codebook converts features to bytes; the tree descends one byte at a time.
 - **Each leaf is a small Bayesian model**: MLP body + Bayesian Linear Regression head with closed-form Normal-Inverse-Gamma updates. The predictive distribution is a Student-t; epistemic leverage and aleatoric scale are surfaced separately so the user can never accidentally mix units.
 - **`decide_step` is the structural engine**: deterministic order, at most one action per node per call, gated by quality conditions (KL, ΔNLL, route entropy). The snapshot-at-call-entry invariant bounds each call's effect.
 - **Everything appends an audit event**. The chain-head is a single SHA-256 commitment to the entire training history; the most likely scaling pain point in practice is audit-log size, which compaction addresses.
@@ -766,7 +759,7 @@ Each subsection follows the same shape: **Claim → Mechanism → Tradeoff → H
 
 **Mechanism.** Per-prediction posterior tells the simulation when to fall back to the high-fidelity model or to gather more data. Replayable audit log lets the simulation author reproduce a specific belief state at a specific moment. Structural adaptation allows the surrogate to allocate capacity to regions of input space where physics demands more resolution. CJC-Lang already runs PINN demos against analytical PDEs via the `cjc-ad` autodiff machinery — the 1D heat equation, Burgers, Allen-Cahn, KdV, and wave equations all have parity-tested implementations in the workspace.
 
-**Tradeoff.** ABNG is **not yet competitive with Fourier Neural Operators or DeepONet on operator-learning benchmarks**. The discrete codebook + trie routing is not discretization-invariant in the way FNO is; predictions are piecewise smooth across leaves, with discontinuities at codebook bin edges. This is a **fundamental** limitation, not a fixable bug — discretization invariance would require dropping the codebook entirely, which would force redesigning the audit story (you cannot byte-trace a soft routing decision the same way). The per-leaf MLP body is small (typically 8–64 hidden units); global expressivity is limited even with many leaves. For a benchmark like 2D Darcy flow, ABNG should be expected to underperform a tuned FNO and overperform a tuned random forest, on a roughly intermediate compute budget.
+**Tradeoff.** ABNG is **not yet competitive with Fourier Neural Operators or DeepONet on operator-learning benchmarks**. The discrete codebook + tree routing is not discretization-invariant in the way FNO is; predictions are piecewise smooth across leaves, with discontinuities at codebook bin edges. This is a **fundamental** limitation, not a fixable bug — discretization invariance would require dropping the codebook entirely, which would force redesigning the audit story (you cannot byte-trace a soft routing decision the same way). The per-leaf MLP body is small (typically 8–64 hidden units); global expressivity is limited even with many leaves. For a benchmark like 2D Darcy flow, ABNG should be expected to underperform a tuned FNO and overperform a tuned random forest, on a roughly intermediate compute budget.
 
 **Tag.** *Reasonable extrapolation* for the use case; *speculative* on actual numerical competitiveness until benchmarks land.
 
@@ -812,9 +805,9 @@ Each property is real and shipped. Each one has a corner the design *cannot reac
 
 ## Sparse computation at inference
 
-**Claim.** Each prediction touches exactly one leaf, regardless of how large the graph has grown. Inference cost is `O(d_route)` for the trie descent + `O(d_feat²)` for the BLR predict, independent of total node count.
+**Claim.** Each prediction touches exactly one leaf, regardless of how large the graph has grown. Inference cost is `O(d_route)` for the tree descent + `O(d_feat²)` for the BLR predict, independent of total node count.
 
-**Mechanism.** ART-style children layout means trie descent is one byte-indexed lookup per level; route key length is bounded by the configured codebook depth. The BLR Cholesky pre-solve is reused across predictions on the same leaf; predict-time work is a single dot product plus a triangular solve.
+**Mechanism.** ART-style children layout means tree descent is one byte-indexed lookup per level; route key length is bounded by the configured codebook depth. The BLR Cholesky pre-solve is reused across predictions on the same leaf; predict-time work is a single dot product plus a triangular solve.
 
 **Tradeoff.** *Inference* is sparse, but *training* is not as sparse as it looks. The whole graph's structural-decision policy runs on `decide_step`, which is `O(n_active_nodes)` — sub-millisecond at 10 K nodes, still under a second at 1 M. The audit chain advance is global — every observation appends an event, and `verify_chain` is `O(n_events)` at roughly 100–200 ns/event after Phase 0.7's streaming-hash optimization (so verifying a 1 M-event chain is ~150 ms). The cost model is: **cheap per inference (sub-microsecond), moderate per `decide_step` call (sub-millisecond), bounded but non-trivial on full audit verification (linear in event count)**.
 
@@ -840,7 +833,7 @@ Each property is real and shipped. Each one has a corner the design *cannot reac
 | Simulation embedding | Substrate-level determinism | Same bug, reproduced perfectly; single-threaded |
 | Probabilistic routing analysis | Opt-in `Routed` audit events | Logging cost grows linearly in observations |
 | Adaptive memory | `decide_step` policy engine | Threshold tuning is per-dataset; no universal defaults |
-| Sparse inference | Trie + one-leaf-per-input | `decide_step` is `O(n_active)`; audit verify is `O(n_events)` |
+| Sparse inference | Tree + one-leaf-per-input | `decide_step` is `O(n_active)`; audit verify is `O(n_events)` |
 | Deterministic execution | Kahan / no-FMA / BTreeMap | ~2× CPU overhead; no GPU; single-thread; x86-64 only |
 
 ::: {.callout-tip appearance="minimal"}
@@ -873,7 +866,7 @@ Each subsection follows: **Failure mode → Mechanism that causes it → Whether
 
 ## Graph explosion under loose policy thresholds
 
-**Failure.** If `H_grow` is set too low, every observation in a slightly novel route triggers a new leaf. The trie proliferates until memory exhausts. In the worst case, an ABNG run on a high-entropy input distribution can produce more nodes than observations.
+**Failure.** If `H_grow` is set too low, every observation in a slightly novel route triggers a new leaf. The tree proliferates until memory exhausts. In the worst case, an ABNG run on a high-entropy input distribution can produce more nodes than observations.
 
 **Cause.** `Grow` requires `samples_seen ≥ grow_min` *and* route entropy at the candidate depth `> H_grow`. Mistune either threshold and the gate opens too easily.
 
@@ -923,7 +916,7 @@ Each subsection follows: **Failure mode → Mechanism that causes it → Whether
 
 ## The high-dimensional input problem
 
-**Failure.** As input dimensionality grows past ~32, the route key (one byte per dimension) gets long, routing entropy explodes, and the architecture either grows leaves indefinitely or wastes most of the trie on noise dimensions.
+**Failure.** As input dimensionality grows past ~32, the route key (one byte per dimension) gets long, routing entropy explodes, and the architecture either grows leaves indefinitely or wastes most of the tree on noise dimensions.
 
 **Cause.** The codebook is per-dimension and the route is concatenated bytes. There is no native dimensionality reduction; high-D inputs need an upstream encoder (a deep network, an autoencoder, a hashing trick) before they hit ABNG, and that encoder is *outside* the audit story.
 
@@ -978,7 +971,7 @@ Bayesian GNN variants in the ML literature (e.g. *Bayesian Graph Convolutional N
 
 Directed (Bayesian networks) and undirected (Markov random fields) PGMs (Koller & Friedman 2009) define a joint distribution over many variables and support inference via message passing, sampling, or variational methods.
 
-**ABNG is not a PGM.** The trie nodes do not represent random variables in a joint distribution; they represent *experts* in a mixture model. There is no inter-leaf message passing. The audit chain commits to a sequence of *state mutations* (closer to a database write-ahead log than a PGM's belief propagation).
+**ABNG is not a PGM.** The tree nodes do not represent random variables in a joint distribution; they represent *experts* in a mixture model. There is no inter-leaf message passing. The audit chain commits to a sequence of *state mutations* (closer to a database write-ahead log than a PGM's belief propagation).
 
 A note on overloaded vocabulary: "belief state" gets used in at least four incompatible senses across the literature — (a) the posterior over latent variables in a PGM, (b) a sufficient statistic for prediction in control theory, (c) a state estimator in a POMDP, or (d) the Bayesian posterior of a model conditional on data. ABNG uses (d) — specifically, the BLR posterior at the routed leaf. The shared word "belief" across these senses is genuinely misleading.
 
@@ -994,9 +987,9 @@ The MoE family (Shazeer et al. 2017 *Sparsely-Gated MoE*; Lepikhin et al. 2020 *
 2. *Deterministic, not learned.* The router has no parameters of its own — the codebook is calibrated once and frozen.
 3. *Adaptive population, not fixed.* The number of experts changes at training time through Grow / Split / Merge / Prune / Compress.
 
-The older **Mixture-of-Trees** literature (Bishop & Svensén 2003) and the **Bayesian Committee Machines** of Tresp (2000) are closer ancestors than modern MoE. A Bayesian Committee Machine is exactly "a mixture of Bayesian Linear Regression experts with a learned partition" — which is most of what ABNG is. Tresp's original BCM is **symmetric** — every expert votes with equal access. ABNG is **asymmetric** — exactly one expert per input, chosen by the trie router. The closer modern relative is Bishop & Svensén's "product of local experts" with hard routing.
+The older **Mixture-of-Trees** literature (Bishop & Svensén 2003) and the **Bayesian Committee Machines** of Tresp (2000) are closer ancestors than modern MoE. A Bayesian Committee Machine is exactly "a mixture of Bayesian Linear Regression experts with a learned partition" — which is most of what ABNG is. Tresp's original BCM is **symmetric** — every expert votes with equal access. ABNG is **asymmetric** — exactly one expert per input, chosen by the tree router. The closer modern relative is Bishop & Svensén's "product of local experts" with hard routing.
 
-The committee-machine literature lacked the adaptive partitioning, the byte-route trie, and the audit chain, but the core idea of "local Bayesian experts combined under a partition" is theirs.
+The committee-machine literature lacked the adaptive partitioning, the byte-route tree, and the audit chain, but the core idea of "local Bayesian experts combined under a partition" is theirs.
 
 **Relationship to committee machines:** *direct descendant*. This is the closest single prior work.
 
@@ -1012,7 +1005,7 @@ S4, S5, Mamba, and the broader linear/structured state-space family (Gu et al. 2
 
 Hasani et al. 2020 *Liquid Time-Constant Networks*; Hasani et al. 2022 *Liquid-S4*. Continuous-time dynamics, very small parameter counts, online adaptivity.
 
-**ABNG shares the "small per-node footprint and online adaptation" instinct** but uses a discrete trie of Bayesian experts rather than continuous-time ODE neurons. Liquid networks' interpretability comes from low-dimensional dynamics; ABNG's interpretability comes from traceable routing + audit chain. Different routes to similar destinations.
+**ABNG shares the "small per-node footprint and online adaptation" instinct** but uses a discrete tree of Bayesian experts rather than continuous-time ODE neurons. Liquid networks' interpretability comes from low-dimensional dynamics; ABNG's interpretability comes from traceable routing + audit chain. Different routes to similar destinations.
 
 **Relationship:** *resembles in motivation, unrelated in mechanics*.
 
@@ -1057,7 +1050,7 @@ Merkle trees (Merkle 1979), git's commit DAG, and the broader literature on appe
 
 Honestly, no single mechanism. The combination is unusual:
 
-1. **Adaptive trie routing** using byte-encoded features (borrowed from ART, applied to ML).
+1. **Adaptive tree routing** using byte-encoded features (borrowed from ART, applied to ML).
 2. **Per-leaf NIG-conjugate Bayesian Linear Regression head** (textbook Bayesian linear regression, applied per-leaf in a routed mixture — Bayesian Committee Machine genealogy).
 3. **Deterministic `decide_step` policy engine** with six structural actions gated by quality conditions (resembles stream-mining drift detection + decision-tree splitting heuristics, but the specific six-action set with deterministic fall-through is, as far as I can tell, original to ABNG).
 4. **SHA-256 audit chain over every state mutation** with `abng_replay` byte-identical verification (borrowed primitive, unusual granularity).
@@ -1166,7 +1159,7 @@ This conclusion is not "ABNG is good." It is "ABNG is a falsifiable hypothesis, 
 
 ## What ABNG is, in one sentence again
 
-A routed mixture of Bayesian Linear Regression experts on an adaptive trie, with deterministic execution and a SHA-256 audit chain — built in CJC-Lang, a pre-1.0 research compiler that itself enforces the determinism contract. Both the architecture (Phase 0.7, snapshot v13) and the substrate (CJC-Lang 0.1.x) are under active development.
+A routed mixture of Bayesian Linear Regression experts on an adaptive tree, with deterministic execution and a SHA-256 audit chain — built in CJC-Lang, a pre-1.0 research compiler that itself enforces the determinism contract. Both the architecture (Phase 0.7, snapshot v13) and the substrate (CJC-Lang 0.1.x) are under active development.
 
 ## What would need to happen for this to graduate from "research direction" to "validated architecture"
 
