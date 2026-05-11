@@ -6,7 +6,7 @@
   </url>
   <url>
     <loc>https://adamezzat1.github.io/blog/index.html</loc>
-    <lastmod>2026-05-11T01:21:27.483Z</lastmod>
+    <lastmod>2026-05-11T02:44:02.415Z</lastmod>
   </url>
   <url>
     <loc>https://adamezzat1.github.io/blog/posts/chess-rl-v2/index.html</loc>
@@ -55,5 +55,9 @@
   <url>
     <loc>https://adamezzat1.github.io/blog/posts/abng-belief-states-first-class/index.html</loc>
     <lastmod>2026-05-11T01:21:20.068Z</lastmod>
+  </url>
+  <url>
+    <loc>https://adamezzat1.github.io/blog/posts/abng-architecture/index.html</loc>
+    <lastmod>2026-05-11T02:43:49.308Z</lastmod>
   </url>
 </urlset>
