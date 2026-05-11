@@ -8,7 +8,7 @@
 
 <meta name="author" content="Adam Ezzat">
 <meta name="dcterms.date" content="2026-05-10">
-<meta name="description" content="Part 3 of a three-article series on ABNG. This piece is the empirical backbone — the demo catalog, the verification scorecard, six experiments measured on real hardware, and an honest accounting of every gap. New in this revision: posterior consistency on known truth (PINN posterior converges as 1/sqrt(n) toward analytical w_true), selective-prediction curve (abstaining on high-OOD predictions reduces mean error 10x), Kahan-vs-plain determinism premium quantified at exactly 2.40x, decide_step scaling sub-millisecond at all tested sizes, basis-in-span vs basis-not-in-span PINN comparison, and replay-under-mutation byte-identical verification. The whole architecture is still exploratory engineering, not validated science.">
+<meta name="description" content="Part 3 of a three-article series on ABNG. This piece is the empirical backbone — the demo catalog, the verification scorecard, nine experiments measured on real hardware, and an honest accounting of every gap. New in this revision: posterior consistency on known truth, basis-in-span vs out-of-span PINN, selective prediction (10x error reduction), replay-under-mutation invariant, decide_step scaling, Kahan vs plain summation premium (2.40x), per-bin reliability diagram (graph-level ECE = 0.015), routing-flow Sankey, and 2-D OOD score heatmap with four-panel component decomposition. The whole architecture is still exploratory engineering, not validated science.">
 
 <title>Adam Ezzat - Benchmarking Experimental Bayesian Graph Networks</title>
 <style>
@@ -160,7 +160,9 @@ ul.task-list li input[type="checkbox"] {
   <li><a href="#experiment-α-posterior-consistency-on-known-truth" id="toc-experiment-α-posterior-consistency-on-known-truth" class="nav-link" data-scroll-target="#experiment-α-posterior-consistency-on-known-truth">7.1 Experiment α — Posterior consistency on known truth</a></li>
   <li><a href="#experiment-β-basis-not-in-span-pinn-counterexample" id="toc-experiment-β-basis-not-in-span-pinn-counterexample" class="nav-link" data-scroll-target="#experiment-β-basis-not-in-span-pinn-counterexample">7.2 Experiment β — Basis-not-in-span PINN counterexample</a></li>
   <li><a href="#experiment-γ-selective-prediction-curve" id="toc-experiment-γ-selective-prediction-curve" class="nav-link" data-scroll-target="#experiment-γ-selective-prediction-curve">7.3 Experiment γ — Selective prediction curve</a></li>
-  <li><a href="#what-about-reliability-diagrams-and-predictive-coverage" id="toc-what-about-reliability-diagrams-and-predictive-coverage" class="nav-link" data-scroll-target="#what-about-reliability-diagrams-and-predictive-coverage">7.4 What about reliability diagrams and predictive coverage?</a></li>
+  <li><a href="#experiment-η-per-bin-reliability-diagram-v2" id="toc-experiment-η-per-bin-reliability-diagram-v2" class="nav-link" data-scroll-target="#experiment-η-per-bin-reliability-diagram-v2">7.4 Experiment η — Per-bin reliability diagram (V2)</a></li>
+  <li><a href="#experiment-θ-routing-flow-v3-sankey" id="toc-experiment-θ-routing-flow-v3-sankey" class="nav-link" data-scroll-target="#experiment-θ-routing-flow-v3-sankey">7.5 Experiment θ — Routing flow (V3 Sankey)</a></li>
+  <li><a href="#experiment-ι-2-d-ood-score-heatmap-v9" id="toc-experiment-ι-2-d-ood-score-heatmap-v9" class="nav-link" data-scroll-target="#experiment-ι-2-d-ood-score-heatmap-v9">7.6 Experiment ι — 2-D OOD score heatmap (V9)</a></li>
   </ul></li>
   <li><a href="#replayability-determinism-benchmarks" id="toc-replayability-determinism-benchmarks" class="nav-link" data-scroll-target="#replayability-determinism-benchmarks">8. Replayability &amp; determinism benchmarks</a>
   <ul class="collapse">
@@ -223,7 +225,7 @@ ul.task-list li input[type="checkbox"] {
 
 <div>
   <div class="description">
-    Part 3 of a three-article series on ABNG. This piece is the empirical backbone — the demo catalog, the verification scorecard, six experiments measured on real hardware, and an honest accounting of every gap. New in this revision: posterior consistency on known truth (PINN posterior converges as 1/sqrt(n) toward analytical w_true), selective-prediction curve (abstaining on high-OOD predictions reduces mean error 10x), Kahan-vs-plain determinism premium quantified at exactly 2.40x, decide_step scaling sub-millisecond at all tested sizes, basis-in-span vs basis-not-in-span PINN comparison, and replay-under-mutation byte-identical verification. The whole architecture is still exploratory engineering, not validated science.
+    Part 3 of a three-article series on ABNG. This piece is the empirical backbone — the demo catalog, the verification scorecard, nine experiments measured on real hardware, and an honest accounting of every gap. New in this revision: posterior consistency on known truth, basis-in-span vs out-of-span PINN, selective prediction (10x error reduction), replay-under-mutation invariant, decide_step scaling, Kahan vs plain summation premium (2.40x), per-bin reliability diagram (graph-level ECE = 0.015), routing-flow Sankey, and 2-D OOD score heatmap with four-panel component decomposition. The whole architecture is still exploratory engineering, not validated science.
   </div>
 </div>
 
@@ -269,7 +271,7 @@ TL;DR
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p>A research-stage ML architecture is only as credible as its evidence. This article walks through the empirical state of ABNG: nine distinct demo categories totalling ~5,866 lines of test code, <strong>six new experiments measured on real hardware</strong> (NIG posterior consistency, basis-in-span vs out-of-span PINN, selective prediction on OOD, replay-under-mutation invariant, decide_step scaling, Kahan-vs-plain determinism premium), and the headline analytical-solution result (1D heat equation, MAE &lt; 0.05 <em>on the architecture’s home turf</em>). It is also brutally honest about what the demos <em>don’t</em> prove: no external baselines (no sklearn, no PyTorch, no FNO comparisons), no large-N benchmarks beyond 100K rows, no cross-platform measurement, no statistical confidence intervals. The honest framing: <strong>ABNG is exploratory engineering, not validated science</strong>, and the closer names three specific experiments whose outcomes would change that.</p>
+<p>A research-stage ML architecture is only as credible as its evidence. This article walks through the empirical state of ABNG: nine distinct demo categories totalling ~5,866 lines of test code, <strong>nine new experiments measured on real hardware</strong> — α (NIG posterior consistency), β (basis-in-span vs out-of-span PINN), γ (selective prediction on OOD), δ (replay-under-mutation invariant), ε (decide_step scaling), ζ (Kahan vs plain summation), and three more (η per-bin reliability diagram, θ routing-flow Sankey, ι 2-D OOD heatmap) — plus twelve new figures generated from the bench data. It is also brutally honest about what the demos <em>don’t</em> prove: no external baselines (no sklearn, no PyTorch, no FNO comparisons), no large-N benchmarks beyond 100K rows, no cross-platform measurement, no statistical confidence intervals on most per-op timings. The honest framing: <strong>ABNG is exploratory engineering, not validated science</strong>, and the closer names three specific follow-on experiments whose outcomes would change that.</p>
 </div>
 </div>
 <div class="callout callout-style-default callout-warning callout-titled">
@@ -1002,10 +1004,170 @@ g_A.leaves[k].blr.state_hash() ≠ g_B.leaves[k].blr.state_hash()  ← affected 
 <p><strong>C5 strongly supported.</strong> Tag: <em>Proven at the tested scale</em>. The abstain-when-OOD policy is empirically a useful decision rule on this scenario.</p>
 <p><strong>Caveat.</strong> This is one scenario. The article does not measure selective-prediction performance on real-world OOD benchmarks (CIFAR-10-C, ImageNet-O, etc.). The result here demonstrates the mechanism works; competitive performance against established OOD methods is unmeasured.</p>
 </section>
-<section id="what-about-reliability-diagrams-and-predictive-coverage" class="level3">
-<h3 class="anchored" data-anchor-id="what-about-reliability-diagrams-and-predictive-coverage">7.4 What about reliability diagrams and predictive coverage?</h3>
-<p>The SRG critique requested per-leaf reliability diagrams and predictive-coverage checks. <strong>Neither is included in this version.</strong> The calibration-demo data structure tracks 15-bin ECE per leaf, but emitting the per-bin predicted-frequency / observed-frequency pairs requires a small additional instrumentation pass that was not implemented in this session. Similarly, predictive coverage testing requires drawing samples from the Student-t predictive (or computing the exact CDF) and checking coverage rate at chosen confidence levels — also not implemented.</p>
-<p>Both are <strong>deferred</strong> but tractable: each is roughly 2–4 hours of additional bench code. They’re listed in the open research questions (Section 11).</p>
+<section id="experiment-η-per-bin-reliability-diagram-v2" class="level3">
+<h3 class="anchored" data-anchor-id="experiment-η-per-bin-reliability-diagram-v2">7.4 Experiment η — Per-bin reliability diagram (V2)</h3>
+<p><strong>Hypothesis.</strong> ABNG’s per-leaf 15-bin reliability diagram tracks calibration correctly. On a synthetic Bernoulli problem with known <code>p_true(x)</code>, the per-bin <em>observed frequency</em> should approach the per-bin <em>predicted-probability mean</em> (i.e., the curve should lie near the diagonal).</p>
+<p><strong>Methodology.</strong> <code>p_true(x) = sigmoid(2x − 1)</code> on <code>x ~ Uniform(-1, 1)</code>. Sample <code>y_i ~ Bernoulli(p_true(x_i))</code> for n=5000 observations. ABNG models the success probability directly via per-leaf BLR; clamp output to <code>[0, 1]</code> for <code>calibration_observe</code>. After all observations, aggregate per-bin <code>(count, sum_of_predicted, count_of_correct)</code> across all leaves and emit <code>(predicted_mean, observed_freq)</code> per bin.</p>
+<p><strong>Result.</strong> Graph-level ECE = <strong>0.0150</strong> — well-calibrated. Per-bin data (non-empty bins shown):</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: right;">Bin</th>
+<th style="text-align: right;">Predicted mean</th>
+<th style="text-align: right;">Observed freq</th>
+<th style="text-align: right;">Count</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">2</td>
+<td style="text-align: right;">0.167</td>
+<td style="text-align: right;">0.182</td>
+<td style="text-align: right;">825</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">3</td>
+<td style="text-align: right;">0.218</td>
+<td style="text-align: right;">0.246</td>
+<td style="text-align: right;">224</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">4</td>
+<td style="text-align: right;">0.305</td>
+<td style="text-align: right;">0.296</td>
+<td style="text-align: right;">287</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">5</td>
+<td style="text-align: right;">0.370</td>
+<td style="text-align: right;">0.353</td>
+<td style="text-align: right;">533</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">6</td>
+<td style="text-align: right;">0.427</td>
+<td style="text-align: right;">0.461</td>
+<td style="text-align: right;">440</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">7</td>
+<td style="text-align: right;">0.512</td>
+<td style="text-align: right;">0.527</td>
+<td style="text-align: right;">167</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">8</td>
+<td style="text-align: right;">0.571</td>
+<td style="text-align: right;">0.596</td>
+<td style="text-align: right;">473</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">9</td>
+<td style="text-align: right;">0.632</td>
+<td style="text-align: right;">0.642</td>
+<td style="text-align: right;">422</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">10</td>
+<td style="text-align: right;">0.686</td>
+<td style="text-align: right;">0.692</td>
+<td style="text-align: right;">185</td>
+</tr>
+</tbody>
+</table>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="figures/v2_reliability_diagram.png" class="img-fluid figure-img"></p>
+<figcaption class="figure-caption">V2 — Per-bin reliability diagram (Experiment η)</figcaption>
+</figure>
+</div>
+<p><strong>Verdict.</strong> The curve hugs the diagonal closely. Every non-empty bin’s observed frequency is within ~3 percentage points of its predicted mean. <strong>C1-extended supported.</strong> The graph-level ECE of 0.015 is well below the typical “well-calibrated” threshold (~0.05). <strong>Tag: Proven at the tested scale.</strong> A reader sees this diagram and reads “the model says 30% confident, and indeed about 30% of those cases were positive” — exactly the calibration property the architecture promises.</p>
+<p><strong>Caveat.</strong> This is one synthetic Bernoulli task with a simple <code>p_true</code>. Real-world classifiers tested on harder distributions (with class imbalance, label noise, distribution shift) may show worse calibration. The reliability diagram demonstrates the <em>mechanism</em> works on well-specified data; it doesn’t certify calibration on arbitrary workloads.</p>
+</section>
+<section id="experiment-θ-routing-flow-v3-sankey" class="level3">
+<h3 class="anchored" data-anchor-id="experiment-θ-routing-flow-v3-sankey">7.5 Experiment θ — Routing flow (V3 Sankey)</h3>
+<p><strong>Hypothesis.</strong> Training data flows through the trie’s codebook bins in proportion to the input distribution; routing can be visualized as a Sankey diagram from root to leaves.</p>
+<p><strong>Methodology.</strong> Generate n=10,000 samples from a skewed input distribution (Gaussian centered at x=0.6, clipped to [0,1]). Train ABNG with an 8-bin 1-D codebook + 8 child leaves. For each input, record the route byte and resolved leaf. Aggregate counts; emit as JSONL.</p>
+<p><strong>Result.</strong> All 10,000 inputs routed; 8 unique route bytes, 8 unique leaves. The distribution matches the input skew toward x ≈ 0.6:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th style="text-align: right;">Byte</th>
+<th style="text-align: right;">Count</th>
+<th style="text-align: right;">Fraction</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: right;">0x00</td>
+<td style="text-align: right;">8</td>
+<td style="text-align: right;">0.08%</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">0x01</td>
+<td style="text-align: right;">116</td>
+<td style="text-align: right;">1.16%</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">0x02</td>
+<td style="text-align: right;">545</td>
+<td style="text-align: right;">5.45%</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">0x03</td>
+<td style="text-align: right;">1,924</td>
+<td style="text-align: right;">19.24%</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">0x04</td>
+<td style="text-align: right;">3,139</td>
+<td style="text-align: right;">31.39%</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">0x05</td>
+<td style="text-align: right;">2,694</td>
+<td style="text-align: right;">26.94%</td>
+</tr>
+<tr class="odd">
+<td style="text-align: right;">0x06</td>
+<td style="text-align: right;">1,213</td>
+<td style="text-align: right;">12.13%</td>
+</tr>
+<tr class="even">
+<td style="text-align: right;">0x07</td>
+<td style="text-align: right;">361</td>
+<td style="text-align: right;">3.61%</td>
+</tr>
+</tbody>
+</table>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="figures/v3_routing_flow.png" class="img-fluid figure-img"></p>
+<figcaption class="figure-caption">V3 — Routing flow Sankey (Experiment θ)</figcaption>
+</figure>
+</div>
+<p><strong>Verdict.</strong> The Sankey makes the “discrete routing partitions input space” claim <em>visible</em>. <strong>Tag: Demonstrated.</strong> The figure replaces what was previously an abstract architectural claim with a concrete view of how inputs flow through the tree on a real training run. For debugging or capacity planning, this is the plot a user would reach for first.</p>
+</section>
+<section id="experiment-ι-2-d-ood-score-heatmap-v9" class="level3">
+<h3 class="anchored" data-anchor-id="experiment-ι-2-d-ood-score-heatmap-v9">7.6 Experiment ι — 2-D OOD score heatmap (V9)</h3>
+<p><strong>Hypothesis.</strong> The composite <code>ood_score</code> and its three components (density, prefix-distance, epistemic-leverage) produce <em>spatially structured</em> abstain signals in input space. Training in a sub-region of the input space should yield distinguishable OOD profiles inside vs outside.</p>
+<p><strong>Methodology.</strong> Train ABNG on n=1000 points sampled uniformly from <code>[0.25, 0.75]²</code> of the truth function <code>f(x, y) = 2x + 3y + 0.5xy</code>. Use a 2-D codebook with 8 bins per dimension. Evaluate on a 50×50 grid covering <code>[0, 1]²</code>. Emit <code>(x, y, ood, density_score, prefix_distance, epistemic_leverage)</code> per grid cell.</p>
+<p><strong>Result.</strong></p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="figures/v9_ood_2d_heatmap.png" class="img-fluid figure-img"></p>
+<figcaption class="figure-caption">V9 — 2-D OOD score heatmap (Experiment ι)</figcaption>
+</figure>
+</div>
+<p>The four-panel decomposition shows:</p>
+<ul>
+<li><strong>Top-left (composite OOD)</strong> — the abstain signal. Bright inside the training region (low OOD = trust), darker outside (higher OOD = abstain).</li>
+<li><strong>Top-right (density component)</strong> — Mahalanobis distance from the per-leaf Welford density. Tracks whether the input “looks like” what each leaf saw.</li>
+<li><strong>Bottom-left (prefix distance)</strong> — number of unmatched route-key bytes. 0 inside the training region (full routing match), 2 in regions where neither codebook coordinate finds a bound child.</li>
+<li><strong>Bottom-right (epistemic leverage)</strong> — <code>φᵀΛ⁻¹φ</code>. Largest where the BLR posterior is least confident, smallest where it has seen most data.</li>
+</ul>
+<p><strong>Verdict.</strong> All four signals show the expected spatial structure: low inside the training region (dashed box), high outside. The four components are <em>not</em> redundant — they cover different aspects of “is this input unusual?” (density-shift, route-mismatch, posterior-uncertainty). The composite <code>max()</code> produces a deliberately conservative single number; the individual components let a user diagnose <em>which</em> OOD axis triggered abstain.</p>
+<p><strong>Tag: Demonstrated.</strong> The mechanism works as designed on this 2-D synthetic problem; competitive performance against established 2-D OOD methods (deep SVDD, normalizing-flow density models) is not measured here.</p>
 </section>
 </section>
 <section id="replayability-determinism-benchmarks" class="level2">
@@ -1319,6 +1481,9 @@ g_A.leaves[k].blr.state_hash() ≠ g_B.leaves[k].blr.state_hash()  ← affected 
 <li><strong>Replay invariant survives structural mutation</strong> (Experiment δ). Forcing 5 structural events still produces byte-identical replay.</li>
 <li><strong>Determinism premium is sharply quantified.</strong> Graph dispatch + audit chain costs 25 µs per BLR update vs 3.85 µs for the math itself (87% premium). Kahan summation is exactly 2.40× plain <code>+=</code>.</li>
 <li><strong><code>decide_step</code> scales as expected</strong> (Experiment ε). Sub-millisecond at n_active ≤ 256, mean growing roughly linearly.</li>
+<li><strong>Per-bin calibration is well-tracked</strong> (Experiment η). Graph-level ECE = 0.015 on a synthetic Bernoulli task; the reliability diagram hugs the diagonal across 9 non-empty bins.</li>
+<li><strong>Routing distribution is visualizable</strong> (Experiment θ). Sankey diagram shows the 10K-input flow across 8 codebook bins matching the input distribution skew.</li>
+<li><strong>OOD score has clear spatial structure</strong> (Experiment ι). 2-D heatmap shows composite + 3 components separating training region from corners in a 50×50 grid evaluation.</li>
 </ol>
 </section>
 <section id="whats-now-usefully-complicated-changed-since-previous-version" class="level3">
@@ -1330,12 +1495,13 @@ g_A.leaves[k].blr.state_hash() ≠ g_B.leaves[k].blr.state_hash()  ← affected 
 <section id="whats-still-missing-per-the-srg-checklist" class="level3">
 <h3 class="anchored" data-anchor-id="whats-still-missing-per-the-srg-checklist">What’s still missing (per the SRG checklist)</h3>
 <ol type="1">
-<li><strong>Reliability diagrams and predictive coverage</strong> (Items requested but not built — needs ~4 hours of additional instrumentation).</li>
 <li><strong>External baselines.</strong> sklearn-GP comparison, FNO comparison, Isolation Forest comparison, ADWIN comparison — all explicitly deferred.</li>
 <li><strong>Large-N benchmarks</strong> (n ≥ 10⁶) — not feasible in one session.</li>
 <li><strong>Cross-platform / multi-machine verification</strong> — needs CI matrix.</li>
 <li><strong>Statistical CIs on the per-op costs</strong> — most numbers are single-run.</li>
+<li><strong>Predictive coverage analysis</strong> — drawing samples from the Student-t predictive and checking coverage rate at chosen confidence levels (4 hours of bench code).</li>
 </ol>
+<p>The previously-deferred V2 (reliability diagram), V3 (routing Sankey), and V9 (2-D OOD heatmap) <strong>shipped in this revision</strong> as Experiments η, θ, ι (Sections 7.4–7.6).</p>
 </section>
 <section id="what-abng-currently-proves-vs-what-remains-speculative" class="level3">
 <h3 class="anchored" data-anchor-id="what-abng-currently-proves-vs-what-remains-speculative">What ABNG currently proves vs what remains speculative</h3>
@@ -1450,7 +1616,7 @@ g_A.leaves[k].blr.state_hash() ≠ g_B.leaves[k].blr.state_hash()  ← affected 
 <section id="conclusion" class="level2">
 <h2 class="anchored" data-anchor-id="conclusion">12. Conclusion</h2>
 <p>This article walked through ABNG’s empirical state at a level of detail unusual for an architecture write-up: nine demo categories, 33+ test files, six new experiments on real hardware, four scaling tables, and an honest accounting of every gap. The headline empirical results:</p>
-<p><strong>Strong evidence.</strong> NIG conjugate update converges as <code>1/√n</code> to known truth (Experiment α). PINN fits a known analytical solution to MAE &lt; 0.05 (existing demo, confirmed). Replay invariant survives structural mutation (Experiment δ). Selective prediction reduces error 10× by abstaining on high-OOD inputs (Experiment γ). Kahan vs plain summation is exactly 2.40× — matching the architecture article’s “~2×” claim. <code>decide_step</code> is sub-millisecond at all tested graph sizes (Experiment ε).</p>
+<p><strong>Strong evidence.</strong> NIG conjugate update converges as <code>1/√n</code> to known truth (Experiment α). PINN fits a known analytical solution to MAE &lt; 0.05 (existing demo, confirmed). Replay invariant survives structural mutation (Experiment δ). Selective prediction reduces error 10× by abstaining on high-OOD inputs (Experiment γ). Kahan vs plain summation is exactly 2.40× — matching the architecture article’s “~2×” claim. <code>decide_step</code> is sub-millisecond at all tested graph sizes (Experiment ε). Per-bin reliability shows graph-level ECE = 0.015 on a synthetic Bernoulli task (Experiment η). Routing flow visualizes cleanly as a Sankey diagram with 8 codebook bins (Experiment θ). 2-D OOD heatmap separates training region from corners on a 50×50 grid (Experiment ι).</p>
 <p><strong>Surprising finding.</strong> Experiment β shows the piecewise routing partition makes ABNG <em>more robust</em> to basis-adequacy than the in-span PINN demo suggests. ABNG fits <code>|x − 0.5|</code> nearly as well as <code>sin(πx)</code> despite the former being globally outside the feature basis. The architecture’s earlier framing of “basis-in-span = home turf” understated the effective basis-augmentation provided by routing.</p>
 <p><strong>What’s still missing.</strong> No external baselines (sklearn GP, FNO, deep SVDD, ADWIN) — the article’s positional comparisons remain unsupported by direct measurement. No large-N benchmarks beyond 100k rows. No cross-platform CI verification. No statistical CIs on most per-op timings. The four damning gaps from the previous version of this article remain damning.</p>
 <div class="callout callout-style-default callout-warning callout-titled">
