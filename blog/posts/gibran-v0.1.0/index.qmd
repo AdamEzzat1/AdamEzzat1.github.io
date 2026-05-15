@@ -1,0 +1,498 @@
+---
+title: "Gibran v0.1.0: Natural-Language Analytics Without an LLM"
+subtitle: "A governed metric layer + NL-to-SQL that's structurally incapable of inventing column names."
+author: "Adam Ezzat"
+date: "2026-05-14"
+date-modified: "2026-05-14"
+categories: [Gibran, release, analytics, governance, NL-to-SQL, DuckDB, Postgres]
+description: "Gibran v0.1.0 ships 26 NL patterns + 25 metric primitives + 4 engine adapters + a local HTTP UI — and a structural guarantee that the natural-language layer can never fabricate metric or column references."
+---
+
+<div class="reading-time">&#128337; ~25 min read</div>
+
+<div class="stats-row">
+<div class="stat"><span class="number">26</span><span class="stat-label">NL patterns</span></div>
+<div class="stat"><span class="number">25</span><span class="stat-label">metric primitives</span></div>
+<div class="stat"><span class="number">4</span><span class="stat-label">engine adapters</span></div>
+<div class="stat"><span class="number">764</span><span class="stat-label">tests passing</span></div>
+</div>
+
+::: {.callout-tip appearance="minimal"}
+## TL;DR
+Gibran is a governed analytics layer with a natural-language interface — but the NL is **pattern templates**, not an LLM. If a question can't be resolved against your real catalog, gibran says "I don't know." It never invents. v0.1.0 ships 26 NL patterns, 25 metric primitives (including cohort retention, funnel, period-over-period, percentile), four database engine adapters (DuckDB / Postgres / Snowflake / BigQuery), and an optional local React UI. `pip install gibran[ui]`, `gibran init --sample`, ask questions in English, get governance-correct SQL.
+:::
+
+## Why a Non-LLM NL Layer
+
+Here's the thing about LLM-based text-to-SQL: it works most of the time, fails some of the time, and you can't always tell which mode you're in. When a model hallucinates a column name that doesn't exist, you usually find out at execution time — sometimes silently, when the model invents *similar* names that happen to compile but return wrong data.
+
+For analytics, "wrong but plausible" is the worst possible failure mode. If the dashboard shows `gross_revenue` when the user asked for `net_revenue`, and both columns exist, no error is raised — the analyst just makes a decision on the wrong number. Models that are 95% accurate fail in exactly this way the other 5% of the time, and that 5% is statistically guaranteed to hit a load-bearing metric on a board deck eventually.
+
+Gibran's bet: trade NL *breadth* for hard *correctness guarantees*. The natural-language layer is a small set of regex patterns that extract slots, and **every slot is resolved against your real `AllowedSchema` before becoming part of the SQL**. If "biggest spenders" doesn't match any registered metric or dimension, the question fails to parse — gibran says "I don't know how to answer that" and exits.
+
+The trade is real. Gibran can't answer arbitrarily phrased questions. It *can* answer 26 well-defined question shapes, deterministically, with zero risk of inventing references.
+
+Here's the load-bearing line of code, in [src/gibran/nl/patterns.py](https://github.com/AdamEzzat1/gibran/blob/master/src/gibran/nl/patterns.py):
+
+```python
+def top_n_by_metric(m: re.Match, schema: AllowedSchema) -> dict:
+    n = int(m.group(1))
+    dim_id = _resolve_dimension(m.group(2), schema)
+    metric_id = _resolve_metric(m.group(3), schema)
+    if not dim_id or not metric_id:
+        raise NoMatch()       # <-- THE GUARANTEE
+    return {
+        "source": schema.source_id,
+        "metrics": [metric_id],
+        "dimensions": [{"id": dim_id}],
+        "order_by": [{"key": metric_id, "direction": "desc"}],
+        "limit": n,
+    }
+```
+
+If `_resolve_dimension("biggest spenders", schema)` returns `None` because no such dimension exists, `NoMatch` is raised. The intent dict never includes the unresolved name. There is no code path that produces SQL referencing an unresolved slot. The guarantee is *structural*, not statistical.
+
+## The 26 NL Patterns
+
+Each pattern is a regex + a builder function. The matcher walks them in order; the first one whose regex matches AND whose slots resolve wins. Here's the full list with the question shape each one handles:
+
+| Pattern | Example question |
+|---|---|
+| `top_n_with_having` | top 5 region by revenue where order_count > 100 |
+| `top_n_by_metric` | top 5 region by gross revenue |
+| `bottom_n_by_metric` | bottom 3 customers by churn rate |
+| `metric_by_type_keyword` | average order size |
+| `metric_by_grain` | revenue by month |
+| `metric_over_time` | revenue over time |
+| `metric_by_dim_and_grain` | revenue by region by week |
+| `metric_by_two_dims` | revenue by region and status |
+| `multi_metric` | revenue and order count by month |
+| `metric_by_dim` | revenue by region |
+| `metric_in_period` | revenue in 2026 |
+| `metric_in_date_range` | revenue between 2026-01-01 and 2026-03-31 |
+| `metric_this_period` | revenue this quarter |
+| `metric_last_n_period` | revenue last 30 days |
+| `count_with_condition` | count of paid orders |
+| `count_of_thing` | how many orders |
+| `metric_excluding_value` | revenue excluding refunded orders |
+| `metric_as_percent_of` | west revenue as percent of total revenue |
+| `metric_filter_compound` | revenue for west and paid |
+| `metric_where_between` | revenue where amount between 50 and 500 |
+| `metric_where` | revenue where status = paid |
+| `metric_filtered_by_value` | revenue for west |
+| `metric_anomalies` | show me anomalies in revenue |
+| `metric_period_over_period` | revenue this month vs last month |
+| `metric_distribution` | distribution of order amount |
+| `single_metric` | gross revenue |
+
+Each one extracts typed slots, resolves them against your `AllowedSchema`, and produces a DSL intent that compiles to governance-correct SQL. The fall-through pattern `single_metric` is registered last, so more specific shapes always win first.
+
+### Pattern dispatch in practice
+
+A user types "top 5 region by gross revenue" as the role `analyst_west` with attribute `region=west`. Here's the sequence:
+
+1. **Regex match**: `top_n_by_metric` matches with groups `(5, "region", "gross revenue")`.
+2. **Slot resolution**:
+   - `_resolve_dimension("region", schema)` returns `"orders.region"` (case-insensitive match against `display_name`).
+   - `_resolve_metric("gross revenue", schema)` returns `"gross_revenue"` (substring match against `display_name`).
+3. **Intent built**:
+   ```json
+   {
+     "source": "orders",
+     "metrics": ["gross_revenue"],
+     "dimensions": [{"id": "orders.region"}],
+     "order_by": [{"key": "gross_revenue", "direction": "desc"}],
+     "limit": 5
+   }
+   ```
+4. **DSL compile**: produces SQL with metric expressions resolved from the catalog.
+5. **Governance evaluate**: identity has policy `analyst_west_orders` with row filter `region = $attr.region`. The filter is **injected into the SQL string** as an additional WHERE clause:
+   ```sql
+   SELECT "region" AS "orders.region",
+          SUM(amount) FILTER(WHERE status = 'paid') AS "gross_revenue"
+   FROM "orders"
+   WHERE ("region" = 'west')           -- ← injected by governance
+   GROUP BY 1
+   ORDER BY "gross_revenue" DESC
+   LIMIT 5
+   ```
+6. **Execute**: returns one row, `('west', 100.00)`. The other regions are invisible to this identity — not because the application filters them out, but because the SQL itself never asked for them.
+
+That sixth step is the load-bearing thing about gibran. The governance filter is **woven into the compiled SQL**, not bolted on at the application layer. There's no code path that returns rows the policy doesn't allow, because there's no code path that *queries* for them.
+
+### What happens when the NL doesn't match
+
+If the analyst types "what's the meaning of life?", every pattern's regex fails to match, OR the regex matches but the slots don't resolve. The runner returns `None`. The CLI prints:
+
+```
+I don't know how to answer that.
+```
+
+And exits with code 4. No SQL is generated. No execution happens. No audit row is written for a query that didn't exist. The contract is honest: gibran covers a fixed, documented set of shapes, deterministically. Outside that set, it refuses.
+
+## The 25 Metric Primitives
+
+The NL layer can only ask for things the metric vocabulary supports. Here's the full vocabulary:
+
+| Primitive | What it does |
+|---|---|
+| `count`, `count_distinct`, `count_distinct_approx` | Row counts (exact, distinct, HLL-approximate) |
+| `sum`, `avg`, `min`, `max` | Standard aggregates |
+| `ratio`, `expression` | Composed metrics: ratio of two metrics; arbitrary expression |
+| `percentile`, `median` | QUANTILE_CONT-based (configurable p; median is p=0.5 wrapper) |
+| `weighted_avg`, `mode` | Weighted average; statistical mode |
+| `variance`, `stddev_samp`, `stddev_pop` | Variance + sample/population standard deviation |
+| `first_value`, `last_value` | First / last value in an ordered series |
+| `rolling_window` | Window function: `SUM(col) OVER (... RANGE BETWEEN INTERVAL '28 days' PRECEDING AND CURRENT ROW)` |
+| `period_over_period` | Compose two time-windowed metrics with delta / ratio / pct_change |
+| `cohort_retention` | Multi-CTE: cohort table → retention by cohort_age → matrix view |
+| `funnel` | Multi-CTE: per-step filter chain with conversion rates |
+| `multi_stage_filter` | Multi-CTE: entity-level filter chains (users who did X then Y) |
+| `cohort_filter` | Entity filter by sub-query intersection (users in cohort A AND cohort B) |
+| `anomaly_query` | Anomaly detection as a query (vs. as a check rule) |
+
+The advanced primitives are real multi-CTE SQL. Here's what a cohort retention query compiles to:
+
+```sql
+WITH cohorts AS (
+    SELECT customer_id,
+           DATE_TRUNC('month', MIN(order_date)) AS cohort_month
+    FROM "orders"
+    GROUP BY customer_id
+),
+events AS (
+    SELECT o.customer_id,
+           c.cohort_month,
+           DATE_DIFF('month', c.cohort_month, o.order_date) AS months_since_cohort
+    FROM "orders" o
+    JOIN cohorts c USING (customer_id)
+)
+SELECT cohort_month,
+       months_since_cohort,
+       COUNT(DISTINCT customer_id) AS retained
+FROM events
+GROUP BY cohort_month, months_since_cohort
+ORDER BY cohort_month, months_since_cohort
+```
+
+That's not a stored procedure or a Python aggregation — it's a single SELECT that runs in DuckDB and returns the retention matrix as rows. The pattern matcher resolves the source + cohort dimension + retention dimension, the compiler emits the CTE chain, governance injects any row filter, and the result lands in the audit log like any other query.
+
+Funnel is similar: each step is a CTE that filters the previous step's entities by some condition, and the final SELECT computes step-by-step conversion rates. Four "shape primitives" (`cohort_retention`, `funnel`, `multi_stage_filter`, `cohort_filter`) get their own special-case branch in `compile_intent` because they produce whole-query CTE chains rather than the single-SELECT shape the simpler primitives use.
+
+## Governance: Woven In, Not Bolted On
+
+Most metric layers treat access control as an HTTP-layer concern: an analyst hits an endpoint, the endpoint checks if their role can see the data, maybe rewrites the query. Gibran does it differently. The governance contract is:
+
+> No SQL leaves the compiler without the role's row filter AND-ed into the WHERE clause, and no column appears in the SELECT list without an explicit grant from the role's policy.
+
+That contract is enforced by `DefaultGovernance.evaluate()`, which runs **between compile and execute** for every query — DSL or NL or raw SQL alike:
+
+```python
+decision = governance.evaluate(
+    identity,
+    frozenset({source_id}),
+    frozenset(requested_columns),
+    metric_refs,
+)
+if not decision.allowed:
+    return _record_denied(...)
+rewritten = _inject_filter(sql, decision.injected_filter_sql) if decision.injected_filter_sql else sql
+```
+
+`_inject_filter` is a `sqlglot` AST rewrite — it parses the compiled SQL, adds the policy's row filter as a top-level `AND` against the existing WHERE clause, and re-renders. The result is one SQL string that's safe to execute.
+
+### The side-by-side demo
+
+Same question, two roles. As `analyst_west` (`region=west`):
+
+```sql
+SELECT "region", SUM(amount) FILTER(WHERE status = 'paid') AS "gross_revenue"
+FROM "orders"
+WHERE ("region" = 'west')           -- governance row filter
+GROUP BY 1
+ORDER BY "gross_revenue" DESC
+LIMIT 5
+```
+
+Result: `[('west', 100.00)]` — only the analyst's region.
+
+As `admin` (break-glass role, no row filter):
+
+```sql
+SELECT "region", SUM(amount) FILTER(WHERE status = 'paid') AS "gross_revenue"
+FROM "orders"
+GROUP BY 1
+ORDER BY "gross_revenue" DESC
+LIMIT 5
+```
+
+Result: `[('north', 300.00), ('east', 200.00), ('west', 100.00)]` — all three regions.
+
+Same code, same NL prompt, same compiler. The SQL diverges based on the identity's policy. **There is no application code that filters out other regions for analyst_west**; the SQL itself never asks for them. That's the structural property: privilege escalation isn't possible because there's no boundary to escalate across.
+
+### Column-level governance
+
+Policies can also forbid specific columns:
+
+```yaml
+policies:
+  - id: analyst_west_orders
+    role: analyst_west
+    source: orders
+    default_column_mode: allow
+    column_grants:
+      customer_email: deny   # PII column the analyst can't read
+    row_filter:
+      op: eq
+      column: region
+      value:
+        $attr: region
+```
+
+If `analyst_west` writes a DSL query referencing `customer_email`, the compile path fails *before* SQL is emitted with a clear deny reason. The query log records the attempt (with `status=denied`) so PII-access denials are auditable.
+
+### Audit log + redaction
+
+Every query — allowed, denied, errored — writes a row to `gibran_query_log`:
+
+```
+query_id | user_id | role_id | nl_prompt | generated_sql | status | deny_reason | row_count | duration_ms | is_break_glass | created_at
+```
+
+Filter literals against PII or restricted columns are **redacted before insertion**:
+
+```sql
+-- The user ran:
+SELECT order_id FROM orders WHERE customer_email = 'alice@example.com'
+
+-- The audit log stores:
+SELECT order_id FROM orders WHERE customer_email = '<redacted>'
+```
+
+This is a `sqlglot` walk over the SQL AST that finds binary comparisons (`=`, `!=`, `LIKE`, etc.), `IN` lists, and `BETWEEN` bounds where one side references a sensitive column, and replaces the literal value with `'<redacted>'`. The literal never reaches the audit table — so a future audit-log-reader (with whatever credentials) can never recover sensitive values from past queries.
+
+Break-glass queries (admin role usage) are marked with `is_break_glass=TRUE` so elevated access is searchable. The UI's Audit Log view renders break-glass rows with a red left border for visual review.
+
+## Four Engine Adapters
+
+The compile path produces dialect-neutral SQL for the structural pieces (SELECT, WHERE, GROUP BY, window functions, CTEs). Where dialects diverge — interval syntax, `DATE_DIFF` shape, identifier quoting — gibran uses a per-dialect emitter registry.
+
+| Engine | Identifier quote | `now()` | Interval syntax | `DATE_DIFF(seconds)` |
+|---|---|---|---|---|
+| DuckDB | `"foo"` | `now()` | `INTERVAL '28 days'` | `DATE_DIFF('second', a, b)` |
+| Postgres | `"foo"` | `now()` | `INTERVAL '28 days'` | `CAST(EXTRACT(EPOCH FROM (b - a)) AS INTEGER)` |
+| Snowflake | `"foo"` | `CURRENT_TIMESTAMP()` | `INTERVAL '28 days'` | `DATEDIFF('second', a, b)` |
+| BigQuery | `` `foo` `` | `CURRENT_TIMESTAMP()` | `INTERVAL 28 DAY` | `TIMESTAMP_DIFF(b, a, SECOND)` |
+
+The `ExecutionEngine` Protocol abstracts the connection, file-scan rendering, and SQL execution. Each engine has its own module under `src/gibran/execution/engines/`:
+
+```python
+class ExecutionEngine(Protocol):
+    @property
+    def dialect(self) -> Dialect: ...
+    def file_scan_sql(self, source_type: str, uri: str) -> str: ...
+    def execute(self, sql: str, params: tuple | list = ()) -> None: ...
+    def query(self, sql: str, params: tuple | list = ()) -> tuple[list[tuple], list[str]]: ...
+    def fetchone(self, sql: str, params: tuple | list = ()) -> tuple | None: ...
+    def commit(self) -> None: ...
+```
+
+### Verified state
+
+| Engine | Code | Migrations | Verified end-to-end? |
+|---|---|---|---|
+| DuckDB | ✅ | 11 migrations | ✅ |
+| Postgres | ✅ | 11 translated (`JSON` → `JSONB`) | ✅ via `pgserver` in CI — no Docker needed |
+| Snowflake | ✅ | — | Code only (paid account needed for E2E) |
+| BigQuery | ✅ | — | Code only (billing-enabled GCP project needed for E2E) |
+
+The Postgres integration tests auto-spin a real Postgres 16 binary via the `pgserver` Python package — every developer's machine can run the full Postgres test suite without installing Docker or paying for a hosted instance.
+
+### Placeholder translation
+
+Gibran's internal SQL uses `?` placeholders everywhere (DuckDB style). For Postgres + BigQuery, which use `%s` (pyformat), there's a small state-machine translator that walks the SQL string and replaces `?` outside string literals + comments + identifier quoting:
+
+```python
+def translate_qmark_placeholders(sql: str) -> str:
+    # Walks the SQL with a tiny state machine that tracks whether
+    # we're inside a single-quoted string, double-quoted identifier,
+    # or -- line comment. `?` only translates outside those scopes.
+    # `%` is always doubled (psycopg parameter-substitution escape).
+```
+
+For Snowflake the connector supports `paramstyle = 'qmark'` natively, so no translation is needed.
+
+### Why this matters
+
+The hard adoption blocker for gibran was "DuckDB-only" — most production analytics teams have Postgres or Snowflake or BigQuery. v0.1.0 ships the engine abstraction + the Postgres adapter fully verified. Snowflake and BigQuery have working adapter code but their integration tests are gated on credentials and skip by default; once you set `GIBRAN_SNOWFLAKE_URL` or `GIBRAN_BIGQUERY_PROJECT`, the same test suite runs against the real service.
+
+## The Local HTTP UI
+
+Gibran's CLI (`gibran query`, `gibran ask`, `gibran check`, `gibran sync`) is the primary surface. v0.1.0 adds a local HTTP UI as an optional install:
+
+```bash
+pip install 'gibran[ui]'
+gibran init --sample
+gibran sync
+gibran ui            # opens http://127.0.0.1:<port> in your browser
+```
+
+The UI is a FastAPI app serving 16 endpoints + a bundled React SPA. **The UI introduces no new governance logic** — every endpoint is a thin wrapper around an existing core function, and identity comes from the same resolver the CLI uses.
+
+### Five views ship
+
+1. **Query Workbench** — Three-pane: NL prompt → compiled SQL preview → result table. An "Examples" panel below the input shows auto-generated questions (templated from your real metric + dimension names). One-click runs them. Cmd/Ctrl+Enter runs.
+
+2. **Catalog Browser** — Tree of sources → columns / metrics / dimensions, with PII / restricted / public sensitivity badges. Drill into any source to see exactly which columns the current role can read.
+
+3. **Audit Log** — Filterable view of `gibran_query_log`. Non-admin identities see only their own queries (the analyst's "what have I asked recently"). Admin / break-glass identities see all queries. Break-glass rows are rendered with a red left border. Cursor pagination.
+
+4. **Source Health** — Per-source quality + freshness status with recent rule outcomes. Powered by `gibran check`.
+
+5. **Policy Visualizer** — Admin-only side-by-side: pick two roles, see exactly what `AllowedSchema` each one resolves to. The killer demo moment: `analyst_west` (with `region=west` attribute) next to `admin` (break-glass, no scoping). The column lists and accessible metrics differ visibly.
+
+### Identity flow
+
+```
+Request comes in
+  -> middleware: extract identity from
+       (a) X-Gibran-User / X-Gibran-Role / X-Gibran-Attrs headers (dev mode)
+       (b) Authorization: Bearer <jwt> (prod mode, validated against JWKS)
+  -> resolve to IdentityContext (user_id, role_id, attributes)
+  -> if neither resolves: 401 Unauthorized
+  -> endpoint reads via Depends(current_identity)
+  -> NEVER reads identity from request body or path
+```
+
+Dev mode (headers, default) is fine for `gibran ui` on `127.0.0.1`. For production, set `GIBRAN_UI_AUTH_MODE=jwt` and point `GIBRAN_UI_JWT_JWKS_URL` at your IdP. The CLI refuses to bind to a non-localhost host in dev mode — flipping to JWT mode is the only way to satisfy `--host 0.0.0.0`. Intentional friction.
+
+### What the UI is not
+
+- Not a dashboarding tool (no saved layouts, no scheduled refreshes, no sharing — those are V0.2+).
+- Not a charting tool (the Workbench renders tables; chart support is a follow-up).
+- Not a full ETL platform (gibran reads source data; pipeline orchestration is upstream).
+
+Gibran is a **query / governance / audit layer**. The UI is what makes that layer usable by analysts who'd rather not write YAML.
+
+## How the Pieces Connect
+
+```
+┌─────────────┐    ┌─────────────────────┐    ┌──────────────────┐
+│  NL prompt  │ -> │ Pattern matcher     │ -> │ Resolved intent  │
+└─────────────┘    │ (6 → 26 patterns)   │    │ (dict, validated │
+                   │  Slot resolution    │    │  against         │
+                   │  against schema     │    │  AllowedSchema)  │
+                   └─────────────────────┘    └────────┬─────────┘
+                                                       v
+                              ┌──────────────────────────────┐
+                              │ DSL compiler                 │
+                              │  + metric primitive registry │
+                              │  + shape primitive registry  │
+                              │  -> SQL string               │
+                              └──────────────┬───────────────┘
+                                             v
+                              ┌──────────────────────────────┐
+                              │ Governance.evaluate()        │
+                              │  - role policy lookup        │
+                              │  - column-grant check        │
+                              │  - row-filter compilation    │
+                              │  -> SQL with WHERE injected  │
+                              └──────────────┬───────────────┘
+                                             v
+                              ┌──────────────────────────────┐
+                              │ ExecutionEngine              │
+                              │  (DuckDB / Postgres / SF /BQ)│
+                              │  -> rows + columns           │
+                              └──────────────┬───────────────┘
+                                             v
+                              ┌──────────────────────────────┐
+                              │ Audit log: gibran_query_log  │
+                              │  (redacted, break-glass flag,│
+                              │   recorded for every attempt)│
+                              └──────────────────────────────┘
+```
+
+The seams between these stages are deliberate. Pattern → intent is JSON. Intent → SQL is a pure compiler function (cacheable). Governance is a single chokepoint everything passes through. The execution engine is a `Protocol` with four implementations. The audit log writes happen for every query, even ones that fail.
+
+## What Ships
+
+```bash
+pip install gibran               # CLI + core + DuckDB
+pip install 'gibran[ui]'         # + FastAPI + uvicorn + bundled React SPA
+pip install 'gibran[postgres]'   # + psycopg
+pip install 'gibran[snowflake]'  # + snowflake-connector-python
+pip install 'gibran[bigquery]'   # + google-cloud-bigquery
+```
+
+The extras are additive — install what you need. The default install is DuckDB-only; the wheel is ~224 KB; no native dependencies beyond DuckDB itself.
+
+| Metric | Value |
+|---|---|
+| Wheel size | 224 KB |
+| Source-only sdist size | 567 KB |
+| Tests passing | 764 |
+| Frontend bundle size | 52 KB gzipped (well under the 200 KB budget) |
+| NL patterns | 26 |
+| Metric primitives | 25 |
+| Engine adapters | 4 (DuckDB + Postgres verified end-to-end) |
+| Migrations | 11 (all 11 translated to Postgres) |
+| External runtime deps (default install) | DuckDB, pydantic, sqlglot, typer, pyjwt, pyyaml |
+
+## What's Not in v0.1.0
+
+I want to be honest about the limitations:
+
+- **Snowflake + BigQuery adapters are code only.** The integration tests skip without credentials. The adapters compile, the unit tests pass, but I haven't actually executed `SELECT 1` against a paid Snowflake account or a billing-enabled GCP project.
+- **The UI ships 5 of 11 planned views.** Materialization Status, Cache Inspector, Approval Queue, Access Anomaly Alerts, and Onboarding Tour are documented follow-ups. The corresponding backend endpoints exist for 3 of those 5 already.
+- **No Playwright E2E tests for the frontend.** Vitest covers component logic (21 tests for the API client + IdentitySetup + QueryWorkbench), but full-browser smoke tests against a running server are deferred.
+- **Multi-tenancy is V0.2.** Single-tenant deployment for v0.1.0.
+- **No charts.** The Workbench renders result tables. Bar / line / scatter / pie are a 2-3 week add-on.
+- **No dashboards** (composed multi-query layouts with refresh).
+- **Cross-process plan caching needs a shared store** (Redis or similar). v0.1.0's caches are per-process.
+
+These are all known. The roadmap (`ROADMAP.md`) tracks the prioritization.
+
+## Try It
+
+Install + spin up the sample:
+
+```bash
+pip install 'gibran[ui]'
+gibran init --sample
+gibran sync
+gibran check
+gibran ui
+```
+
+That last command opens your browser to a local FastAPI server. On the first launch, set identity to `user=adam role=analyst_west attrs=region=west` and click **Continue**. The Workbench appears with an Examples panel.
+
+Click "top 5 region by gross revenue" → hit Run → watch the SQL preview show `WHERE "region" = 'west'` injected by governance. Result: one row, just the west region.
+
+Then click **change identity** in the sidebar, switch to `user=admin_user role=admin attrs=` (blank), and run the same question. The SQL preview no longer has the WHERE clause. Result: all three regions.
+
+That side-by-side, in the same UI, in 30 seconds, is the whole pitch.
+
+```bash
+# Or skip the UI and use the CLI directly:
+gibran ask "top 5 region by gross revenue" \
+  --source orders --role analyst_west --attr region=west
+```
+
+## Where the Code Lives
+
+- **GitHub**: <https://github.com/AdamEzzat1/gibran>
+- **PyPI**: <https://pypi.org/project/gibran/> (v0.1.0)
+- **Roadmap**: [ROADMAP.md](https://github.com/AdamEzzat1/gibran/blob/master/ROADMAP.md)
+- **Phase 4 UI handoff**: [PHASE_4_UI_HANDOFF.md](https://github.com/AdamEzzat1/gibran/blob/master/PHASE_4_UI_HANDOFF.md)
+- **Deferred follow-ups**: [docs/DEFERRED_FOLLOWUPS.md](https://github.com/AdamEzzat1/gibran/blob/master/docs/DEFERRED_FOLLOWUPS.md)
+- **Demo script for the video**: [docs/DEMO_SCRIPT.md](https://github.com/AdamEzzat1/gibran/blob/master/docs/DEMO_SCRIPT.md)
+
+MIT licensed. PRs welcome, especially if you have a real-world use case I haven't thought about. The NL pattern list grows with user demand — if there's a question shape that's load-bearing for your team, file an issue.
+
+## Closing
+
+The thesis is simple: there's a class of analytics use case where "wrong but plausible" answers are catastrophic, and an LLM in the SQL emission path is structurally unable to give you the guarantee that wrong answers won't happen. Pattern templates can give you that guarantee. They give up NL breadth in return.
+
+Gibran v0.1.0 is the first release that's complete enough to argue the thesis with code. 26 NL patterns covers about 70% of the question shapes a typical analyst types. The other 30% gets a clean "I don't know" instead of a hallucination. The governance layer compiles into the SQL string so privilege escalation isn't even a category of bug. The audit log is exhaustive and redacted. Four engine adapters mean it can plug into your existing warehouse instead of being a DuckDB toy.
+
+If any of that sounds useful for what you're building, install it and try it. If it's missing a pattern or a primitive you actually need, the cost of adding one is roughly an afternoon. The code is short. The contract is honest.

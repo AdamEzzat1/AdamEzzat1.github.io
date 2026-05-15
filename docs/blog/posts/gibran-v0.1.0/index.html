@@ -1,0 +1,1300 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.3.340">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Adam Ezzat">
+<meta name="dcterms.date" content="2026-05-14">
+<meta name="description" content="Gibran v0.1.0 ships 26 NL patterns + 25 metric primitives + 4 engine adapters + a local HTTP UI — and a structural guarantee that the natural-language layer can never fabricate metric or column references.">
+
+<title>Adam Ezzat - Gibran v0.1.0: Natural-Language Analytics Without an LLM</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../../">
+<script src="../../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<script src="../../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-dark.min.css" rel="prefetch" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+<style>html{ scroll-behavior: smooth; }</style>
+
+
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../../index.html">
+    <span class="navbar-title">Adam Ezzat</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../../index.html" rel="" target="">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../about.html" rel="" target="">
+ <span class="menu-text">About</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../projects.html" rel="" target="">
+ <span class="menu-text">Projects</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../blog/index.html" rel="" target="">
+ <span class="menu-text">Blog</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/AdamEzzat1" rel="" target=""><i class="bi bi-github" role="img" aria-label="GitHub">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://linkedin.com/in/adamezzat" rel="" target=""><i class="bi bi-linkedin" role="img" aria-label="LinkedIn">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+            <div class="quarto-navbar-tools">
+  <a href="" class="quarto-color-scheme-toggle quarto-navigation-tool  px-1" onclick="window.quartoToggleColorScheme(); return false;" title="Toggle dark mode"><i class="bi"></i></a>
+</div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#why-a-non-llm-nl-layer" id="toc-why-a-non-llm-nl-layer" class="nav-link active" data-scroll-target="#why-a-non-llm-nl-layer">Why a Non-LLM NL Layer</a></li>
+  <li><a href="#the-26-nl-patterns" id="toc-the-26-nl-patterns" class="nav-link" data-scroll-target="#the-26-nl-patterns">The 26 NL Patterns</a>
+  <ul class="collapse">
+  <li><a href="#pattern-dispatch-in-practice" id="toc-pattern-dispatch-in-practice" class="nav-link" data-scroll-target="#pattern-dispatch-in-practice">Pattern dispatch in practice</a></li>
+  <li><a href="#what-happens-when-the-nl-doesnt-match" id="toc-what-happens-when-the-nl-doesnt-match" class="nav-link" data-scroll-target="#what-happens-when-the-nl-doesnt-match">What happens when the NL doesn’t match</a></li>
+  </ul></li>
+  <li><a href="#the-25-metric-primitives" id="toc-the-25-metric-primitives" class="nav-link" data-scroll-target="#the-25-metric-primitives">The 25 Metric Primitives</a></li>
+  <li><a href="#governance-woven-in-not-bolted-on" id="toc-governance-woven-in-not-bolted-on" class="nav-link" data-scroll-target="#governance-woven-in-not-bolted-on">Governance: Woven In, Not Bolted On</a>
+  <ul class="collapse">
+  <li><a href="#the-side-by-side-demo" id="toc-the-side-by-side-demo" class="nav-link" data-scroll-target="#the-side-by-side-demo">The side-by-side demo</a></li>
+  <li><a href="#column-level-governance" id="toc-column-level-governance" class="nav-link" data-scroll-target="#column-level-governance">Column-level governance</a></li>
+  <li><a href="#audit-log-redaction" id="toc-audit-log-redaction" class="nav-link" data-scroll-target="#audit-log-redaction">Audit log + redaction</a></li>
+  </ul></li>
+  <li><a href="#four-engine-adapters" id="toc-four-engine-adapters" class="nav-link" data-scroll-target="#four-engine-adapters">Four Engine Adapters</a>
+  <ul class="collapse">
+  <li><a href="#verified-state" id="toc-verified-state" class="nav-link" data-scroll-target="#verified-state">Verified state</a></li>
+  <li><a href="#placeholder-translation" id="toc-placeholder-translation" class="nav-link" data-scroll-target="#placeholder-translation">Placeholder translation</a></li>
+  <li><a href="#why-this-matters" id="toc-why-this-matters" class="nav-link" data-scroll-target="#why-this-matters">Why this matters</a></li>
+  </ul></li>
+  <li><a href="#the-local-http-ui" id="toc-the-local-http-ui" class="nav-link" data-scroll-target="#the-local-http-ui">The Local HTTP UI</a>
+  <ul class="collapse">
+  <li><a href="#five-views-ship" id="toc-five-views-ship" class="nav-link" data-scroll-target="#five-views-ship">Five views ship</a></li>
+  <li><a href="#identity-flow" id="toc-identity-flow" class="nav-link" data-scroll-target="#identity-flow">Identity flow</a></li>
+  <li><a href="#what-the-ui-is-not" id="toc-what-the-ui-is-not" class="nav-link" data-scroll-target="#what-the-ui-is-not">What the UI is not</a></li>
+  </ul></li>
+  <li><a href="#how-the-pieces-connect" id="toc-how-the-pieces-connect" class="nav-link" data-scroll-target="#how-the-pieces-connect">How the Pieces Connect</a></li>
+  <li><a href="#what-ships" id="toc-what-ships" class="nav-link" data-scroll-target="#what-ships">What Ships</a></li>
+  <li><a href="#whats-not-in-v0.1.0" id="toc-whats-not-in-v0.1.0" class="nav-link" data-scroll-target="#whats-not-in-v0.1.0">What’s Not in v0.1.0</a></li>
+  <li><a href="#try-it" id="toc-try-it" class="nav-link" data-scroll-target="#try-it">Try It</a></li>
+  <li><a href="#where-the-code-lives" id="toc-where-the-code-lives" class="nav-link" data-scroll-target="#where-the-code-lives">Where the Code Lives</a></li>
+  <li><a href="#closing" id="toc-closing" class="nav-link" data-scroll-target="#closing">Closing</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Gibran v0.1.0: Natural-Language Analytics Without an LLM</h1>
+<p class="subtitle lead">A governed metric layer + NL-to-SQL that’s structurally incapable of inventing column names.</p>
+  <div class="quarto-categories">
+    <div class="quarto-category">Gibran</div>
+    <div class="quarto-category">release</div>
+    <div class="quarto-category">analytics</div>
+    <div class="quarto-category">governance</div>
+    <div class="quarto-category">NL-to-SQL</div>
+    <div class="quarto-category">DuckDB</div>
+    <div class="quarto-category">Postgres</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    Gibran v0.1.0 ships 26 NL patterns + 25 metric primitives + 4 engine adapters + a local HTTP UI — and a structural guarantee that the natural-language layer can never fabricate metric or column references.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Adam Ezzat </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">May 14, 2026</p>
+    </div>
+  </div>
+  
+    <div>
+    <div class="quarto-title-meta-heading">Modified</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date-modified">May 14, 2026</p>
+    </div>
+  </div>
+    
+  </div>
+  
+
+</header>
+
+<div class="reading-time">
+🕑 ~25 min read
+</div>
+<div class="stats-row">
+<div class="stat">
+<span class="number">26</span><span class="stat-label">NL patterns</span>
+</div>
+<div class="stat">
+<span class="number">25</span><span class="stat-label">metric primitives</span>
+</div>
+<div class="stat">
+<span class="number">4</span><span class="stat-label">engine adapters</span>
+</div>
+<div class="stat">
+<span class="number">764</span><span class="stat-label">tests passing</span>
+</div>
+</div>
+<div class="callout callout-style-simple callout-tip no-icon callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+TL;DR
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Gibran is a governed analytics layer with a natural-language interface — but the NL is <strong>pattern templates</strong>, not an LLM. If a question can’t be resolved against your real catalog, gibran says “I don’t know.” It never invents. v0.1.0 ships 26 NL patterns, 25 metric primitives (including cohort retention, funnel, period-over-period, percentile), four database engine adapters (DuckDB / Postgres / Snowflake / BigQuery), and an optional local React UI. <code>pip install gibran[ui]</code>, <code>gibran init --sample</code>, ask questions in English, get governance-correct SQL.</p>
+</div>
+</div>
+<section id="why-a-non-llm-nl-layer" class="level2">
+<h2 class="anchored" data-anchor-id="why-a-non-llm-nl-layer">Why a Non-LLM NL Layer</h2>
+<p>Here’s the thing about LLM-based text-to-SQL: it works most of the time, fails some of the time, and you can’t always tell which mode you’re in. When a model hallucinates a column name that doesn’t exist, you usually find out at execution time — sometimes silently, when the model invents <em>similar</em> names that happen to compile but return wrong data.</p>
+<p>For analytics, “wrong but plausible” is the worst possible failure mode. If the dashboard shows <code>gross_revenue</code> when the user asked for <code>net_revenue</code>, and both columns exist, no error is raised — the analyst just makes a decision on the wrong number. Models that are 95% accurate fail in exactly this way the other 5% of the time, and that 5% is statistically guaranteed to hit a load-bearing metric on a board deck eventually.</p>
+<p>Gibran’s bet: trade NL <em>breadth</em> for hard <em>correctness guarantees</em>. The natural-language layer is a small set of regex patterns that extract slots, and <strong>every slot is resolved against your real <code>AllowedSchema</code> before becoming part of the SQL</strong>. If “biggest spenders” doesn’t match any registered metric or dimension, the question fails to parse — gibran says “I don’t know how to answer that” and exits.</p>
+<p>The trade is real. Gibran can’t answer arbitrarily phrased questions. It <em>can</em> answer 26 well-defined question shapes, deterministically, with zero risk of inventing references.</p>
+<p>Here’s the load-bearing line of code, in <a href="https://github.com/AdamEzzat1/gibran/blob/master/src/gibran/nl/patterns.py">src/gibran/nl/patterns.py</a>:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> top_n_by_metric(m: re.Match, schema: AllowedSchema) <span class="op">-&gt;</span> <span class="bu">dict</span>:</span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    n <span class="op">=</span> <span class="bu">int</span>(m.group(<span class="dv">1</span>))</span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>    dim_id <span class="op">=</span> _resolve_dimension(m.group(<span class="dv">2</span>), schema)</span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>    metric_id <span class="op">=</span> _resolve_metric(m.group(<span class="dv">3</span>), schema)</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> <span class="kw">not</span> dim_id <span class="kw">or</span> <span class="kw">not</span> metric_id:</span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">raise</span> NoMatch()       <span class="co"># &lt;-- THE GUARANTEE</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> {</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>        <span class="st">"source"</span>: schema.source_id,</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>        <span class="st">"metrics"</span>: [metric_id],</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>        <span class="st">"dimensions"</span>: [{<span class="st">"id"</span>: dim_id}],</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a>        <span class="st">"order_by"</span>: [{<span class="st">"key"</span>: metric_id, <span class="st">"direction"</span>: <span class="st">"desc"</span>}],</span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>        <span class="st">"limit"</span>: n,</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>    }</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>If <code>_resolve_dimension("biggest spenders", schema)</code> returns <code>None</code> because no such dimension exists, <code>NoMatch</code> is raised. The intent dict never includes the unresolved name. There is no code path that produces SQL referencing an unresolved slot. The guarantee is <em>structural</em>, not statistical.</p>
+</section>
+<section id="the-26-nl-patterns" class="level2">
+<h2 class="anchored" data-anchor-id="the-26-nl-patterns">The 26 NL Patterns</h2>
+<p>Each pattern is a regex + a builder function. The matcher walks them in order; the first one whose regex matches AND whose slots resolve wins. Here’s the full list with the question shape each one handles:</p>
+<table class="table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Pattern</th>
+<th>Example question</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>top_n_with_having</code></td>
+<td>top 5 region by revenue where order_count &gt; 100</td>
+</tr>
+<tr class="even">
+<td><code>top_n_by_metric</code></td>
+<td>top 5 region by gross revenue</td>
+</tr>
+<tr class="odd">
+<td><code>bottom_n_by_metric</code></td>
+<td>bottom 3 customers by churn rate</td>
+</tr>
+<tr class="even">
+<td><code>metric_by_type_keyword</code></td>
+<td>average order size</td>
+</tr>
+<tr class="odd">
+<td><code>metric_by_grain</code></td>
+<td>revenue by month</td>
+</tr>
+<tr class="even">
+<td><code>metric_over_time</code></td>
+<td>revenue over time</td>
+</tr>
+<tr class="odd">
+<td><code>metric_by_dim_and_grain</code></td>
+<td>revenue by region by week</td>
+</tr>
+<tr class="even">
+<td><code>metric_by_two_dims</code></td>
+<td>revenue by region and status</td>
+</tr>
+<tr class="odd">
+<td><code>multi_metric</code></td>
+<td>revenue and order count by month</td>
+</tr>
+<tr class="even">
+<td><code>metric_by_dim</code></td>
+<td>revenue by region</td>
+</tr>
+<tr class="odd">
+<td><code>metric_in_period</code></td>
+<td>revenue in 2026</td>
+</tr>
+<tr class="even">
+<td><code>metric_in_date_range</code></td>
+<td>revenue between 2026-01-01 and 2026-03-31</td>
+</tr>
+<tr class="odd">
+<td><code>metric_this_period</code></td>
+<td>revenue this quarter</td>
+</tr>
+<tr class="even">
+<td><code>metric_last_n_period</code></td>
+<td>revenue last 30 days</td>
+</tr>
+<tr class="odd">
+<td><code>count_with_condition</code></td>
+<td>count of paid orders</td>
+</tr>
+<tr class="even">
+<td><code>count_of_thing</code></td>
+<td>how many orders</td>
+</tr>
+<tr class="odd">
+<td><code>metric_excluding_value</code></td>
+<td>revenue excluding refunded orders</td>
+</tr>
+<tr class="even">
+<td><code>metric_as_percent_of</code></td>
+<td>west revenue as percent of total revenue</td>
+</tr>
+<tr class="odd">
+<td><code>metric_filter_compound</code></td>
+<td>revenue for west and paid</td>
+</tr>
+<tr class="even">
+<td><code>metric_where_between</code></td>
+<td>revenue where amount between 50 and 500</td>
+</tr>
+<tr class="odd">
+<td><code>metric_where</code></td>
+<td>revenue where status = paid</td>
+</tr>
+<tr class="even">
+<td><code>metric_filtered_by_value</code></td>
+<td>revenue for west</td>
+</tr>
+<tr class="odd">
+<td><code>metric_anomalies</code></td>
+<td>show me anomalies in revenue</td>
+</tr>
+<tr class="even">
+<td><code>metric_period_over_period</code></td>
+<td>revenue this month vs last month</td>
+</tr>
+<tr class="odd">
+<td><code>metric_distribution</code></td>
+<td>distribution of order amount</td>
+</tr>
+<tr class="even">
+<td><code>single_metric</code></td>
+<td>gross revenue</td>
+</tr>
+</tbody>
+</table>
+<p>Each one extracts typed slots, resolves them against your <code>AllowedSchema</code>, and produces a DSL intent that compiles to governance-correct SQL. The fall-through pattern <code>single_metric</code> is registered last, so more specific shapes always win first.</p>
+<section id="pattern-dispatch-in-practice" class="level3">
+<h3 class="anchored" data-anchor-id="pattern-dispatch-in-practice">Pattern dispatch in practice</h3>
+<p>A user types “top 5 region by gross revenue” as the role <code>analyst_west</code> with attribute <code>region=west</code>. Here’s the sequence:</p>
+<ol type="1">
+<li><p><strong>Regex match</strong>: <code>top_n_by_metric</code> matches with groups <code>(5, "region", "gross revenue")</code>.</p></li>
+<li><p><strong>Slot resolution</strong>:</p>
+<ul>
+<li><code>_resolve_dimension("region", schema)</code> returns <code>"orders.region"</code> (case-insensitive match against <code>display_name</code>).</li>
+<li><code>_resolve_metric("gross revenue", schema)</code> returns <code>"gross_revenue"</code> (substring match against <code>display_name</code>).</li>
+</ul></li>
+<li><p><strong>Intent built</strong>:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode json code-with-copy"><code class="sourceCode json"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"source"</span><span class="fu">:</span> <span class="st">"orders"</span><span class="fu">,</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"metrics"</span><span class="fu">:</span> <span class="ot">[</span><span class="st">"gross_revenue"</span><span class="ot">]</span><span class="fu">,</span></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"dimensions"</span><span class="fu">:</span> <span class="ot">[</span><span class="fu">{</span><span class="dt">"id"</span><span class="fu">:</span> <span class="st">"orders.region"</span><span class="fu">}</span><span class="ot">]</span><span class="fu">,</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"order_by"</span><span class="fu">:</span> <span class="ot">[</span><span class="fu">{</span><span class="dt">"key"</span><span class="fu">:</span> <span class="st">"gross_revenue"</span><span class="fu">,</span> <span class="dt">"direction"</span><span class="fu">:</span> <span class="st">"desc"</span><span class="fu">}</span><span class="ot">]</span><span class="fu">,</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"limit"</span><span class="fu">:</span> <span class="dv">5</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div></li>
+<li><p><strong>DSL compile</strong>: produces SQL with metric expressions resolved from the catalog.</p></li>
+<li><p><strong>Governance evaluate</strong>: identity has policy <code>analyst_west_orders</code> with row filter <code>region = $attr.region</code>. The filter is <strong>injected into the SQL string</strong> as an additional WHERE clause:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="ot">"region"</span> <span class="kw">AS</span> <span class="ot">"orders.region"</span>,</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a>       <span class="fu">SUM</span>(amount) <span class="kw">FILTER</span>(<span class="kw">WHERE</span> status <span class="op">=</span> <span class="st">'paid'</span>) <span class="kw">AS</span> <span class="ot">"gross_revenue"</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="kw">FROM</span> <span class="ot">"orders"</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="kw">WHERE</span> (<span class="ot">"region"</span> <span class="op">=</span> <span class="st">'west'</span>)           <span class="co">-- ← injected by governance</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="kw">GROUP</span> <span class="kw">BY</span> <span class="dv">1</span></span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a><span class="kw">ORDER</span> <span class="kw">BY</span> <span class="ot">"gross_revenue"</span> <span class="kw">DESC</span></span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a><span class="kw">LIMIT</span> <span class="dv">5</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div></li>
+<li><p><strong>Execute</strong>: returns one row, <code>('west', 100.00)</code>. The other regions are invisible to this identity — not because the application filters them out, but because the SQL itself never asked for them.</p></li>
+</ol>
+<p>That sixth step is the load-bearing thing about gibran. The governance filter is <strong>woven into the compiled SQL</strong>, not bolted on at the application layer. There’s no code path that returns rows the policy doesn’t allow, because there’s no code path that <em>queries</em> for them.</p>
+</section>
+<section id="what-happens-when-the-nl-doesnt-match" class="level3">
+<h3 class="anchored" data-anchor-id="what-happens-when-the-nl-doesnt-match">What happens when the NL doesn’t match</h3>
+<p>If the analyst types “what’s the meaning of life?”, every pattern’s regex fails to match, OR the regex matches but the slots don’t resolve. The runner returns <code>None</code>. The CLI prints:</p>
+<pre><code>I don't know how to answer that.</code></pre>
+<p>And exits with code 4. No SQL is generated. No execution happens. No audit row is written for a query that didn’t exist. The contract is honest: gibran covers a fixed, documented set of shapes, deterministically. Outside that set, it refuses.</p>
+</section>
+</section>
+<section id="the-25-metric-primitives" class="level2">
+<h2 class="anchored" data-anchor-id="the-25-metric-primitives">The 25 Metric Primitives</h2>
+<p>The NL layer can only ask for things the metric vocabulary supports. Here’s the full vocabulary:</p>
+<table class="table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Primitive</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>count</code>, <code>count_distinct</code>, <code>count_distinct_approx</code></td>
+<td>Row counts (exact, distinct, HLL-approximate)</td>
+</tr>
+<tr class="even">
+<td><code>sum</code>, <code>avg</code>, <code>min</code>, <code>max</code></td>
+<td>Standard aggregates</td>
+</tr>
+<tr class="odd">
+<td><code>ratio</code>, <code>expression</code></td>
+<td>Composed metrics: ratio of two metrics; arbitrary expression</td>
+</tr>
+<tr class="even">
+<td><code>percentile</code>, <code>median</code></td>
+<td>QUANTILE_CONT-based (configurable p; median is p=0.5 wrapper)</td>
+</tr>
+<tr class="odd">
+<td><code>weighted_avg</code>, <code>mode</code></td>
+<td>Weighted average; statistical mode</td>
+</tr>
+<tr class="even">
+<td><code>variance</code>, <code>stddev_samp</code>, <code>stddev_pop</code></td>
+<td>Variance + sample/population standard deviation</td>
+</tr>
+<tr class="odd">
+<td><code>first_value</code>, <code>last_value</code></td>
+<td>First / last value in an ordered series</td>
+</tr>
+<tr class="even">
+<td><code>rolling_window</code></td>
+<td>Window function: <code>SUM(col) OVER (... RANGE BETWEEN INTERVAL '28 days' PRECEDING AND CURRENT ROW)</code></td>
+</tr>
+<tr class="odd">
+<td><code>period_over_period</code></td>
+<td>Compose two time-windowed metrics with delta / ratio / pct_change</td>
+</tr>
+<tr class="even">
+<td><code>cohort_retention</code></td>
+<td>Multi-CTE: cohort table → retention by cohort_age → matrix view</td>
+</tr>
+<tr class="odd">
+<td><code>funnel</code></td>
+<td>Multi-CTE: per-step filter chain with conversion rates</td>
+</tr>
+<tr class="even">
+<td><code>multi_stage_filter</code></td>
+<td>Multi-CTE: entity-level filter chains (users who did X then Y)</td>
+</tr>
+<tr class="odd">
+<td><code>cohort_filter</code></td>
+<td>Entity filter by sub-query intersection (users in cohort A AND cohort B)</td>
+</tr>
+<tr class="even">
+<td><code>anomaly_query</code></td>
+<td>Anomaly detection as a query (vs.&nbsp;as a check rule)</td>
+</tr>
+</tbody>
+</table>
+<p>The advanced primitives are real multi-CTE SQL. Here’s what a cohort retention query compiles to:</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="kw">WITH</span> cohorts <span class="kw">AS</span> (</span>
+<span id="cb5-2"><a href="#cb5-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SELECT</span> customer_id,</span>
+<span id="cb5-3"><a href="#cb5-3" aria-hidden="true" tabindex="-1"></a>           DATE_TRUNC(<span class="st">'month'</span>, <span class="fu">MIN</span>(order_date)) <span class="kw">AS</span> cohort_month</span>
+<span id="cb5-4"><a href="#cb5-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">FROM</span> <span class="ot">"orders"</span></span>
+<span id="cb5-5"><a href="#cb5-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">GROUP</span> <span class="kw">BY</span> customer_id</span>
+<span id="cb5-6"><a href="#cb5-6" aria-hidden="true" tabindex="-1"></a>),</span>
+<span id="cb5-7"><a href="#cb5-7" aria-hidden="true" tabindex="-1"></a><span class="kw">events</span> <span class="kw">AS</span> (</span>
+<span id="cb5-8"><a href="#cb5-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">SELECT</span> o.customer_id,</span>
+<span id="cb5-9"><a href="#cb5-9" aria-hidden="true" tabindex="-1"></a>           c.cohort_month,</span>
+<span id="cb5-10"><a href="#cb5-10" aria-hidden="true" tabindex="-1"></a>           DATE_DIFF(<span class="st">'month'</span>, c.cohort_month, o.order_date) <span class="kw">AS</span> months_since_cohort</span>
+<span id="cb5-11"><a href="#cb5-11" aria-hidden="true" tabindex="-1"></a>    <span class="kw">FROM</span> <span class="ot">"orders"</span> o</span>
+<span id="cb5-12"><a href="#cb5-12" aria-hidden="true" tabindex="-1"></a>    <span class="kw">JOIN</span> cohorts c <span class="kw">USING</span> (customer_id)</span>
+<span id="cb5-13"><a href="#cb5-13" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb5-14"><a href="#cb5-14" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> cohort_month,</span>
+<span id="cb5-15"><a href="#cb5-15" aria-hidden="true" tabindex="-1"></a>       months_since_cohort,</span>
+<span id="cb5-16"><a href="#cb5-16" aria-hidden="true" tabindex="-1"></a>       <span class="fu">COUNT</span>(<span class="kw">DISTINCT</span> customer_id) <span class="kw">AS</span> retained</span>
+<span id="cb5-17"><a href="#cb5-17" aria-hidden="true" tabindex="-1"></a><span class="kw">FROM</span> <span class="kw">events</span></span>
+<span id="cb5-18"><a href="#cb5-18" aria-hidden="true" tabindex="-1"></a><span class="kw">GROUP</span> <span class="kw">BY</span> cohort_month, months_since_cohort</span>
+<span id="cb5-19"><a href="#cb5-19" aria-hidden="true" tabindex="-1"></a><span class="kw">ORDER</span> <span class="kw">BY</span> cohort_month, months_since_cohort</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>That’s not a stored procedure or a Python aggregation — it’s a single SELECT that runs in DuckDB and returns the retention matrix as rows. The pattern matcher resolves the source + cohort dimension + retention dimension, the compiler emits the CTE chain, governance injects any row filter, and the result lands in the audit log like any other query.</p>
+<p>Funnel is similar: each step is a CTE that filters the previous step’s entities by some condition, and the final SELECT computes step-by-step conversion rates. Four “shape primitives” (<code>cohort_retention</code>, <code>funnel</code>, <code>multi_stage_filter</code>, <code>cohort_filter</code>) get their own special-case branch in <code>compile_intent</code> because they produce whole-query CTE chains rather than the single-SELECT shape the simpler primitives use.</p>
+</section>
+<section id="governance-woven-in-not-bolted-on" class="level2">
+<h2 class="anchored" data-anchor-id="governance-woven-in-not-bolted-on">Governance: Woven In, Not Bolted On</h2>
+<p>Most metric layers treat access control as an HTTP-layer concern: an analyst hits an endpoint, the endpoint checks if their role can see the data, maybe rewrites the query. Gibran does it differently. The governance contract is:</p>
+<blockquote class="blockquote">
+<p>No SQL leaves the compiler without the role’s row filter AND-ed into the WHERE clause, and no column appears in the SELECT list without an explicit grant from the role’s policy.</p>
+</blockquote>
+<p>That contract is enforced by <code>DefaultGovernance.evaluate()</code>, which runs <strong>between compile and execute</strong> for every query — DSL or NL or raw SQL alike:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a>decision <span class="op">=</span> governance.evaluate(</span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    identity,</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="bu">frozenset</span>({source_id}),</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="bu">frozenset</span>(requested_columns),</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    metric_refs,</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="kw">not</span> decision.allowed:</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> _record_denied(...)</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>rewritten <span class="op">=</span> _inject_filter(sql, decision.injected_filter_sql) <span class="cf">if</span> decision.injected_filter_sql <span class="cf">else</span> sql</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><code>_inject_filter</code> is a <code>sqlglot</code> AST rewrite — it parses the compiled SQL, adds the policy’s row filter as a top-level <code>AND</code> against the existing WHERE clause, and re-renders. The result is one SQL string that’s safe to execute.</p>
+<section id="the-side-by-side-demo" class="level3">
+<h3 class="anchored" data-anchor-id="the-side-by-side-demo">The side-by-side demo</h3>
+<p>Same question, two roles. As <code>analyst_west</code> (<code>region=west</code>):</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="ot">"region"</span>, <span class="fu">SUM</span>(amount) <span class="kw">FILTER</span>(<span class="kw">WHERE</span> status <span class="op">=</span> <span class="st">'paid'</span>) <span class="kw">AS</span> <span class="ot">"gross_revenue"</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="kw">FROM</span> <span class="ot">"orders"</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="kw">WHERE</span> (<span class="ot">"region"</span> <span class="op">=</span> <span class="st">'west'</span>)           <span class="co">-- governance row filter</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="kw">GROUP</span> <span class="kw">BY</span> <span class="dv">1</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="kw">ORDER</span> <span class="kw">BY</span> <span class="ot">"gross_revenue"</span> <span class="kw">DESC</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a><span class="kw">LIMIT</span> <span class="dv">5</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Result: <code>[('west', 100.00)]</code> — only the analyst’s region.</p>
+<p>As <code>admin</code> (break-glass role, no row filter):</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> <span class="ot">"region"</span>, <span class="fu">SUM</span>(amount) <span class="kw">FILTER</span>(<span class="kw">WHERE</span> status <span class="op">=</span> <span class="st">'paid'</span>) <span class="kw">AS</span> <span class="ot">"gross_revenue"</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="kw">FROM</span> <span class="ot">"orders"</span></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="kw">GROUP</span> <span class="kw">BY</span> <span class="dv">1</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a><span class="kw">ORDER</span> <span class="kw">BY</span> <span class="ot">"gross_revenue"</span> <span class="kw">DESC</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="kw">LIMIT</span> <span class="dv">5</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Result: <code>[('north', 300.00), ('east', 200.00), ('west', 100.00)]</code> — all three regions.</p>
+<p>Same code, same NL prompt, same compiler. The SQL diverges based on the identity’s policy. <strong>There is no application code that filters out other regions for analyst_west</strong>; the SQL itself never asks for them. That’s the structural property: privilege escalation isn’t possible because there’s no boundary to escalate across.</p>
+</section>
+<section id="column-level-governance" class="level3">
+<h3 class="anchored" data-anchor-id="column-level-governance">Column-level governance</h3>
+<p>Policies can also forbid specific columns:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode yaml code-with-copy"><code class="sourceCode yaml"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">policies</span><span class="kw">:</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="at">  </span><span class="kw">-</span><span class="at"> </span><span class="fu">id</span><span class="kw">:</span><span class="at"> analyst_west_orders</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">role</span><span class="kw">:</span><span class="at"> analyst_west</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">source</span><span class="kw">:</span><span class="at"> orders</span></span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">default_column_mode</span><span class="kw">:</span><span class="at"> allow</span></span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">column_grants</span><span class="kw">:</span></span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">customer_email</span><span class="kw">:</span><span class="at"> deny</span><span class="co">   # PII column the analyst can't read</span></span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a><span class="at">    </span><span class="fu">row_filter</span><span class="kw">:</span></span>
+<span id="cb9-9"><a href="#cb9-9" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">op</span><span class="kw">:</span><span class="at"> eq</span></span>
+<span id="cb9-10"><a href="#cb9-10" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">column</span><span class="kw">:</span><span class="at"> region</span></span>
+<span id="cb9-11"><a href="#cb9-11" aria-hidden="true" tabindex="-1"></a><span class="at">      </span><span class="fu">value</span><span class="kw">:</span></span>
+<span id="cb9-12"><a href="#cb9-12" aria-hidden="true" tabindex="-1"></a><span class="at">        </span><span class="fu">$attr</span><span class="kw">:</span><span class="at"> region</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>If <code>analyst_west</code> writes a DSL query referencing <code>customer_email</code>, the compile path fails <em>before</em> SQL is emitted with a clear deny reason. The query log records the attempt (with <code>status=denied</code>) so PII-access denials are auditable.</p>
+</section>
+<section id="audit-log-redaction" class="level3">
+<h3 class="anchored" data-anchor-id="audit-log-redaction">Audit log + redaction</h3>
+<p>Every query — allowed, denied, errored — writes a row to <code>gibran_query_log</code>:</p>
+<pre><code>query_id | user_id | role_id | nl_prompt | generated_sql | status | deny_reason | row_count | duration_ms | is_break_glass | created_at</code></pre>
+<p>Filter literals against PII or restricted columns are <strong>redacted before insertion</strong>:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- The user ran:</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> order_id <span class="kw">FROM</span> orders <span class="kw">WHERE</span> customer_email <span class="op">=</span> <span class="st">'alice@example.com'</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a><span class="co">-- The audit log stores:</span></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> order_id <span class="kw">FROM</span> orders <span class="kw">WHERE</span> customer_email <span class="op">=</span> <span class="st">'&lt;redacted&gt;'</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>This is a <code>sqlglot</code> walk over the SQL AST that finds binary comparisons (<code>=</code>, <code>!=</code>, <code>LIKE</code>, etc.), <code>IN</code> lists, and <code>BETWEEN</code> bounds where one side references a sensitive column, and replaces the literal value with <code>'&lt;redacted&gt;'</code>. The literal never reaches the audit table — so a future audit-log-reader (with whatever credentials) can never recover sensitive values from past queries.</p>
+<p>Break-glass queries (admin role usage) are marked with <code>is_break_glass=TRUE</code> so elevated access is searchable. The UI’s Audit Log view renders break-glass rows with a red left border for visual review.</p>
+</section>
+</section>
+<section id="four-engine-adapters" class="level2">
+<h2 class="anchored" data-anchor-id="four-engine-adapters">Four Engine Adapters</h2>
+<p>The compile path produces dialect-neutral SQL for the structural pieces (SELECT, WHERE, GROUP BY, window functions, CTEs). Where dialects diverge — interval syntax, <code>DATE_DIFF</code> shape, identifier quoting — gibran uses a per-dialect emitter registry.</p>
+<table class="table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Engine</th>
+<th>Identifier quote</th>
+<th><code>now()</code></th>
+<th>Interval syntax</th>
+<th><code>DATE_DIFF(seconds)</code></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>DuckDB</td>
+<td><code>"foo"</code></td>
+<td><code>now()</code></td>
+<td><code>INTERVAL '28 days'</code></td>
+<td><code>DATE_DIFF('second', a, b)</code></td>
+</tr>
+<tr class="even">
+<td>Postgres</td>
+<td><code>"foo"</code></td>
+<td><code>now()</code></td>
+<td><code>INTERVAL '28 days'</code></td>
+<td><code>CAST(EXTRACT(EPOCH FROM (b - a)) AS INTEGER)</code></td>
+</tr>
+<tr class="odd">
+<td>Snowflake</td>
+<td><code>"foo"</code></td>
+<td><code>CURRENT_TIMESTAMP()</code></td>
+<td><code>INTERVAL '28 days'</code></td>
+<td><code>DATEDIFF('second', a, b)</code></td>
+</tr>
+<tr class="even">
+<td>BigQuery</td>
+<td><code>`foo`</code></td>
+<td><code>CURRENT_TIMESTAMP()</code></td>
+<td><code>INTERVAL 28 DAY</code></td>
+<td><code>TIMESTAMP_DIFF(b, a, SECOND)</code></td>
+</tr>
+</tbody>
+</table>
+<p>The <code>ExecutionEngine</code> Protocol abstracts the connection, file-scan rendering, and SQL execution. Each engine has its own module under <code>src/gibran/execution/engines/</code>:</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> ExecutionEngine(Protocol):</span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>    <span class="at">@property</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> dialect(<span class="va">self</span>) <span class="op">-&gt;</span> Dialect: ...</span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> file_scan_sql(<span class="va">self</span>, source_type: <span class="bu">str</span>, uri: <span class="bu">str</span>) <span class="op">-&gt;</span> <span class="bu">str</span>: ...</span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> execute(<span class="va">self</span>, sql: <span class="bu">str</span>, params: <span class="bu">tuple</span> <span class="op">|</span> <span class="bu">list</span> <span class="op">=</span> ()) <span class="op">-&gt;</span> <span class="va">None</span>: ...</span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> query(<span class="va">self</span>, sql: <span class="bu">str</span>, params: <span class="bu">tuple</span> <span class="op">|</span> <span class="bu">list</span> <span class="op">=</span> ()) <span class="op">-&gt;</span> <span class="bu">tuple</span>[<span class="bu">list</span>[<span class="bu">tuple</span>], <span class="bu">list</span>[<span class="bu">str</span>]]: ...</span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> fetchone(<span class="va">self</span>, sql: <span class="bu">str</span>, params: <span class="bu">tuple</span> <span class="op">|</span> <span class="bu">list</span> <span class="op">=</span> ()) <span class="op">-&gt;</span> <span class="bu">tuple</span> <span class="op">|</span> <span class="va">None</span>: ...</span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> commit(<span class="va">self</span>) <span class="op">-&gt;</span> <span class="va">None</span>: ...</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<section id="verified-state" class="level3">
+<h3 class="anchored" data-anchor-id="verified-state">Verified state</h3>
+<table class="table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Engine</th>
+<th>Code</th>
+<th>Migrations</th>
+<th>Verified end-to-end?</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>DuckDB</td>
+<td>✅</td>
+<td>11 migrations</td>
+<td>✅</td>
+</tr>
+<tr class="even">
+<td>Postgres</td>
+<td>✅</td>
+<td>11 translated (<code>JSON</code> → <code>JSONB</code>)</td>
+<td>✅ via <code>pgserver</code> in CI — no Docker needed</td>
+</tr>
+<tr class="odd">
+<td>Snowflake</td>
+<td>✅</td>
+<td>—</td>
+<td>Code only (paid account needed for E2E)</td>
+</tr>
+<tr class="even">
+<td>BigQuery</td>
+<td>✅</td>
+<td>—</td>
+<td>Code only (billing-enabled GCP project needed for E2E)</td>
+</tr>
+</tbody>
+</table>
+<p>The Postgres integration tests auto-spin a real Postgres 16 binary via the <code>pgserver</code> Python package — every developer’s machine can run the full Postgres test suite without installing Docker or paying for a hosted instance.</p>
+</section>
+<section id="placeholder-translation" class="level3">
+<h3 class="anchored" data-anchor-id="placeholder-translation">Placeholder translation</h3>
+<p>Gibran’s internal SQL uses <code>?</code> placeholders everywhere (DuckDB style). For Postgres + BigQuery, which use <code>%s</code> (pyformat), there’s a small state-machine translator that walks the SQL string and replaces <code>?</code> outside string literals + comments + identifier quoting:</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> translate_qmark_placeholders(sql: <span class="bu">str</span>) <span class="op">-&gt;</span> <span class="bu">str</span>:</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Walks the SQL with a tiny state machine that tracks whether</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>    <span class="co"># we're inside a single-quoted string, double-quoted identifier,</span></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>    <span class="co"># or -- line comment. `?` only translates outside those scopes.</span></span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>    <span class="co"># `%` is always doubled (psycopg parameter-substitution escape).</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>For Snowflake the connector supports <code>paramstyle = 'qmark'</code> natively, so no translation is needed.</p>
+</section>
+<section id="why-this-matters" class="level3">
+<h3 class="anchored" data-anchor-id="why-this-matters">Why this matters</h3>
+<p>The hard adoption blocker for gibran was “DuckDB-only” — most production analytics teams have Postgres or Snowflake or BigQuery. v0.1.0 ships the engine abstraction + the Postgres adapter fully verified. Snowflake and BigQuery have working adapter code but their integration tests are gated on credentials and skip by default; once you set <code>GIBRAN_SNOWFLAKE_URL</code> or <code>GIBRAN_BIGQUERY_PROJECT</code>, the same test suite runs against the real service.</p>
+</section>
+</section>
+<section id="the-local-http-ui" class="level2">
+<h2 class="anchored" data-anchor-id="the-local-http-ui">The Local HTTP UI</h2>
+<p>Gibran’s CLI (<code>gibran query</code>, <code>gibran ask</code>, <code>gibran check</code>, <code>gibran sync</code>) is the primary surface. v0.1.0 adds a local HTTP UI as an optional install:</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="st">'gibran[ui]'</span></span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="ex">gibran</span> init <span class="at">--sample</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a><span class="ex">gibran</span> sync</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a><span class="ex">gibran</span> ui            <span class="co"># opens http://127.0.0.1:&lt;port&gt; in your browser</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The UI is a FastAPI app serving 16 endpoints + a bundled React SPA. <strong>The UI introduces no new governance logic</strong> — every endpoint is a thin wrapper around an existing core function, and identity comes from the same resolver the CLI uses.</p>
+<section id="five-views-ship" class="level3">
+<h3 class="anchored" data-anchor-id="five-views-ship">Five views ship</h3>
+<ol type="1">
+<li><p><strong>Query Workbench</strong> — Three-pane: NL prompt → compiled SQL preview → result table. An “Examples” panel below the input shows auto-generated questions (templated from your real metric + dimension names). One-click runs them. Cmd/Ctrl+Enter runs.</p></li>
+<li><p><strong>Catalog Browser</strong> — Tree of sources → columns / metrics / dimensions, with PII / restricted / public sensitivity badges. Drill into any source to see exactly which columns the current role can read.</p></li>
+<li><p><strong>Audit Log</strong> — Filterable view of <code>gibran_query_log</code>. Non-admin identities see only their own queries (the analyst’s “what have I asked recently”). Admin / break-glass identities see all queries. Break-glass rows are rendered with a red left border. Cursor pagination.</p></li>
+<li><p><strong>Source Health</strong> — Per-source quality + freshness status with recent rule outcomes. Powered by <code>gibran check</code>.</p></li>
+<li><p><strong>Policy Visualizer</strong> — Admin-only side-by-side: pick two roles, see exactly what <code>AllowedSchema</code> each one resolves to. The killer demo moment: <code>analyst_west</code> (with <code>region=west</code> attribute) next to <code>admin</code> (break-glass, no scoping). The column lists and accessible metrics differ visibly.</p></li>
+</ol>
+</section>
+<section id="identity-flow" class="level3">
+<h3 class="anchored" data-anchor-id="identity-flow">Identity flow</h3>
+<pre><code>Request comes in
+  -&gt; middleware: extract identity from
+       (a) X-Gibran-User / X-Gibran-Role / X-Gibran-Attrs headers (dev mode)
+       (b) Authorization: Bearer &lt;jwt&gt; (prod mode, validated against JWKS)
+  -&gt; resolve to IdentityContext (user_id, role_id, attributes)
+  -&gt; if neither resolves: 401 Unauthorized
+  -&gt; endpoint reads via Depends(current_identity)
+  -&gt; NEVER reads identity from request body or path</code></pre>
+<p>Dev mode (headers, default) is fine for <code>gibran ui</code> on <code>127.0.0.1</code>. For production, set <code>GIBRAN_UI_AUTH_MODE=jwt</code> and point <code>GIBRAN_UI_JWT_JWKS_URL</code> at your IdP. The CLI refuses to bind to a non-localhost host in dev mode — flipping to JWT mode is the only way to satisfy <code>--host 0.0.0.0</code>. Intentional friction.</p>
+</section>
+<section id="what-the-ui-is-not" class="level3">
+<h3 class="anchored" data-anchor-id="what-the-ui-is-not">What the UI is not</h3>
+<ul>
+<li>Not a dashboarding tool (no saved layouts, no scheduled refreshes, no sharing — those are V0.2+).</li>
+<li>Not a charting tool (the Workbench renders tables; chart support is a follow-up).</li>
+<li>Not a full ETL platform (gibran reads source data; pipeline orchestration is upstream).</li>
+</ul>
+<p>Gibran is a <strong>query / governance / audit layer</strong>. The UI is what makes that layer usable by analysts who’d rather not write YAML.</p>
+</section>
+</section>
+<section id="how-the-pieces-connect" class="level2">
+<h2 class="anchored" data-anchor-id="how-the-pieces-connect">How the Pieces Connect</h2>
+<pre><code>┌─────────────┐    ┌─────────────────────┐    ┌──────────────────┐
+│  NL prompt  │ -&gt; │ Pattern matcher     │ -&gt; │ Resolved intent  │
+└─────────────┘    │ (6 → 26 patterns)   │    │ (dict, validated │
+                   │  Slot resolution    │    │  against         │
+                   │  against schema     │    │  AllowedSchema)  │
+                   └─────────────────────┘    └────────┬─────────┘
+                                                       v
+                              ┌──────────────────────────────┐
+                              │ DSL compiler                 │
+                              │  + metric primitive registry │
+                              │  + shape primitive registry  │
+                              │  -&gt; SQL string               │
+                              └──────────────┬───────────────┘
+                                             v
+                              ┌──────────────────────────────┐
+                              │ Governance.evaluate()        │
+                              │  - role policy lookup        │
+                              │  - column-grant check        │
+                              │  - row-filter compilation    │
+                              │  -&gt; SQL with WHERE injected  │
+                              └──────────────┬───────────────┘
+                                             v
+                              ┌──────────────────────────────┐
+                              │ ExecutionEngine              │
+                              │  (DuckDB / Postgres / SF /BQ)│
+                              │  -&gt; rows + columns           │
+                              └──────────────┬───────────────┘
+                                             v
+                              ┌──────────────────────────────┐
+                              │ Audit log: gibran_query_log  │
+                              │  (redacted, break-glass flag,│
+                              │   recorded for every attempt)│
+                              └──────────────────────────────┘</code></pre>
+<p>The seams between these stages are deliberate. Pattern → intent is JSON. Intent → SQL is a pure compiler function (cacheable). Governance is a single chokepoint everything passes through. The execution engine is a <code>Protocol</code> with four implementations. The audit log writes happen for every query, even ones that fail.</p>
+</section>
+<section id="what-ships" class="level2">
+<h2 class="anchored" data-anchor-id="what-ships">What Ships</h2>
+<div class="sourceCode" id="cb17"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install gibran               <span class="co"># CLI + core + DuckDB</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="st">'gibran[ui]'</span>         <span class="co"># + FastAPI + uvicorn + bundled React SPA</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="st">'gibran[postgres]'</span>   <span class="co"># + psycopg</span></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="st">'gibran[snowflake]'</span>  <span class="co"># + snowflake-connector-python</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="st">'gibran[bigquery]'</span>   <span class="co"># + google-cloud-bigquery</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The extras are additive — install what you need. The default install is DuckDB-only; the wheel is ~224 KB; no native dependencies beyond DuckDB itself.</p>
+<table class="table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Metric</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Wheel size</td>
+<td>224 KB</td>
+</tr>
+<tr class="even">
+<td>Source-only sdist size</td>
+<td>567 KB</td>
+</tr>
+<tr class="odd">
+<td>Tests passing</td>
+<td>764</td>
+</tr>
+<tr class="even">
+<td>Frontend bundle size</td>
+<td>52 KB gzipped (well under the 200 KB budget)</td>
+</tr>
+<tr class="odd">
+<td>NL patterns</td>
+<td>26</td>
+</tr>
+<tr class="even">
+<td>Metric primitives</td>
+<td>25</td>
+</tr>
+<tr class="odd">
+<td>Engine adapters</td>
+<td>4 (DuckDB + Postgres verified end-to-end)</td>
+</tr>
+<tr class="even">
+<td>Migrations</td>
+<td>11 (all 11 translated to Postgres)</td>
+</tr>
+<tr class="odd">
+<td>External runtime deps (default install)</td>
+<td>DuckDB, pydantic, sqlglot, typer, pyjwt, pyyaml</td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="whats-not-in-v0.1.0" class="level2">
+<h2 class="anchored" data-anchor-id="whats-not-in-v0.1.0">What’s Not in v0.1.0</h2>
+<p>I want to be honest about the limitations:</p>
+<ul>
+<li><strong>Snowflake + BigQuery adapters are code only.</strong> The integration tests skip without credentials. The adapters compile, the unit tests pass, but I haven’t actually executed <code>SELECT 1</code> against a paid Snowflake account or a billing-enabled GCP project.</li>
+<li><strong>The UI ships 5 of 11 planned views.</strong> Materialization Status, Cache Inspector, Approval Queue, Access Anomaly Alerts, and Onboarding Tour are documented follow-ups. The corresponding backend endpoints exist for 3 of those 5 already.</li>
+<li><strong>No Playwright E2E tests for the frontend.</strong> Vitest covers component logic (21 tests for the API client + IdentitySetup + QueryWorkbench), but full-browser smoke tests against a running server are deferred.</li>
+<li><strong>Multi-tenancy is V0.2.</strong> Single-tenant deployment for v0.1.0.</li>
+<li><strong>No charts.</strong> The Workbench renders result tables. Bar / line / scatter / pie are a 2-3 week add-on.</li>
+<li><strong>No dashboards</strong> (composed multi-query layouts with refresh).</li>
+<li><strong>Cross-process plan caching needs a shared store</strong> (Redis or similar). v0.1.0’s caches are per-process.</li>
+</ul>
+<p>These are all known. The roadmap (<code>ROADMAP.md</code>) tracks the prioritization.</p>
+</section>
+<section id="try-it" class="level2">
+<h2 class="anchored" data-anchor-id="try-it">Try It</h2>
+<p>Install + spin up the sample:</p>
+<div class="sourceCode" id="cb18"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install <span class="st">'gibran[ui]'</span></span>
+<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="ex">gibran</span> init <span class="at">--sample</span></span>
+<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a><span class="ex">gibran</span> sync</span>
+<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a><span class="ex">gibran</span> check</span>
+<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a><span class="ex">gibran</span> ui</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>That last command opens your browser to a local FastAPI server. On the first launch, set identity to <code>user=adam role=analyst_west attrs=region=west</code> and click <strong>Continue</strong>. The Workbench appears with an Examples panel.</p>
+<p>Click “top 5 region by gross revenue” → hit Run → watch the SQL preview show <code>WHERE "region" = 'west'</code> injected by governance. Result: one row, just the west region.</p>
+<p>Then click <strong>change identity</strong> in the sidebar, switch to <code>user=admin_user role=admin attrs=</code> (blank), and run the same question. The SQL preview no longer has the WHERE clause. Result: all three regions.</p>
+<p>That side-by-side, in the same UI, in 30 seconds, is the whole pitch.</p>
+<div class="sourceCode" id="cb19"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Or skip the UI and use the CLI directly:</span></span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a><span class="ex">gibran</span> ask <span class="st">"top 5 region by gross revenue"</span> <span class="dt">\</span></span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">--source</span> orders <span class="at">--role</span> analyst_west <span class="at">--attr</span> region=west</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="where-the-code-lives" class="level2">
+<h2 class="anchored" data-anchor-id="where-the-code-lives">Where the Code Lives</h2>
+<ul>
+<li><strong>GitHub</strong>: <a href="https://github.com/AdamEzzat1/gibran" class="uri">https://github.com/AdamEzzat1/gibran</a></li>
+<li><strong>PyPI</strong>: <a href="https://pypi.org/project/gibran/" class="uri">https://pypi.org/project/gibran/</a> (v0.1.0)</li>
+<li><strong>Roadmap</strong>: <a href="https://github.com/AdamEzzat1/gibran/blob/master/ROADMAP.md">ROADMAP.md</a></li>
+<li><strong>Phase 4 UI handoff</strong>: <a href="https://github.com/AdamEzzat1/gibran/blob/master/PHASE_4_UI_HANDOFF.md">PHASE_4_UI_HANDOFF.md</a></li>
+<li><strong>Deferred follow-ups</strong>: <a href="https://github.com/AdamEzzat1/gibran/blob/master/docs/DEFERRED_FOLLOWUPS.md">docs/DEFERRED_FOLLOWUPS.md</a></li>
+<li><strong>Demo script for the video</strong>: <a href="https://github.com/AdamEzzat1/gibran/blob/master/docs/DEMO_SCRIPT.md">docs/DEMO_SCRIPT.md</a></li>
+</ul>
+<p>MIT licensed. PRs welcome, especially if you have a real-world use case I haven’t thought about. The NL pattern list grows with user demand — if there’s a question shape that’s load-bearing for your team, file an issue.</p>
+</section>
+<section id="closing" class="level2">
+<h2 class="anchored" data-anchor-id="closing">Closing</h2>
+<p>The thesis is simple: there’s a class of analytics use case where “wrong but plausible” answers are catastrophic, and an LLM in the SQL emission path is structurally unable to give you the guarantee that wrong answers won’t happen. Pattern templates can give you that guarantee. They give up NL breadth in return.</p>
+<p>Gibran v0.1.0 is the first release that’s complete enough to argue the thesis with code. 26 NL patterns covers about 70% of the question shapes a typical analyst types. The other 30% gets a clean “I don’t know” instead of a hallucination. The governance layer compiles into the SQL string so privilege escalation isn’t even a category of bug. The audit log is exhaustive and redacted. Four engine adapters mean it can plug into your existing warehouse instead of being a DuckDB toy.</p>
+<p>If any of that sounds useful for what you’re building, install it and try it. If it’s missing a pattern or a primitive you actually need, the cost of adding one is roughly an afternoon. The code is short. The contract is honest.</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const disableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'prefetch';
+    }
+  }
+  const enableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'stylesheet';
+    }
+  }
+  const manageTransitions = (selector, allowTransitions) => {
+    const els = window.document.querySelectorAll(selector);
+    for (let i=0; i < els.length; i++) {
+      const el = els[i];
+      if (allowTransitions) {
+        el.classList.remove('notransition');
+      } else {
+        el.classList.add('notransition');
+      }
+    }
+  }
+  const toggleColorMode = (alternate) => {
+    // Switch the stylesheets
+    const alternateStylesheets = window.document.querySelectorAll('link.quarto-color-scheme.quarto-color-alternate');
+    manageTransitions('#quarto-margin-sidebar .nav-link', false);
+    if (alternate) {
+      enableStylesheet(alternateStylesheets);
+      for (const sheetNode of alternateStylesheets) {
+        if (sheetNode.id === "quarto-bootstrap") {
+          toggleBodyColorMode(sheetNode);
+        }
+      }
+    } else {
+      disableStylesheet(alternateStylesheets);
+      toggleBodyColorPrimary();
+    }
+    manageTransitions('#quarto-margin-sidebar .nav-link', true);
+    // Switch the toggles
+    const toggles = window.document.querySelectorAll('.quarto-color-scheme-toggle');
+    for (let i=0; i < toggles.length; i++) {
+      const toggle = toggles[i];
+      if (toggle) {
+        if (alternate) {
+          toggle.classList.add("alternate");     
+        } else {
+          toggle.classList.remove("alternate");
+        }
+      }
+    }
+    // Hack to workaround the fact that safari doesn't
+    // properly recolor the scrollbar when toggling (#1455)
+    if (navigator.userAgent.indexOf('Safari') > 0 && navigator.userAgent.indexOf('Chrome') == -1) {
+      manageTransitions("body", false);
+      window.scrollTo(0, 1);
+      setTimeout(() => {
+        window.scrollTo(0, 0);
+        manageTransitions("body", true);
+      }, 40);  
+    }
+  }
+  const isFileUrl = () => { 
+    return window.location.protocol === 'file:';
+  }
+  const hasAlternateSentinel = () => {  
+    let styleSentinel = getColorSchemeSentinel();
+    if (styleSentinel !== null) {
+      return styleSentinel === "alternate";
+    } else {
+      return false;
+    }
+  }
+  const setStyleSentinel = (alternate) => {
+    const value = alternate ? "alternate" : "default";
+    if (!isFileUrl()) {
+      window.localStorage.setItem("quarto-color-scheme", value);
+    } else {
+      localAlternateSentinel = value;
+    }
+  }
+  const getColorSchemeSentinel = () => {
+    if (!isFileUrl()) {
+      const storageValue = window.localStorage.getItem("quarto-color-scheme");
+      return storageValue != null ? storageValue : localAlternateSentinel;
+    } else {
+      return localAlternateSentinel;
+    }
+  }
+  let localAlternateSentinel = 'default';
+  // Dark / light mode switch
+  window.quartoToggleColorScheme = () => {
+    // Read the current dark / light value 
+    let toAlternate = !hasAlternateSentinel();
+    toggleColorMode(toAlternate);
+    setStyleSentinel(toAlternate);
+  };
+  // Ensure there is a toggle, if there isn't float one in the top right
+  if (window.document.querySelector('.quarto-color-scheme-toggle') === null) {
+    const a = window.document.createElement('a');
+    a.classList.add('top-right');
+    a.classList.add('quarto-color-scheme-toggle');
+    a.href = "";
+    a.onclick = function() { try { window.quartoToggleColorScheme(); } catch {} return false; };
+    const i = window.document.createElement("i");
+    i.classList.add('bi');
+    a.appendChild(i);
+    window.document.body.appendChild(a);
+  }
+  // Switch to dark mode if need be
+  if (hasAlternateSentinel()) {
+    toggleColorMode(true);
+  } else {
+    toggleColorMode(false);
+  }
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+      &nbsp;
+    </div>   
+    <div class="nav-footer-center">© 2026 Adam Ezzat. Built with <a href="https://quarto.org/">Quarto</a>.</div>
+    <div class="nav-footer-right">
+      &nbsp;
+    </div>
+  </div>
+</footer>
+
+
+
+<script src="../../../site_libs/quarto-html/zenscroll-min.js"></script>
+</body></html>

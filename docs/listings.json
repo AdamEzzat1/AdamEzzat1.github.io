@@ -2,6 +2,7 @@
   {
     "listing": "/blog/index.html",
     "items": [
+      "/blog/posts/gibran-v0.1.0/index.html",
       "/blog/posts/abng-architecture/index.html",
       "/blog/posts/abng-benchmarks/index.html",
       "/blog/posts/abng-benchmarks-part-2/index.html",
