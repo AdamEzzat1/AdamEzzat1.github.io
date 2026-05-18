@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.3.340">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Adam Ezzat">
+<meta name="dcterms.date" content="2026-05-18">
+<meta name="description" content="ABNG — the Adaptive Belief Network Graph — applied to UCI Diabetes 130-US Hospitals, a real, heterogeneous, class-imbalanced clinical benchmark (101,766 hospital encounters; 30-day readmission). Held-out test AUC climbed 0.550 → 0.587 → 0.611 across data scale and a validation-only hyperparameter sweep; post-hoc Platt calibration then moved Brier and log-loss from worse-than-base-rate to better, with calibration error dropping to 0.010. Crucially, none of ABNG’s core architecture changed — the gains came from a leakage-free evaluation protocol, configuration tuning, and harness-side calibration, and determinism + auditability held throughout because the core was untouched. Honest, modest, fully reproducible.">
+
+<title>Adam Ezzat - ABNG on Real Clinical Data — The Diabetes-130 Readmission Task</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../../">
+<script src="../../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<script src="../../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-dark.min.css" rel="prefetch" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+<style>html{ scroll-behavior: smooth; }</style>
+
+
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../../index.html">
+    <span class="navbar-title">Adam Ezzat</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../../index.html" rel="" target="">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../about.html" rel="" target="">
+ <span class="menu-text">About</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../projects.html" rel="" target="">
+ <span class="menu-text">Projects</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../blog/index.html" rel="" target="">
+ <span class="menu-text">Blog</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/AdamEzzat1" rel="" target=""><i class="bi bi-github" role="img" aria-label="GitHub">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://linkedin.com/in/adamezzat" rel="" target=""><i class="bi bi-linkedin" role="img" aria-label="LinkedIn">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+            <div class="quarto-navbar-tools">
+  <a href="" class="quarto-color-scheme-toggle quarto-navigation-tool  px-1" onclick="window.quartoToggleColorScheme(); return false;" title="Toggle dark mode"><i class="bi"></i></a>
+</div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#why-a-real-dataset-and-why-this-one" id="toc-why-a-real-dataset-and-why-this-one" class="nav-link active" data-scroll-target="#why-a-real-dataset-and-why-this-one">1. Why a real dataset, and why this one</a></li>
+  <li><a href="#the-evaluation-protocol-the-part-that-has-to-be-right" id="toc-the-evaluation-protocol-the-part-that-has-to-be-right" class="nav-link" data-scroll-target="#the-evaluation-protocol-the-part-that-has-to-be-right">2. The evaluation protocol (the part that has to be right)</a></li>
+  <li><a href="#what-changed-to-reach-these-numbers-honestly" id="toc-what-changed-to-reach-these-numbers-honestly" class="nav-link" data-scroll-target="#what-changed-to-reach-these-numbers-honestly">3. What changed to reach these numbers — honestly</a></li>
+  <li><a href="#the-result-and-what-calibration-fixed" id="toc-the-result-and-what-calibration-fixed" class="nav-link" data-scroll-target="#the-result-and-what-calibration-fixed">4. The result — and what calibration fixed</a>
+  <ul class="collapse">
+  <li><a href="#ranking-a-real-but-modest-signal" id="toc-ranking-a-real-but-modest-signal" class="nav-link" data-scroll-target="#ranking-a-real-but-modest-signal">4.1 Ranking: a real but modest signal</a></li>
+  <li><a href="#probabilities-the-uncomfortable-part-and-the-fix" id="toc-probabilities-the-uncomfortable-part-and-the-fix" class="nav-link" data-scroll-target="#probabilities-the-uncomfortable-part-and-the-fix">4.2 Probabilities: the uncomfortable part, and the fix</a></li>
+  <li><a href="#the-operating-point" id="toc-the-operating-point" class="nav-link" data-scroll-target="#the-operating-point">4.3 The operating point</a></li>
+  </ul></li>
+  <li><a href="#the-hyperparameter-sweep-measure-dont-assume" id="toc-the-hyperparameter-sweep-measure-dont-assume" class="nav-link" data-scroll-target="#the-hyperparameter-sweep-measure-dont-assume">5. The hyperparameter sweep — measure, don’t assume</a></li>
+  <li><a href="#what-abng-features-held-up-on-real-data" id="toc-what-abng-features-held-up-on-real-data" class="nav-link" data-scroll-target="#what-abng-features-held-up-on-real-data">6. What ABNG features held up on real data</a></li>
+  <li><a href="#reproducibility" id="toc-reproducibility" class="nav-link" data-scroll-target="#reproducibility">7. Reproducibility</a></li>
+  <li><a href="#honest-limitations" id="toc-honest-limitations" class="nav-link" data-scroll-target="#honest-limitations">8. Honest limitations</a></li>
+  <li><a href="#still-experimenting" id="toc-still-experimenting" class="nav-link" data-scroll-target="#still-experimenting">9. Still experimenting</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">ABNG on Real Clinical Data — The Diabetes-130 Readmission Task</h1>
+<p class="subtitle lead">An honest first run of the Adaptive Belief Network Graph on a hard, imbalanced, 101,766-row medical dataset: what the evaluation methodology fixed, what ABNG’s architecture did <em>not</em> need to change, and exactly where the numbers land.</p>
+  <div class="quarto-categories">
+    <div class="quarto-category">CJC-Lang</div>
+    <div class="quarto-category">ABNG</div>
+    <div class="quarto-category">medical</div>
+    <div class="quarto-category">diabetes</div>
+    <div class="quarto-category">calibration</div>
+    <div class="quarto-category">experimental</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    ABNG — the Adaptive Belief Network Graph — applied to UCI Diabetes 130-US Hospitals, a real, heterogeneous, class-imbalanced clinical benchmark (101,766 hospital encounters; 30-day readmission). Held-out test AUC climbed 0.550 → 0.587 → 0.611 across data scale and a validation-only hyperparameter sweep; post-hoc Platt calibration then moved Brier and log-loss from worse-than-base-rate to better, with calibration error dropping to 0.010. Crucially, none of ABNG’s core architecture changed — the gains came from a leakage-free evaluation protocol, configuration tuning, and harness-side calibration, and determinism + auditability held throughout because the core was untouched. Honest, modest, fully reproducible.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Adam Ezzat </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">May 18, 2026</p>
+    </div>
+  </div>
+  
+    <div>
+    <div class="quarto-title-meta-heading">Modified</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date-modified">May 18, 2026</p>
+    </div>
+  </div>
+    
+  </div>
+  
+
+</header>
+
+<div class="reading-time">
+🕑 ~13 min read
+</div>
+<div class="callout callout-style-simple callout-tip no-icon callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+TL;DR
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>I put <strong>ABNG</strong> — the Adaptive Belief Network Graph, an experimental, deterministic, auditable belief-graph model built in CJC-Lang — onto a <strong>real medical dataset</strong>: UCI <em>Diabetes 130-US Hospitals</em>, 101,766 hospital encounters, predicting 30-day readmission. It’s a genuinely hard, heterogeneous, ~11%-imbalanced clinical benchmark.</p>
+<p>Held-out test <strong>AUC went 0.550 → 0.587 → 0.611</strong> as I scaled the data and ran a validation-only hyperparameter sweep. Post-hoc <strong>Platt calibration</strong> then moved the probabilistic metrics from <em>worse than the do-nothing baseline</em> to <em>better than it</em> — Brier 0.100 → 0.098, log-loss 0.391 → 0.344, calibration error 0.031 → <strong>0.010</strong>.</p>
+<p><strong>The honest headline: none of ABNG’s core architecture changed.</strong> The gains came from a leakage-free evaluation protocol, tuning ABNG’s <em>configuration</em>, and a harness-side calibration step. Determinism and the audit chain held throughout — precisely <em>because</em> the core was left untouched. AUC 0.611 is modest (strong published models reach ~0.64–0.68); this is an honest baseline, not a record. And ABNG remains experimental — I’m still iterating.</p>
+</div>
+</div>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Prototype disclaimer
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><strong>ABNG is a research-stage prototype</strong>, built on <strong>CJC-Lang</strong>, a research compiler that is itself pre-1.0. Both are under active development. The numbers here are a single, fully-reproducible snapshot from one experiment campaign — not a validated benchmark, not deployed, not peer-reviewed. Read them as honest exploratory engineering.</p>
+</div>
+</div>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Where this sits in the ABNG series
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<ul>
+<li><a href="../../../blog/posts/abng-architecture/index.html">ABNG: Treating Belief States as First-Class Citizens</a> — the architecture.</li>
+<li><a href="../../../blog/posts/abng-deterministic-systems/index.html">Deterministic and Auditable Neural Systems</a> — the audit chain + determinism contract.</li>
+<li><a href="../../../blog/posts/abng-benchmarks/index.html">Benchmarks Part I</a> and <a href="../../../blog/posts/abng-benchmarks-part-2/index.html">Part II</a> — the controlled benchmark deep-dive.</li>
+<li><strong>This post</strong> — the first time ABNG meets a <em>real, messy, external</em> dataset rather than a controlled benchmark.</li>
+</ul>
+</div>
+</div>
+<section id="why-a-real-dataset-and-why-this-one" class="level2">
+<h2 class="anchored" data-anchor-id="why-a-real-dataset-and-why-this-one">1. Why a real dataset, and why this one</h2>
+<p>The earlier ABNG benchmark posts measured the architecture on <em>controlled</em> problems — synthetic PINNs, designed routing distributions, scripted drift scenarios. Those answer “does the mechanism work?” They do not answer “does it survive contact with real, messy data?”</p>
+<p>So this post takes ABNG to a dataset I did not design: <strong>UCI Diabetes 130-US Hospitals for Years 1999–2008</strong>. It is a genuine, widely-cited clinical benchmark — de-identified records of <strong>101,766 hospital encounters of diabetic patients across 130 US hospitals over ten years</strong>, introduced by Strack et al.&nbsp;(2014). The prediction task is the published one: will this patient be <strong>readmitted within 30 days</strong>?</p>
+<p>It is a deliberately unforgiving choice on three axes at once:</p>
+<ul>
+<li><strong>It is genuinely complex.</strong> 50 heterogeneous columns: demographics, <strong>23 medication columns</strong>, <strong>three ICD-9 diagnosis codes with 700+ distinct values each</strong> (very high cardinality), lab results, admission / discharge / source codes, visit counts. Missingness is heavy — <code>weight</code> is ~97% missing; <code>payer_code</code> and <code>medical_specialty</code> are largely missing.</li>
+<li><strong>It is class-imbalanced.</strong> Only <strong>~11.2%</strong> of encounters are 30-day readmissions.</li>
+<li><strong>It is a hard target.</strong> Whether a patient is readmitted depends on post-discharge factors — social support, follow-up care, medication adherence — that simply are not in the data. That is <em>irreducible</em> noise. It is why strong published models on this task top out around <strong>AUC 0.64–0.68</strong>; nothing reaches 0.9 here, and a model that claimed to would be suspect.</li>
+</ul>
+<p>That last point matters for reading everything below. On a dataset like this, <strong>a modest honest number is the correct outcome</strong>, and inflated numbers are the warning sign.</p>
+</section>
+<section id="the-evaluation-protocol-the-part-that-has-to-be-right" class="level2">
+<h2 class="anchored" data-anchor-id="the-evaluation-protocol-the-part-that-has-to-be-right">2. The evaluation protocol (the part that has to be right)</h2>
+<p>Before any result is worth reporting, the protocol has to be leakage-free. ABNG’s harness for this dataset does the following, and the discipline here is more important than any single metric:</p>
+<ul>
+<li><strong>The feature transform is fit on the training split only.</strong> Category vocabularies, one-hot widths, routing-feature selection — all learned from train rows, never from validation or test.</li>
+<li><strong>A 70 / 15 / 20-style stratified split</strong> into train / validation / test, stratified on the readmission label so all three splits share the ~11% positive rate.</li>
+<li><strong>Every tuning decision is made on validation, never on test.</strong> The decision threshold and the model hyperparameters are both selected by validation score; the test split is touched exactly once, for the final reported numbers.</li>
+<li><strong>Deterministic throughout.</strong> Fixed seed (42), deterministic SplitMix64 shuffles, deterministic reductions. Re-running reproduces every digit (see §7).</li>
+</ul>
+<p>This is unglamorous, and it is the whole game. The most common way to get a flattering number on an imbalanced dataset is to let the test set leak into a tuning decision; the protocol above is designed so that cannot happen.</p>
+</section>
+<section id="what-changed-to-reach-these-numbers-honestly" class="level2">
+<h2 class="anchored" data-anchor-id="what-changed-to-reach-these-numbers-honestly">3. What changed to reach these numbers — honestly</h2>
+<p>Here is the question I most want to answer straight, because it would be easy to dress it up: <strong>what architectural changes did ABNG need to work at these numbers?</strong></p>
+<p><strong>None. ABNG’s core architecture did not change.</strong></p>
+<p>The belief graph, the per-leaf Bayesian Linear Regression (BLR) heads with their closed-form conjugate updates, the SHA-256-hash-chained audit log, the deterministic execution contract — all of it is exactly as described in the earlier architecture post. Not one core data structure or update rule was modified to produce the results below.</p>
+<p>What <em>did</em> change lives entirely <strong>around</strong> ABNG, not <strong>inside</strong> it:</p>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Lever</th>
+<th>What it is</th>
+<th>Layer</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>More data</td>
+<td>2,000 → 20,000-row stratified sub-sample</td>
+<td>Experiment design</td>
+</tr>
+<tr class="even">
+<td>Routing depth</td>
+<td><code>K_ROUTING</code> tuned by validation sweep (see §5)</td>
+<td>ABNG <em>configuration</em></td>
+</tr>
+<tr class="odd">
+<td>BLR prior strength</td>
+<td>Prior precision tuned by the same sweep</td>
+<td>ABNG <em>configuration</em></td>
+</tr>
+<tr class="even">
+<td>Decision threshold</td>
+<td>Tuned on validation, not left at 0.5</td>
+<td>Harness post-processing</td>
+</tr>
+<tr class="odd">
+<td>Probability calibration</td>
+<td>Post-hoc Platt scaling (see §4)</td>
+<td>Harness post-processing</td>
+</tr>
+</tbody>
+</table>
+<p><code>K_ROUTING</code> and the BLR prior are <em>configuration knobs</em> — dials ABNG already exposes, not new mechanisms. The threshold and the calibration are <em>harness-side post-processing</em> — they read ABNG’s outputs and never touch its state.</p>
+<p>This is not a disappointing answer; it is the point. <strong>Determinism and auditability survived this entire experiment campaign precisely because the core was untouched.</strong> If “improving the metrics” had meant rewriting the BLR update or adding a new audit event kind, every replay guarantee and every hash-chain canary would have had to be re-validated. Instead, the 28 SHA-256 determinism canaries never moved, because nothing they cover was edited. The honest engineering lesson: <em>reach for evaluation rigor and post-processing before you reach for architecture surgery.</em></p>
+</section>
+<section id="the-result-and-what-calibration-fixed" class="level2">
+<h2 class="anchored" data-anchor-id="the-result-and-what-calibration-fixed">4. The result — and what calibration fixed</h2>
+<section id="ranking-a-real-but-modest-signal" class="level3">
+<h3 class="anchored" data-anchor-id="ranking-a-real-but-modest-signal">4.1 Ranking: a real but modest signal</h3>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="figures/auc_trajectory.png" class="img-fluid figure-img"></p>
+<figcaption class="figure-caption">Held-out test AUC across data scale and tuning. The line stays clearly above chance and clearly below the strong-published-model band.</figcaption>
+</figure>
+</div>
+<p>Held-out test <strong>AUC climbed 0.550 → 0.587 → 0.611</strong>: 2,000 rows with default settings, then 20,000 rows, then 20,000 rows with the validation-tuned configuration. That is real signal — the model orders patients by readmission risk better than chance — but it is <strong>modest</strong>, and it sits <em>below</em> the ~0.64–0.68 band where strong published models on this task live. I am reporting it as an honest baseline, not a result to headline.</p>
+</section>
+<section id="probabilities-the-uncomfortable-part-and-the-fix" class="level3">
+<h3 class="anchored" data-anchor-id="probabilities-the-uncomfortable-part-and-the-fix">4.2 Probabilities: the uncomfortable part, and the fix</h3>
+<p>AUC only measures <em>ranking</em>. The probabilistic metrics — Brier score and log-loss (NLL) — measure whether the predicted probabilities themselves are any good. And before calibration, they were not:</p>
+<ul>
+<li>Raw <strong>Brier 0.100</strong> — essentially <em>tied</em> with a do-nothing predictor that outputs the 11.2% base rate for everyone (its Brier is 0.099).</li>
+<li>Raw <strong>NLL 0.391</strong> — actually <strong>worse</strong> than that base-rate predictor (0.351).</li>
+</ul>
+<p>The cause is structural: ABNG’s BLR head is <em>linear regression</em>. Linear regression has no link function — its output is unbounded and is not a calibrated probability. On 11%-imbalanced data its predictions cluster in a narrow band near the base rate, and the occasional out-of-range prediction, clamped into [0, 1], wrecks the log-loss.</p>
+<p>The fix is <strong>post-hoc Platt calibration</strong>: fit a one-feature logistic — <code>σ(a·raw + b)</code> — on the <em>validation</em> predictions, then apply it to test. Two parameters, fit by Newton’s method, entirely harness-side.</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="figures/calibration.png" class="img-fluid figure-img"></p>
+<figcaption class="figure-caption">Post-hoc Platt calibration. Raw bars sit at or above the do-nothing base-rate line; calibrated bars sit below it. Calibration error drops by 3×.</figcaption>
+</figure>
+</div>
+<p>The effect is exactly what the theory predicts:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Metric</th>
+<th>Raw</th>
+<th><strong>Calibrated</strong></th>
+<th>Base-rate baseline</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>AUC</td>
+<td>0.611</td>
+<td><strong>0.611</strong></td>
+<td>0.500</td>
+</tr>
+<tr class="even">
+<td>Brier</td>
+<td>0.100</td>
+<td><strong>0.098</strong></td>
+<td>0.099</td>
+</tr>
+<tr class="odd">
+<td>Log-loss (NLL)</td>
+<td>0.391</td>
+<td><strong>0.344</strong></td>
+<td>0.351</td>
+</tr>
+<tr class="even">
+<td>Calibration error (ECE)</td>
+<td>0.031</td>
+<td><strong>0.010</strong></td>
+<td>0</td>
+</tr>
+</tbody>
+</table>
+<p><strong>AUC is bit-identical</strong> — calibration is a monotonic transform, so it <em>cannot</em> change the ranking, and it didn’t. What it did change is the probabilities: Brier and NLL both crossed from losing to the base-rate predictor to <strong>beating</strong> it, and calibration error fell to <strong>0.010</strong>. The model’s probability outputs now genuinely carry information beyond “predict the average.”</p>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+A calibration honesty note
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>In an earlier draft of this analysis I described the <em>raw</em> ECE of 0.031 as “well-calibrated — a genuine strength.” That was wrong, and worth flagging. Raw ECE looked good only because the predictions were clustered into one or two histogram bins — Brier and NLL, which clustering cannot flatter, told the real story. <strong>After</strong> Platt calibration all three probabilistic metrics agree and all three beat the baseline. Calibration didn’t just improve numbers; it made the numbers <em>consistent with each other</em>. That internal consistency is what makes the result defensible.</p>
+</div>
+</div>
+</section>
+<section id="the-operating-point" class="level3">
+<h3 class="anchored" data-anchor-id="the-operating-point">4.3 The operating point</h3>
+<p>At the validation-tuned decision threshold, the tuned + calibrated model reaches <strong>balanced accuracy ≈ 0.58</strong> and <strong>F1 ≈ 0.24</strong> on the held-out test set.</p>
+<p>A word on what is <em>not</em> reported as a headline: <strong>raw accuracy</strong>. On an 11%-positive dataset, a model that predicts “no readmission” for everyone scores ~89% accuracy with zero learning. Accuracy is the <em>wrong</em> yardstick here — it rewards the majority class — which is exactly why this post leads with AUC, balanced accuracy, and the probabilistic metrics instead.</p>
+</section>
+</section>
+<section id="the-hyperparameter-sweep-measure-dont-assume" class="level2">
+<h2 class="anchored" data-anchor-id="the-hyperparameter-sweep-measure-dont-assume">5. The hyperparameter sweep — measure, don’t assume</h2>
+<p>The routing depth <code>K_ROUTING</code> controls how deep the belief tree’s routing partition goes — <code>K</code> routing features means <code>4^K</code> leaves, each with its own BLR head. My prior assumption, baked into earlier defaults, was that <em>more</em> routing features (K = 4) would help.</p>
+<p>A validation sweep over <code>K ∈ {2, 3, 4}</code> and three BLR prior strengths said otherwise:</p>
+<div class="quarto-figure quarto-figure-center">
+<figure class="figure">
+<p><img src="figures/krouting_sweep.png" class="img-fluid figure-img"></p>
+<figcaption class="figure-caption">K_ROUTING × BLR-prior sweep, validation AUC. Shallower routing (K=2) wins clearly.</figcaption>
+</figure>
+</div>
+<p><strong>K = 2 won, decisively.</strong> The mechanism is a data-starvation effect: with ~14,000 training rows, K = 2 gives 16 leaves (~875 rows each), while K = 4 gives 256 leaves (~55 rows each) — and each leaf trains its <em>own</em> BLR. Deeper routing buys “specialization” but starves every leaf of the data it needs. On this dataset, shallow wins. (Stronger prior regularization also helped, monotonically — unsurprising on a noisy target.)</p>
+<p>This is a small but real instance of the discipline the whole project runs on: the assumption was wrong, the sweep was cheap, and the measurement settled it.</p>
+</section>
+<section id="what-abng-features-held-up-on-real-data" class="level2">
+<h2 class="anchored" data-anchor-id="what-abng-features-held-up-on-real-data">6. What ABNG features held up on real data</h2>
+<p>The metrics are modest, so I will not claim ABNG’s architecture produced a great model — it produced an honest, weak-but-real one. What I <em>can</em> report is which of ABNG’s properties <strong>survived contact with a messy real dataset</strong>:</p>
+<ul>
+<li><strong>Determinism held end-to-end.</strong> Two independent runs of the full pipeline — fit, train on real data, evaluate, calibrate — produced <strong>bit-identical</strong> metrics, despite a 3× spread in wall-clock time between them (§7). On most ML stacks, “re-run it” gives approximately the same number; here it gives the <em>same bytes</em>.</li>
+<li><strong>The audit chain stayed intact.</strong> Every training step appends to a SHA-256 hash chain. Across the full 101,766-row dataset and every experiment variant, the chain verified — auditability is not a toy-scale property that broke on real data.</li>
+<li><strong>The routing partition did real work.</strong> The K-sweep confirms the per-leaf structure is functional — different routing depths give measurably different models, and the partition is interpretable (you can read which leaf a patient routed to).</li>
+<li><strong>The BLR heads gave a <em>probabilistic</em> output to fix.</strong> Because each leaf is a Bayesian regressor rather than a bare classifier, there was a real-valued score for calibration to act on. A model with no probabilistic output would have had nothing for Platt scaling to repair.</li>
+</ul>
+<p>In short: the architecture’s <em>guarantees</em> — determinism, auditability — held up perfectly; its <em>predictive strength</em> on this hard task is honestly modest and is the thing still being worked on.</p>
+</section>
+<section id="reproducibility" class="level2">
+<h2 class="anchored" data-anchor-id="reproducibility">7. Reproducibility</h2>
+<p>The result is deterministic. It was re-run from scratch to confirm:</p>
+<pre class="text"><code>Run 1:  finished in 30.0 s   AUC 0.6107  Brier 0.0980  NLL 0.3435  ECE 0.0101
+Run 2:  finished in 90.9 s   AUC 0.6107  Brier 0.0980  NLL 0.3435  ECE 0.0101</code></pre>
+<p>The wall-clock differs 3× (machine contention); <strong>every metric digit is identical</strong>, and so is the fitted Platt <code>(a, b) = (4.2946, −2.6183)</code>. That is the determinism contract working: the result is a pure function of (code, seed, data), decoupled from timing.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># From a clean checkout of the CJC-Lang repository:</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/AdamEzzat1/CJC.git <span class="kw">&amp;&amp;</span> <span class="bu">cd</span> CJC</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co"># The Diabetes-130 experiment harness (dataset is untracked; fetch</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="co"># UCI dataset 296 into tests/data/diabetes_130/):</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> test <span class="at">--test</span> abng <span class="at">--release</span> diabetes130_calibrated <span class="dt">\</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">--</span> <span class="at">--ignored</span> <span class="at">--nocapture</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Build fingerprint: Rust 1.91.1 (stable, LLVM 21.1.2), seed 42, 20,000-row stratified sub-sample, n_test = 3,002. Figures plotted with Python 3.11 / matplotlib 3.9.</p>
+</section>
+<section id="honest-limitations" class="level2">
+<h2 class="anchored" data-anchor-id="honest-limitations">8. Honest limitations</h2>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+What this result is <em>not</em>
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<ul>
+<li><strong>Not a record.</strong> AUC 0.611 is below the ~0.64–0.68 range of strong published Diabetes-130 models. It is an honest baseline.</li>
+<li><strong>Single seed.</strong> All numbers are seed 42. A multi-seed sweep to quantify variance is pending — until it lands, treat the third decimal as indicative, not pinned.</li>
+<li><strong>A 20,000-row sub-sample</strong>, not the full 101,766 rows. The full-dataset run is future work.</li>
+<li><strong>A linear model.</strong> ABNG’s BLR heads are linear; calibration fixes the <em>probabilities</em> but not the <em>ranking ceiling</em>. A nonlinear MLP-leaf-head variant is the next experiment — it may lift AUC, or may need a lot of tuning.</li>
+<li><strong>Not deployed, not validated.</strong> This is exploratory engineering.</li>
+</ul>
+</div>
+</div>
+</section>
+<section id="still-experimenting" class="level2">
+<h2 class="anchored" data-anchor-id="still-experimenting">9. Still experimenting</h2>
+<p>ABNG is, and is labelled, <strong>experimental</strong> — and this dataset is one stop on an ongoing campaign, not a finish line. Currently on the bench:</p>
+<ul>
+<li><strong>Nonlinear leaf heads.</strong> Swapping the linear BLR leaf for an MLP leaf head (a capability ABNG already has) to see whether the <em>ranking</em> ceiling moves — the lever calibration provably cannot touch.</li>
+<li><strong>The full 101,766-row run</strong> at the tuned configuration, for a headline number on all the data.</li>
+<li><strong>Multi-seed variance</strong> — running the pipeline across many seeds to report mean ± spread instead of a single point.</li>
+</ul>
+<p>Each of these is the kind of measured, leakage-free, deterministic experiment this post is built on. If they move the numbers, a follow-up will say so honestly; if they don’t, it will say that too.</p>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+The honest summary
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>On a real, hard, imbalanced clinical dataset, ABNG produced a <strong>modest but genuine</strong> result — ranking meaningfully above chance, and, after calibration, probability estimates that beat the do-nothing baseline on every measure. It got there <strong>without any change to its core architecture</strong>: rigorous evaluation methodology, configuration tuning, and post-hoc calibration did the work, and the determinism and auditability guarantees held throughout because the core was never touched.</p>
+<p>That is the result I can defend: not a strong model yet, but an honest one, fully reproducible, with a clear and unembellished account of how it was reached and where it falls short.</p>
+</div>
+</div>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Note
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>ABNG lives at <a href="https://github.com/AdamEzzat1/CJC"><code>crates/cjc-abng/</code></a> in the CJC-Lang repository; the Diabetes-130 harness is in <code>tests/abng/dataset_a_diabetes130.rs</code>. This post is part of the ongoing ABNG series — see the architecture and determinism posts for the foundations the results above rest on.</p>
+</div>
+</div>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const disableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'prefetch';
+    }
+  }
+  const enableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'stylesheet';
+    }
+  }
+  const manageTransitions = (selector, allowTransitions) => {
+    const els = window.document.querySelectorAll(selector);
+    for (let i=0; i < els.length; i++) {
+      const el = els[i];
+      if (allowTransitions) {
+        el.classList.remove('notransition');
+      } else {
+        el.classList.add('notransition');
+      }
+    }
+  }
+  const toggleColorMode = (alternate) => {
+    // Switch the stylesheets
+    const alternateStylesheets = window.document.querySelectorAll('link.quarto-color-scheme.quarto-color-alternate');
+    manageTransitions('#quarto-margin-sidebar .nav-link', false);
+    if (alternate) {
+      enableStylesheet(alternateStylesheets);
+      for (const sheetNode of alternateStylesheets) {
+        if (sheetNode.id === "quarto-bootstrap") {
+          toggleBodyColorMode(sheetNode);
+        }
+      }
+    } else {
+      disableStylesheet(alternateStylesheets);
+      toggleBodyColorPrimary();
+    }
+    manageTransitions('#quarto-margin-sidebar .nav-link', true);
+    // Switch the toggles
+    const toggles = window.document.querySelectorAll('.quarto-color-scheme-toggle');
+    for (let i=0; i < toggles.length; i++) {
+      const toggle = toggles[i];
+      if (toggle) {
+        if (alternate) {
+          toggle.classList.add("alternate");     
+        } else {
+          toggle.classList.remove("alternate");
+        }
+      }
+    }
+    // Hack to workaround the fact that safari doesn't
+    // properly recolor the scrollbar when toggling (#1455)
+    if (navigator.userAgent.indexOf('Safari') > 0 && navigator.userAgent.indexOf('Chrome') == -1) {
+      manageTransitions("body", false);
+      window.scrollTo(0, 1);
+      setTimeout(() => {
+        window.scrollTo(0, 0);
+        manageTransitions("body", true);
+      }, 40);  
+    }
+  }
+  const isFileUrl = () => { 
+    return window.location.protocol === 'file:';
+  }
+  const hasAlternateSentinel = () => {  
+    let styleSentinel = getColorSchemeSentinel();
+    if (styleSentinel !== null) {
+      return styleSentinel === "alternate";
+    } else {
+      return false;
+    }
+  }
+  const setStyleSentinel = (alternate) => {
+    const value = alternate ? "alternate" : "default";
+    if (!isFileUrl()) {
+      window.localStorage.setItem("quarto-color-scheme", value);
+    } else {
+      localAlternateSentinel = value;
+    }
+  }
+  const getColorSchemeSentinel = () => {
+    if (!isFileUrl()) {
+      const storageValue = window.localStorage.getItem("quarto-color-scheme");
+      return storageValue != null ? storageValue : localAlternateSentinel;
+    } else {
+      return localAlternateSentinel;
+    }
+  }
+  let localAlternateSentinel = 'default';
+  // Dark / light mode switch
+  window.quartoToggleColorScheme = () => {
+    // Read the current dark / light value 
+    let toAlternate = !hasAlternateSentinel();
+    toggleColorMode(toAlternate);
+    setStyleSentinel(toAlternate);
+  };
+  // Ensure there is a toggle, if there isn't float one in the top right
+  if (window.document.querySelector('.quarto-color-scheme-toggle') === null) {
+    const a = window.document.createElement('a');
+    a.classList.add('top-right');
+    a.classList.add('quarto-color-scheme-toggle');
+    a.href = "";
+    a.onclick = function() { try { window.quartoToggleColorScheme(); } catch {} return false; };
+    const i = window.document.createElement("i");
+    i.classList.add('bi');
+    a.appendChild(i);
+    window.document.body.appendChild(a);
+  }
+  // Switch to dark mode if need be
+  if (hasAlternateSentinel()) {
+    toggleColorMode(true);
+  } else {
+    toggleColorMode(false);
+  }
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+      &nbsp;
+    </div>   
+    <div class="nav-footer-center">© 2026 Adam Ezzat. Built with <a href="https://quarto.org/">Quarto</a>.</div>
+    <div class="nav-footer-right">
+      &nbsp;
+    </div>
+  </div>
+</footer>
+
+
+
+<script src="../../../site_libs/quarto-html/zenscroll-min.js"></script>
+</body></html>
