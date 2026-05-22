@@ -163,7 +163,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
    
   <ul>
   <li><a href="#the-problem-a-laptop-that-cooks-itself" id="toc-the-problem-a-laptop-that-cooks-itself" class="nav-link active" data-scroll-target="#the-problem-a-laptop-that-cooks-itself">The problem: a laptop that cooks itself</a></li>
-  <li><a href="#the-reframe-that-makes-it-tractable" id="toc-the-reframe-that-makes-it-tractable" class="nav-link" data-scroll-target="#the-reframe-that-makes-it-tractable">The reframe that makes it tractable</a></li>
+  <li><a href="#the-reframe-that-makes-it-tractable" id="toc-the-reframe-that-makes-it-tractable" class="nav-link" data-scroll-target="#the-reframe-that-makes-it-tractable">The reframe that makes it tractable</a>
+  <ul class="collapse">
+  <li><a href="#what-determinism-does-not-buy-you" id="toc-what-determinism-does-not-buy-you" class="nav-link" data-scroll-target="#what-determinism-does-not-buy-you">What determinism does <em>not</em> buy you</a></li>
+  </ul></li>
   <li><a href="#phase-1-a-runtime-policy-layer" id="toc-phase-1-a-runtime-policy-layer" class="nav-link" data-scroll-target="#phase-1-a-runtime-policy-layer">Phase 1: a Runtime Policy Layer</a>
   <ul class="collapse">
   <li><a href="#a-deterministic-energy-estimate" id="toc-a-deterministic-energy-estimate" class="nav-link" data-scroll-target="#a-deterministic-energy-estimate">A <em>deterministic</em> energy estimate</a></li>
@@ -175,6 +178,10 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#why-this-is-safe" id="toc-why-this-is-safe" class="nav-link" data-scroll-target="#why-this-is-safe">Why this is safe</a></li>
   </ul></li>
   <li><a href="#phase-3a-fused-kernels-cut-memory-traffic" id="toc-phase-3a-fused-kernels-cut-memory-traffic" class="nav-link" data-scroll-target="#phase-3a-fused-kernels-cut-memory-traffic">Phase 3a: fused kernels cut memory traffic</a></li>
+  <li><a href="#where-the-waste-actually-is" id="toc-where-the-waste-actually-is" class="nav-link" data-scroll-target="#where-the-waste-actually-is">Where the waste actually is</a>
+  <ul class="collapse">
+  <li><a href="#an-honest-metric-trustworthy-results-per-joule" id="toc-an-honest-metric-trustworthy-results-per-joule" class="nav-link" data-scroll-target="#an-honest-metric-trustworthy-results-per-joule">An honest metric: trustworthy results per joule</a></li>
+  </ul></li>
   <li><a href="#how-unique-is-this" id="toc-how-unique-is-this" class="nav-link" data-scroll-target="#how-unique-is-this">How unique is this?</a></li>
   <li><a href="#what-i-measured-vs.-what-i-estimated" id="toc-what-i-measured-vs.-what-i-estimated" class="nav-link" data-scroll-target="#what-i-measured-vs.-what-i-estimated">What I measured vs.&nbsp;what I estimated</a></li>
   <li><a href="#verification" id="toc-verification" class="nav-link" data-scroll-target="#verification">Verification</a></li>
@@ -234,7 +241,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </header>
 
 <div class="reading-time">
-🕑 ~13 min read
+🕑 ~17 min read
 </div>
 <div class="stats-row">
 <div class="stat">
@@ -277,6 +284,11 @@ TL;DR
 </blockquote>
 <p>Crucially: <strong>bursts don’t overheat — only sustained load does.</strong> Thermal time constants are seconds to tens of seconds, so a sub-second burst at full tilt never heat-soaks the package. A fixed thread cap pays the throttle tax on <em>every</em> operation, including the short interactive runs that were never going to overheat.</p>
 <p>And the linchpin that makes all of this safe: in CJC-Lang, <strong>thread count never changes the result.</strong> The parallel reductions sum in a fixed chunk order with Kahan/binned accumulators, so the numeric output is identical no matter how many workers are live. That single guarantee is what lets me treat parallelism as a pure heat/speed knob — and even make it <em>adaptive</em> — without ever risking the answer.</p>
+<section id="what-determinism-does-not-buy-you" class="level3">
+<h3 class="anchored" data-anchor-id="what-determinism-does-not-buy-you">What determinism does <em>not</em> buy you</h3>
+<p>I want to be careful here, because there’s an easy and wrong way to tell this story: <em>“determinism makes computation greener.”</em> It doesn’t — not directly, and per-run it’s often the opposite. Kahan and binned summation do <strong>more</strong> arithmetic than a naive sum. A seeded RNG, ordered collections, audit trails, and bit-exact replay all cost extra cycles and memory. Measured one run at a time, “trustworthy” is <em>more</em> expensive than “fast and loose,” not less.</p>
+<p>So the green argument is <strong>not</strong> “determinism reduces FLOPs.” It’s narrower and, I think, more defensible: determinism, numerical stability, and bounded execution reduce the number of runs you <em>waste</em> on the way to a result you can actually trust. The savings live in the <strong>denominator — fewer reruns — not the numerator.</strong> Everything below should be read in that light.</p>
+</section>
 </section>
 <section id="phase-1-a-runtime-policy-layer" class="level2">
 <h2 class="anchored" data-anchor-id="phase-1-a-runtime-policy-layer">Phase 1: a Runtime Policy Layer</h2>
@@ -473,6 +485,41 @@ MIR cool (adaptive)  : 79aaf9931d2b6c2004a20cdf5d5bd434</code></pre>
 <p>The subtle bit is <em>why this is free</em>: <code>a*b + c</code> in Rust compiles to a <strong>separate</strong> multiply then add — it does <strong>not</strong> contract into a hardware FMA unless you call <code>.mul_add()</code> explicitly. So the fused loop produces bit-identical results to the two-pass version while eliminating the intermediate. I pinned that with property tests asserting <code>fused == unfused</code> byte-for-byte over 256 random cases each.</p>
 <p>And this <em>compounds</em> with Phase 2: lighter work finishes inside the burst window, so the cap engages even less. Memory efficiency and the adaptive scheduler reinforce each other instead of trading off.</p>
 </section>
+<section id="where-the-waste-actually-is" class="level2">
+<h2 class="anchored" data-anchor-id="where-the-waste-actually-is">Where the waste actually is</h2>
+<p>If determinism makes each run a little <em>more</em> expensive, why is any of this “green”? Because the dominant source of wasted compute in real numerical and ML work isn’t the cost of one run — it’s <strong>runs you have to throw away.</strong> Unstable, irreproducible systems waste compute, and they waste a lot of it:</p>
+<ul>
+<li><strong>Nondeterministic drift.</strong> A number changes between runs and you can’t tell whether it’s a bug or noise — so you rerun, sometimes dozens of times, just to characterize the variance.</li>
+<li><strong>NaN / instability cascades.</strong> An unstable reduction overflows or loses precision, a training run diverges, and everything downstream is garbage. You debug, patch, and rerun the whole pipeline.</li>
+<li><strong>Failed reproductions.</strong> A reviewer, a teammate, or future-you can’t reproduce a result, so the experiment is repeated from scratch.</li>
+<li><strong>Preprocessing redone</strong> because the previous run wasn’t pinned.</li>
+</ul>
+<p>Every one of those is compute already spent that produced <em>nothing trustworthy.</em> That’s the waste CJC-Lang is actually attacking — with stable reductions, a seeded RNG, bit-exact replay, and now bounded, memory-aware execution. None of it makes a single run cheaper. It makes <em>reruns unnecessary.</em></p>
+<section id="an-honest-metric-trustworthy-results-per-joule" class="level3">
+<h3 class="anchored" data-anchor-id="an-honest-metric-trustworthy-results-per-joule">An honest metric: trustworthy results per joule</h3>
+<p>Throughput (FLOPs/second) is the wrong yardstick for this. A better one is closer to:</p>
+<blockquote class="blockquote">
+<p><strong>trustworthy_results / joule</strong> — useful, <em>reproducible</em> outputs per unit of energy, counting the energy burned on runs you had to repeat.</p>
+</blockquote>
+<p>I ran a small experiment to make it concrete. A 512×512 matmul, with the deterministic energy estimate from Phase 1:</p>
+<pre class="text"><code>result summary  : 2307326611210371000   p.sum()
+energy estimate : 0.0274726912 J         energy_estimate(2·512³ flops, 3·512²·8 bytes)</code></pre>
+<p>Then I checked reproducibility — the <em>same</em> program across every profile, thread cap, adaptive on/off, and <em>both</em> executors:</p>
+<pre class="text"><code>e81183611e12dd95d56e79b9b36ff194   default
+e81183611e12dd95d56e79b9b36ff194   --profile max-perf
+e81183611e12dd95d56e79b9b36ff194   --profile cool
+e81183611e12dd95d56e79b9b36ff194   --profile cool --no-adaptive
+e81183611e12dd95d56e79b9b36ff194   --threads 1
+e81183611e12dd95d56e79b9b36ff194   --mir-opt</code></pre>
+<p>Identical, every time. So:</p>
+<ul>
+<li>One run yields a result you can trust → <strong>~0.0275 J per trustworthy result</strong> (≈ 36 results/joule, at this analytical estimate).</li>
+<li><em>Certifying</em> it — producing it and independently re-running to confirm bit-equality — costs <strong>two runs (~0.055 J)</strong> and reaches actual certainty.</li>
+</ul>
+<p>Now the honest part, because this is exactly where the story could overreach. That <code>0.0275 J</code> is the numerator, and <strong>determinism did not shrink it</strong> — the stable reductions arguably made it slightly bigger. The metric’s real lever is the <strong>rerun multiplier</strong>: if establishing a trustworthy result takes <em>k</em> runs, you spend <em>k</em> × 0.0275 J. In a nondeterministic pipeline chasing drift or instability, <em>k</em> can be many; here it is <strong>1</strong>, and verification is <em>exact replay</em> rather than statistics-over-noise. I’m deliberately <strong>not</strong> fabricating a competitor’s <em>k</em> — I can’t measure someone else’s pipeline, and I’m not going to pretend to. The claim is narrow and checkable: CJC-Lang drives <em>k</em> toward 1, and <em>that</em> — not FLOPs-per-run — is where the energy is saved.</p>
+<p>(Two caveats stack here: the joules are an <em>analytical estimate</em>, not a wattmeter reading, and the rerun multiplier is a <em>model</em>, not a benchmark of another system. Both are stated so you can discount them appropriately.)</p>
+</section>
+</section>
 <section id="how-unique-is-this" class="level2">
 <h2 class="anchored" data-anchor-id="how-unique-is-this">How unique is this?</h2>
 <p>Honest answer: the individual pieces all exist somewhere. Thread caps are everywhere (Rayon, OpenMP, <code>GOMAXPROCS</code>). OS governors and RAPL do power capping. Race-to-idle is textbook power management. CodeCarbon and friends estimate energy. Intel MKL has reproducible-numerics modes.</p>
@@ -491,6 +538,7 @@ MIR cool (adaptive)  : 79aaf9931d2b6c2004a20cdf5d5bd434</code></pre>
 <section id="verification" class="level2">
 <h2 class="anchored" data-anchor-id="verification">Verification</h2>
 <p>Every claim above is backed by tests added for this work: <strong>80 new tests</strong> — 20 unit and 43 integration for the policy/scheduling layer, plus 17 for the fused kernels — spanning unit, dual-executor parity (AST vs MIR), property (256 cases each), and fuzz checks. The existing suite stayed green and no determinism gate moved.</p>
+<p>A note on tone, because it’s easy to get this wrong: none of this makes CJC-Lang “environmentally superior” to anything. It’s far too early for that claim, and against a hyperscale GPU cluster it isn’t even the right comparison. The honest framing is narrower and more interesting as a research question — <em>CJC-Lang is exploring whether deterministic, memory-aware, thermally-bounded systems can reduce <strong>wasteful</strong> computation</em> (the reruns, the drift-debugging, the throwaway experiments) in the niches where trust matters more than peak throughput. That’s the hypothesis this work is testing, not a verdict.</p>
 <p>The throughline: you don’t have to choose between <em>fast</em>, <em>reproducible</em>, and <em>cool</em>. You can have a thermal bound that adapts to your workload, energy you can reason about, and lower memory traffic — and still get the same bits out every single time. In a deterministic language, that last clause isn’t a nice-to-have. It’s the whole point.</p>
 
 

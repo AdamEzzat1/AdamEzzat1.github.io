@@ -8,7 +8,7 @@ categories: [CJC-Lang, performance, determinism, green-computing, energy, archit
 description: "A three-phase green-compute layer for CJC-Lang: a Runtime Policy Layer (thermal profiles, deterministic energy estimate), race-to-idle adaptive scheduling that recovers burst performance while keeping a sustained thermal bound, and fused elementwise kernels that cut memory traffic. The connective tissue is one guarantee — thread count, pool size, and schedule provably never change the answer — which is what makes an adaptive thermal scheduler safe in a deterministic language. Every number below was measured on the branch."
 ---
 
-<div class="reading-time">&#128337; ~13 min read</div>
+<div class="reading-time">&#128337; ~17 min read</div>
 
 <div class="stats-row">
 <div class="stat"><span class="number">3</span><span class="stat-label">thermal profiles</span></div>
@@ -39,6 +39,12 @@ Here's the mental model I kept coming back to:
 Crucially: **bursts don't overheat — only sustained load does.** Thermal time constants are seconds to tens of seconds, so a sub-second burst at full tilt never heat-soaks the package. A fixed thread cap pays the throttle tax on *every* operation, including the short interactive runs that were never going to overheat.
 
 And the linchpin that makes all of this safe: in CJC-Lang, **thread count never changes the result.** The parallel reductions sum in a fixed chunk order with Kahan/binned accumulators, so the numeric output is identical no matter how many workers are live. That single guarantee is what lets me treat parallelism as a pure heat/speed knob — and even make it *adaptive* — without ever risking the answer.
+
+### What determinism does *not* buy you
+
+I want to be careful here, because there's an easy and wrong way to tell this story: *"determinism makes computation greener."* It doesn't — not directly, and per-run it's often the opposite. Kahan and binned summation do **more** arithmetic than a naive sum. A seeded RNG, ordered collections, audit trails, and bit-exact replay all cost extra cycles and memory. Measured one run at a time, "trustworthy" is *more* expensive than "fast and loose," not less.
+
+So the green argument is **not** "determinism reduces FLOPs." It's narrower and, I think, more defensible: determinism, numerical stability, and bounded execution reduce the number of runs you *waste* on the way to a result you can actually trust. The savings live in the **denominator — fewer reruns — not the numerator.** Everything below should be read in that light.
 
 ## Phase 1: a Runtime Policy Layer
 
@@ -158,6 +164,50 @@ The subtle bit is *why this is free*: `a*b + c` in Rust compiles to a **separate
 
 And this *compounds* with Phase 2: lighter work finishes inside the burst window, so the cap engages even less. Memory efficiency and the adaptive scheduler reinforce each other instead of trading off.
 
+## Where the waste actually is
+
+If determinism makes each run a little *more* expensive, why is any of this "green"? Because the dominant source of wasted compute in real numerical and ML work isn't the cost of one run — it's **runs you have to throw away.** Unstable, irreproducible systems waste compute, and they waste a lot of it:
+
+- **Nondeterministic drift.** A number changes between runs and you can't tell whether it's a bug or noise — so you rerun, sometimes dozens of times, just to characterize the variance.
+- **NaN / instability cascades.** An unstable reduction overflows or loses precision, a training run diverges, and everything downstream is garbage. You debug, patch, and rerun the whole pipeline.
+- **Failed reproductions.** A reviewer, a teammate, or future-you can't reproduce a result, so the experiment is repeated from scratch.
+- **Preprocessing redone** because the previous run wasn't pinned.
+
+Every one of those is compute already spent that produced *nothing trustworthy.* That's the waste CJC-Lang is actually attacking — with stable reductions, a seeded RNG, bit-exact replay, and now bounded, memory-aware execution. None of it makes a single run cheaper. It makes *reruns unnecessary.*
+
+### An honest metric: trustworthy results per joule
+
+Throughput (FLOPs/second) is the wrong yardstick for this. A better one is closer to:
+
+> **trustworthy_results / joule** — useful, *reproducible* outputs per unit of energy, counting the energy burned on runs you had to repeat.
+
+I ran a small experiment to make it concrete. A 512×512 matmul, with the deterministic energy estimate from Phase 1:
+
+```text
+result summary  : 2307326611210371000   p.sum()
+energy estimate : 0.0274726912 J         energy_estimate(2·512³ flops, 3·512²·8 bytes)
+```
+
+Then I checked reproducibility — the *same* program across every profile, thread cap, adaptive on/off, and *both* executors:
+
+```text
+e81183611e12dd95d56e79b9b36ff194   default
+e81183611e12dd95d56e79b9b36ff194   --profile max-perf
+e81183611e12dd95d56e79b9b36ff194   --profile cool
+e81183611e12dd95d56e79b9b36ff194   --profile cool --no-adaptive
+e81183611e12dd95d56e79b9b36ff194   --threads 1
+e81183611e12dd95d56e79b9b36ff194   --mir-opt
+```
+
+Identical, every time. So:
+
+- One run yields a result you can trust → **~0.0275 J per trustworthy result** (≈ 36 results/joule, at this analytical estimate).
+- *Certifying* it — producing it and independently re-running to confirm bit-equality — costs **two runs (~0.055 J)** and reaches actual certainty.
+
+Now the honest part, because this is exactly where the story could overreach. That `0.0275 J` is the numerator, and **determinism did not shrink it** — the stable reductions arguably made it slightly bigger. The metric's real lever is the **rerun multiplier**: if establishing a trustworthy result takes *k* runs, you spend *k* × 0.0275 J. In a nondeterministic pipeline chasing drift or instability, *k* can be many; here it is **1**, and verification is *exact replay* rather than statistics-over-noise. I'm deliberately **not** fabricating a competitor's *k* — I can't measure someone else's pipeline, and I'm not going to pretend to. The claim is narrow and checkable: CJC-Lang drives *k* toward 1, and *that* — not FLOPs-per-run — is where the energy is saved.
+
+(Two caveats stack here: the joules are an *analytical estimate*, not a wattmeter reading, and the rerun multiplier is a *model*, not a benchmark of another system. Both are stated so you can discount them appropriately.)
+
 ## How unique is this?
 
 Honest answer: the individual pieces all exist somewhere. Thread caps are everywhere (Rayon, OpenMP, `GOMAXPROCS`). OS governors and RAPL do power capping. Race-to-idle is textbook power management. CodeCarbon and friends estimate energy. Intel MKL has reproducible-numerics modes.
@@ -176,5 +226,7 @@ In keeping with the project's ethos, the honest accounting:
 ## Verification
 
 Every claim above is backed by tests added for this work: **80 new tests** — 20 unit and 43 integration for the policy/scheduling layer, plus 17 for the fused kernels — spanning unit, dual-executor parity (AST vs MIR), property (256 cases each), and fuzz checks. The existing suite stayed green and no determinism gate moved.
+
+A note on tone, because it's easy to get this wrong: none of this makes CJC-Lang "environmentally superior" to anything. It's far too early for that claim, and against a hyperscale GPU cluster it isn't even the right comparison. The honest framing is narrower and more interesting as a research question — *CJC-Lang is exploring whether deterministic, memory-aware, thermally-bounded systems can reduce **wasteful** computation* (the reruns, the drift-debugging, the throwaway experiments) in the niches where trust matters more than peak throughput. That's the hypothesis this work is testing, not a verdict.
 
 The throughline: you don't have to choose between *fast*, *reproducible*, and *cool*. You can have a thermal bound that adapts to your workload, energy you can reason about, and lower memory traffic — and still get the same bits out every single time. In a deterministic language, that last clause isn't a nice-to-have. It's the whole point.
