@@ -20,7 +20,7 @@
 
 
 <div class="reading-time">
-🕑 ~17 min read
+🕑 ~19 min read
 </div>
 <div class="stats-row">
 <div class="stat">
@@ -488,6 +488,16 @@ e81183611e12dd95d56e79b9b36ff194   --mir-opt</code></pre>
 <p>Now the honest part, because this is exactly where the story could overreach. That <code>0.0275 J</code> is the numerator, and <strong>determinism did not shrink it</strong> — the stable reductions arguably made it slightly bigger. The metric’s real lever is the <strong>rerun multiplier</strong>: if establishing a trustworthy result takes <em>k</em> runs, you spend <em>k</em> × 0.0275 J. In a nondeterministic pipeline chasing drift or instability, <em>k</em> can be many; here it is <strong>1</strong>, and verification is <em>exact replay</em> rather than statistics-over-noise. I’m deliberately <strong>not</strong> fabricating a competitor’s <em>k</em> — I can’t measure someone else’s pipeline, and I’m not going to pretend to. The claim is narrow and checkable: CJC-Lang drives <em>k</em> toward 1, and <em>that</em> — not FLOPs-per-run — is where the energy is saved.</p>
 <p>(Two caveats stack here: the joules are an <em>analytical estimate</em>, not a wattmeter reading, and the rerun multiplier is a <em>model</em>, not a benchmark of another system. Both are stated so you can discount them appropriately.)</p>
 </section>
+</section>
+<section id="why-bounded-heat-matters-beyond-one-run" class="level2">
+<h2 class="anchored" data-anchor-id="why-bounded-heat-matters-beyond-one-run">Why bounded heat matters beyond one run</h2>
+<p>The thermal bound isn’t only about the run in front of you. Three stakes, in decreasing order of how confidently I can claim them:</p>
+<ul>
+<li><strong>Short run — the throttle cliff (measured).</strong> Saturate every core long enough and the firmware lowers the clock to protect the chip, so a thermally-<em>unbounded</em> run can finish <em>slower</em> than a bounded one. Capping sustained load keeps you on the right side of that cliff.</li>
+<li><strong>Long run — hardware stress (physics, not a benchmark).</strong> Sustained operation near thermal limits accelerates component aging — degradation roughly follows an Arrhenius curve (≈2× per 10 °C), and thermal cycling fatigues solder joints and packaging. Running cooler reduces that stress. I haven’t measured device lifetimes — that’s a multi-year claim — so I’ll state it as physics, not a result.</li>
+<li><strong>At scale — heat is cooling cost.</strong> In a datacenter, a large slice of energy goes to <em>removing</em> the heat compute produces (it’s a big term in PUE). Bounding sustained load lowers the cooling burden — it <em>complements</em> cooling rather than replacing it (you still buy the heatsink). On a laptop the same lever buys quieter fans and longer battery.</li>
+</ul>
+<p>And one correction worth making explicit, because it’s easy to get backwards: <strong>heat threatens <em>performance</em>, not the <em>answer</em>.</strong> Thermal throttling changes the clock, which changes <em>timing</em> — never the bits. CJC-Lang’s output is timing-independent by construction (fixed reduction order, seeded RNG, no result-affecting races), so a throttled run is byte-identical to a cool one, just slower. What heat actually breaks is <em>performance reproducibility</em> — a hot benchmark isn’t repeatable. So the two guarantees are separate and complementary: <strong>the thermal bound protects how fast you go; determinism protects what you get — and it survives the chip throttling.</strong> (In a <em>non</em>-deterministic, timing-dependent system, throttling-induced timing shifts genuinely <em>can</em> perturb results — which is exactly the failure mode CJC-Lang is built not to have.)</p>
 </section>
 <section id="how-unique-is-this" class="level2">
 <h2 class="anchored" data-anchor-id="how-unique-is-this">How unique is this?</h2>

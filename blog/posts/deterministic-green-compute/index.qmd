@@ -8,7 +8,7 @@ categories: [CJC-Lang, performance, determinism, green-computing, energy, archit
 description: "A three-phase green-compute layer for CJC-Lang: a Runtime Policy Layer (thermal profiles, deterministic energy estimate), race-to-idle adaptive scheduling that recovers burst performance while keeping a sustained thermal bound, and fused elementwise kernels that cut memory traffic. The connective tissue is one guarantee — thread count, pool size, and schedule provably never change the answer — which is what makes an adaptive thermal scheduler safe in a deterministic language. Every number below was measured on the branch."
 ---
 
-<div class="reading-time">&#128337; ~17 min read</div>
+<div class="reading-time">&#128337; ~19 min read</div>
 
 <div class="stats-row">
 <div class="stat"><span class="number">3</span><span class="stat-label">thermal profiles</span></div>
@@ -207,6 +207,16 @@ Identical, every time. So:
 Now the honest part, because this is exactly where the story could overreach. That `0.0275 J` is the numerator, and **determinism did not shrink it** — the stable reductions arguably made it slightly bigger. The metric's real lever is the **rerun multiplier**: if establishing a trustworthy result takes *k* runs, you spend *k* × 0.0275 J. In a nondeterministic pipeline chasing drift or instability, *k* can be many; here it is **1**, and verification is *exact replay* rather than statistics-over-noise. I'm deliberately **not** fabricating a competitor's *k* — I can't measure someone else's pipeline, and I'm not going to pretend to. The claim is narrow and checkable: CJC-Lang drives *k* toward 1, and *that* — not FLOPs-per-run — is where the energy is saved.
 
 (Two caveats stack here: the joules are an *analytical estimate*, not a wattmeter reading, and the rerun multiplier is a *model*, not a benchmark of another system. Both are stated so you can discount them appropriately.)
+
+## Why bounded heat matters beyond one run
+
+The thermal bound isn't only about the run in front of you. Three stakes, in decreasing order of how confidently I can claim them:
+
+- **Short run — the throttle cliff (measured).** Saturate every core long enough and the firmware lowers the clock to protect the chip, so a thermally-*unbounded* run can finish *slower* than a bounded one. Capping sustained load keeps you on the right side of that cliff.
+- **Long run — hardware stress (physics, not a benchmark).** Sustained operation near thermal limits accelerates component aging — degradation roughly follows an Arrhenius curve (≈2× per 10 °C), and thermal cycling fatigues solder joints and packaging. Running cooler reduces that stress. I haven't measured device lifetimes — that's a multi-year claim — so I'll state it as physics, not a result.
+- **At scale — heat is cooling cost.** In a datacenter, a large slice of energy goes to *removing* the heat compute produces (it's a big term in PUE). Bounding sustained load lowers the cooling burden — it *complements* cooling rather than replacing it (you still buy the heatsink). On a laptop the same lever buys quieter fans and longer battery.
+
+And one correction worth making explicit, because it's easy to get backwards: **heat threatens *performance*, not the *answer*.** Thermal throttling changes the clock, which changes *timing* — never the bits. CJC-Lang's output is timing-independent by construction (fixed reduction order, seeded RNG, no result-affecting races), so a throttled run is byte-identical to a cool one, just slower. What heat actually breaks is *performance reproducibility* — a hot benchmark isn't repeatable. So the two guarantees are separate and complementary: **the thermal bound protects how fast you go; determinism protects what you get — and it survives the chip throttling.** (In a *non*-deterministic, timing-dependent system, throttling-induced timing shifts genuinely *can* perturb results — which is exactly the failure mode CJC-Lang is built not to have.)
 
 ## How unique is this?
 
