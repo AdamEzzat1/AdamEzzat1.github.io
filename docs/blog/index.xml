@@ -10,7 +10,478 @@
 <atom:link href="https://adamezzat1.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>Systems engineer building CJC-Lang — a deterministic scientific computing language</description>
 <generator>quarto-1.3.340</generator>
-<lastBuildDate>Mon, 18 May 2026 07:00:00 GMT</lastBuildDate>
+<lastBuildDate>Fri, 22 May 2026 07:00:00 GMT</lastBuildDate>
+<item>
+  <title>Green by Construction: Thermal Bounds Without Losing a Bit</title>
+  <dc:creator>Adam Ezzat</dc:creator>
+  <link>https://adamezzat1.github.io/blog/posts/deterministic-green-compute/index.html</link>
+  <description><![CDATA[ 
+
+
+
+<div class="reading-time">
+🕑 ~13 min read
+</div>
+<div class="stats-row">
+<div class="stat">
+<span class="number">3</span><span class="stat-label">thermal profiles</span>
+</div>
+<div class="stat">
+<span class="number">80</span><span class="stat-label">new tests</span>
+</div>
+<div class="stat">
+<span class="number">2653</span><span class="stat-label">lib tests passing</span>
+</div>
+<div class="stat">
+<span class="number">0</span><span class="stat-label">output bits changed</span>
+</div>
+</div>
+<div class="callout callout-style-simple callout-tip no-icon callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+TL;DR
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>I gave <a href="../../../blog/posts/introducing-cjc/index.html">CJC-Lang</a> a green-compute layer in three phases. <strong>Phase 1</strong> is a Runtime Policy Layer: <code>--profile cool|balanced|max-perf</code> bounds how much CPU a run uses, plus a <em>deterministic</em> energy estimate. <strong>Phase 2</strong> is race-to-idle adaptive scheduling — full speed for short bursts, throttle only when load is sustained — which recovered ~1.8× of the throughput the fixed cap cost, while keeping the sustained thermal bound. <strong>Phase 3a</strong> is fused elementwise kernels that eliminate intermediate tensor allocations. The whole thing rests on one invariant: <strong>thread count, pool size, and the adaptive schedule provably never change the output.</strong> Same seed, same bits — across every profile, thread count, and both executors. That’s what makes an <em>adaptive</em> thermal knob safe in a language whose entire pitch is reproducibility.</p>
+</div>
+</div>
+<section id="the-problem-a-laptop-that-cooks-itself" class="level2">
+<h2 class="anchored" data-anchor-id="the-problem-a-laptop-that-cooks-itself">The problem: a laptop that cooks itself</h2>
+<p>CJC-Lang’s core promise is <em>same seed, same output, always</em>. To get there it already does the unglamorous work: ordered collections, Kahan/binned summation, a seeded RNG, and — critically for this story — <strong>no FMA in the SIMD kernels</strong>, so a multiply-then-add rounds the same way every time.</p>
+<p>But nothing in the runtime bounded <em>how hard</em> it pushed the machine. The parallel matmul and reduction kernels ran on Rayon’s default global pool — every core, all the time. On a laptop, a training loop would peg all 8 cores, spin the fans up, and eventually thermal-throttle: the CPU gets hot enough that the firmware <em>lowers</em> the clock to protect itself, and you end up slower than if you’d never saturated it.</p>
+<p>I wanted an explicit, deterministic answer to “how much machine may this run use?” — without the OS power governor’s opacity, and without breaking the reproducibility contract.</p>
+</section>
+<section id="the-reframe-that-makes-it-tractable" class="level2">
+<h2 class="anchored" data-anchor-id="the-reframe-that-makes-it-tractable">The reframe that makes it tractable</h2>
+<p>Here’s the mental model I kept coming back to:</p>
+<blockquote class="blockquote">
+<p><strong>Energy = power × time.</strong> Capping cores cuts power but <em>raises</em> time. On a short burst that’s often a wash — you run cooler but longer. The levers that recover performance <em>and</em> save energy attack the other terms: total work (fewer cycles), memory traffic (the dominant energy term), and <em>when</em> you spend the thermal budget.</p>
+</blockquote>
+<p>Crucially: <strong>bursts don’t overheat — only sustained load does.</strong> Thermal time constants are seconds to tens of seconds, so a sub-second burst at full tilt never heat-soaks the package. A fixed thread cap pays the throttle tax on <em>every</em> operation, including the short interactive runs that were never going to overheat.</p>
+<p>And the linchpin that makes all of this safe: in CJC-Lang, <strong>thread count never changes the result.</strong> The parallel reductions sum in a fixed chunk order with Kahan/binned accumulators, so the numeric output is identical no matter how many workers are live. That single guarantee is what lets me treat parallelism as a pure heat/speed knob — and even make it <em>adaptive</em> — without ever risking the answer.</p>
+</section>
+<section id="phase-1-a-runtime-policy-layer" class="level2">
+<h2 class="anchored" data-anchor-id="phase-1-a-runtime-policy-layer">Phase 1: a Runtime Policy Layer</h2>
+<p>The first piece is a <code>RuntimePolicy</code> — the green-compute control surface. It lives in a thread-local in <code>cjc-runtime</code>, mirroring the existing profiler sink.</p>
+<div class="sourceCode" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb1-1"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">struct</span> RuntimePolicy <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb1-2">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> determinism<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> Determinism<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span>   <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// Strict</span></span>
+<span id="cb1-3">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> numeric_mode<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> NumericMode<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span>  <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// Kahan | Binned | FixedTree</span></span>
+<span id="cb1-4">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> thermal_mode<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> ThermalMode<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span>  <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// Cool | Balanced | MaxPerf</span></span>
+<span id="cb1-5">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> max_threads<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">usize</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span>         <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// 0 = auto (derive from thermal_mode)</span></span>
+<span id="cb1-6">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> batch_size<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">usize</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb1-7">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> audit_mode<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> AuditMode<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span>      <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// Summary | Full | Forensic</span></span>
+<span id="cb1-8">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> adaptive<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">bool</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span>             <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// race-to-idle (Phase 2)</span></span>
+<span id="cb1-9"><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span></code></pre></div>
+<p>Three thermal profiles, exposed as CLI flags applied once at startup so they cover <code>run</code>, <code>bench</code>, and every command:</p>
+<table class="table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Profile</th>
+<th>Threads (8-core host)</th>
+<th>Batch</th>
+<th>Use</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>cool</code></td>
+<td>≈ ¼ cores → <strong>2</strong></td>
+<td>32</td>
+<td>laptop, edge, gentle</td>
+</tr>
+<tr class="even">
+<td><code>balanced</code> (default)</td>
+<td>≈ ½ cores → <strong>4</strong></td>
+<td>128</td>
+<td>normal — leaves headroom</td>
+</tr>
+<tr class="odd">
+<td><code>max-perf</code></td>
+<td>all → <strong>8</strong></td>
+<td>512</td>
+<td>benchmarking</td>
+</tr>
+</tbody>
+</table>
+<p>The default is <strong><code>balanced</code></strong>, deliberately not “all cores forever.”</p>
+<section id="a-deterministic-energy-estimate" class="level3">
+<h3 class="anchored" data-anchor-id="a-deterministic-energy-estimate">A <em>deterministic</em> energy estimate</h3>
+<p>Most energy tools (CodeCarbon, Scaphandre, RAPL counters) <em>measure</em> power from hardware — which is non-deterministic and machine-specific. I wanted energy to be a number you can assert in a test. So <code>energy_estimate</code> is a pure function of the workload, never of wall-clock time:</p>
+<pre class="text"><code>joules ≈ flops × 1e-10  +  bytes × 1e-10
+         (~100 pJ/flop)     (~100 pJ/byte, DRAM-ish)</code></pre>
+<p>The two terms are computed in separate bindings so the compiler can’t fuse them into an FMA — the same no-FMA discipline as the SIMD kernels. Same program, same seed → same FLOP count → same joules, bit-for-bit. On the branch, <code>energy_estimate(1000000, 2000)</code> returns <code>0.00010020000000000001</code> — <em>identical</em> under every profile, thread count, and both executors. The absolute number is an order-of-magnitude estimate; the <strong>ratio</strong> between two runs is the meaningful, reproducible figure.</p>
+</section>
+<section id="what-the-fixed-cap-costs" class="level3">
+<h3 class="anchored" data-anchor-id="what-the-fixed-cap-costs">What the fixed cap costs</h3>
+<p>Measured on an 8-core machine, release build, <code>cjcl bench</code> (10 runs) on a 1024×1024 matmul:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Profile</th>
+<th>Threads</th>
+<th>Mean</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>--threads 1</code></td>
+<td>1</td>
+<td>628 ms</td>
+</tr>
+<tr class="even">
+<td><code>cool</code></td>
+<td>2</td>
+<td>468 ms</td>
+</tr>
+<tr class="odd">
+<td><code>balanced</code> (default)</td>
+<td>4</td>
+<td>268 ms</td>
+</tr>
+<tr class="even">
+<td><code>max-perf</code></td>
+<td>8</td>
+<td>210 ms</td>
+</tr>
+</tbody>
+</table>
+<p>So the cap genuinely throttles (max-perf is ~3× faster than single-threaded) — and the laptop-safe default costs ~27% versus all-out. That cost is real, and Phase 2 is about clawing most of it back.</p>
+</section>
+</section>
+<section id="phase-2-race-to-idle-adaptive-scheduling" class="level2">
+<h2 class="anchored" data-anchor-id="phase-2-race-to-idle-adaptive-scheduling">Phase 2: race-to-idle adaptive scheduling</h2>
+<p>A fixed cap throttles short and long workloads alike. Race-to-idle fixes that: <strong>run at full width during a burst, and throttle to the cap only once load is sustained</strong> (a 2-second window; a ½-second idle gap resets it).</p>
+<p>The mechanism is the interesting part. Rayon’s global pool can only be configured once, so I <em>don’t</em> shrink it — I leave it at full size so bursts can use every core. Throttling happens per-operation: when a workload has been busy past the window, the kernel’s parallel section is <code>install</code>-ed into a cached, cap-sized pool. Inside that pool <code>rayon::current_num_threads()</code> reports the cap, so the existing band/row/chunk splitters auto-scale — no per-kernel rewrites.</p>
+<div class="sourceCode" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb3-1"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">fn</span> run_parallel<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span>R<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">Send</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;</span>(work<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">impl</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">FnOnce</span>() <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> R <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">Send</span>) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> R <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb3-2">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">if</span> <span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">rayon::</span>current_thread_index()<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>is_some() <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">return</span> work()<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span> <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// nested → inline</span></span>
+<span id="cb3-3">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> cap <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> effective_threads(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>get()<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> detect_cores())<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb3-4">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">if</span> cap <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;=</span> detect_cores() <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">return</span> work()<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span>                   <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// no cap</span></span>
+<span id="cb3-5">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> throttle <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">if</span> get()<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>adaptive <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span> is_sustained_now() <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">else</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span> <span class="cn" style="color: #8f5902;
+background-color: null;
+font-style: inherit;">true</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">};</span></span>
+<span id="cb3-6">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">if</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">!</span>throttle <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span> <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">return</span> work()<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span>                               <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// burst → full pool</span></span>
+<span id="cb3-7">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">match</span> capped_pool(cap) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span> <span class="cn" style="color: #8f5902;
+background-color: null;
+font-style: inherit;">Some</span>(p) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=&gt;</span> p<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>install(work)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="cn" style="color: #8f5902;
+background-color: null;
+font-style: inherit;">None</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=&gt;</span> work() <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb3-8"><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span></code></pre></div>
+<p>The four parallel kernels (large/medium/batch matmul, SIMD elementwise) wrap their bodies in <code>run_parallel</code>.</p>
+<section id="did-it-work-two-regimes-measured" class="level3">
+<h3 class="anchored" data-anchor-id="did-it-work-two-regimes-measured">Did it work? Two regimes, measured</h3>
+<p><strong>Short workload</strong> (one 1024² matmul, finishes inside the burst window), minimum of 9 <code>--time</code> runs:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th></th>
+<th>cool fixed</th>
+<th><strong>cool adaptive</strong></th>
+<th>max-perf</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>time</td>
+<td>0.353 s</td>
+<td><strong>0.196 s</strong></td>
+<td>0.153 s</td>
+</tr>
+</tbody>
+</table>
+<p>Adaptive-cool recovered ~<strong>1.8×</strong> (0.353 → 0.196 s) — landing within fixed startup overhead of max-perf. The short, interactive case now runs at full speed <em>and</em> never trips the cap.</p>
+<p><strong>Sustained workload</strong> (25× 1024² matmuls, ~runs well past the 2 s window):</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th></th>
+<th>cool fixed</th>
+<th><strong>cool adaptive</strong></th>
+<th>max-perf</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>time</td>
+<td>16.7 s</td>
+<td><strong>10.8 s</strong></td>
+<td>4.2 s</td>
+</tr>
+</tbody>
+</table>
+<p>This is the part I care about most: adaptive-cool (10.8 s) sits <em>between</em> fixed-cool and max-perf. It is <strong>not</strong> near max-perf (4.2 s) — meaning it genuinely throttled after the burst. The thermal bound held; the burst just bought back the first couple of seconds. Exactly the goal: fast when it’s safe, bounded when it matters.</p>
+</section>
+<section id="why-this-is-safe" class="level3">
+<h3 class="anchored" data-anchor-id="why-this-is-safe">Why this is safe</h3>
+<p>The burst-vs-throttle decision reads the wall clock, so the <em>schedule</em> is non-deterministic run-to-run. But the <em>output</em> isn’t, because the choice only changes how many bands run concurrently — never the per-element math. To prove it rather than assert it: a 256×256 matrix product (a real parallel reduction over varied values) hashed <strong>byte-identical</strong> across <code>--threads 1</code>, <code>cool</code>, <code>balanced</code>, <code>max-perf</code>, adaptive on/off, <em>and</em> both the AST and MIR executors:</p>
+<pre class="text"><code>threads=1  (eval)    : 79aaf9931d2b6c2004a20cdf5d5bd434
+threads=8  (eval)    : 79aaf9931d2b6c2004a20cdf5d5bd434
+cool (adaptive burst): 79aaf9931d2b6c2004a20cdf5d5bd434
+cool --no-adaptive   : 79aaf9931d2b6c2004a20cdf5d5bd434
+max-perf             : 79aaf9931d2b6c2004a20cdf5d5bd434
+MIR cool (adaptive)  : 79aaf9931d2b6c2004a20cdf5d5bd434</code></pre>
+<p>For reproducible benchmarking — where you <em>want</em> a fixed schedule — <code>--no-adaptive</code> applies the cap uniformly.</p>
+</section>
+</section>
+<section id="phase-3a-fused-kernels-cut-memory-traffic" class="level2">
+<h2 class="anchored" data-anchor-id="phase-3a-fused-kernels-cut-memory-traffic">Phase 3a: fused kernels cut memory traffic</h2>
+<p>The third lever is memory. A plain <code>a*b + c</code> allocates an intermediate: <code>mul</code> → a fresh tensor, then <code>add</code> → another. That’s two allocations and ~5N words of traffic for an N-element result. A fused single-pass kernel does it in <strong>one allocation and one pass</strong> (~4N words).</p>
+<p>I added three, joining the existing <code>broadcast_fma</code>:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Builtin</th>
+<th>Computes</th>
+<th>Replaces</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>fused_axpy(α, x, y)</code></td>
+<td><code>α·x + y</code></td>
+<td>scalar-mul + add (BLAS axpy)</td>
+</tr>
+<tr class="even">
+<td><code>fused_mul_sub(a, b, c)</code></td>
+<td><code>a·b − c</code></td>
+<td>mul + sub</td>
+</tr>
+<tr class="odd">
+<td><code>fused_sub_sq(a, b)</code></td>
+<td><code>(a−b)²</code></td>
+<td>sub + mul (MSE/variance/distance)</td>
+</tr>
+</tbody>
+</table>
+<p>The subtle bit is <em>why this is free</em>: <code>a*b + c</code> in Rust compiles to a <strong>separate</strong> multiply then add — it does <strong>not</strong> contract into a hardware FMA unless you call <code>.mul_add()</code> explicitly. So the fused loop produces bit-identical results to the two-pass version while eliminating the intermediate. I pinned that with property tests asserting <code>fused == unfused</code> byte-for-byte over 256 random cases each.</p>
+<p>And this <em>compounds</em> with Phase 2: lighter work finishes inside the burst window, so the cap engages even less. Memory efficiency and the adaptive scheduler reinforce each other instead of trading off.</p>
+</section>
+<section id="how-unique-is-this" class="level2">
+<h2 class="anchored" data-anchor-id="how-unique-is-this">How unique is this?</h2>
+<p>Honest answer: the individual pieces all exist somewhere. Thread caps are everywhere (Rayon, OpenMP, <code>GOMAXPROCS</code>). OS governors and RAPL do power capping. Race-to-idle is textbook power management. CodeCarbon and friends estimate energy. Intel MKL has reproducible-numerics modes.</p>
+<p>What I haven’t seen packaged together is the <strong>combination at the language-runtime level with a determinism guarantee</strong>: a thermal/energy policy where the knobs are <em>provably</em> result-invariant, paired with an adaptive scheduler and a reproducible energy estimate. In most stacks, changing thread count <em>can</em> change floating-point results; here it provably can’t, which is the whole reason an adaptive thermal scheduler is even safe to ship. It’s most at home in the niche CJC-Lang targets — reproducible scientific, regulated, and edge computing — not hyperscale throughput.</p>
+</section>
+<section id="what-i-measured-vs.-what-i-estimated" class="level2">
+<h2 class="anchored" data-anchor-id="what-i-measured-vs.-what-i-estimated">What I measured vs.&nbsp;what I estimated</h2>
+<p>In keeping with the project’s ethos, the honest accounting:</p>
+<ul>
+<li><strong>Measured:</strong> all the wall-clock numbers (release <code>cjcl bench</code> / <code>--time</code>), the determinism hashes, the test counts. These are real and on the branch.</li>
+<li><strong>A proxy, not a measurement:</strong> I measured wall-clock and active-core counts, <em>not</em> watts or junction temperature. Fewer active cores means less package power, but I don’t have hardware sensors in the loop — treat the thermal claims as a well-founded proxy, not a power reading.</li>
+<li><strong>Analytical, not benchmarked:</strong> the fused-kernel traffic reduction (~5N → ~4N words, two allocations → one) is from counting, not a wall-clock microbenchmark. What I <em>did</em> verify is that the output is bit-identical to the unfused path.</li>
+<li><strong>Deferred:</strong> the data-DSL group-by/join memory work (Phase 3b) is not in this post. The obvious approach turned out to change output <em>order</em> (the streaming path sorts keys; the materializing path preserves first-occurrence order), which would break determinism — so I stopped rather than ship a correctness regression. It needs an order-preserving design, which is its own phase.</li>
+</ul>
+</section>
+<section id="verification" class="level2">
+<h2 class="anchored" data-anchor-id="verification">Verification</h2>
+<p>Every claim above is backed by tests on the branch: <strong>80 new tests</strong> for this work (20 unit + 43 integration for the policy/scheduling layer; 17 for the fused kernels), the dual-executor parity gate at 10/10, and the full workspace library suite at <strong>2653 passing, 0 failures</strong>. No determinism gate moved.</p>
+<p>The throughline: you don’t have to choose between <em>fast</em>, <em>reproducible</em>, and <em>cool</em>. You can have a thermal bound that adapts to your workload, energy you can reason about, and lower memory traffic — and still get the same bits out every single time. In a deterministic language, that last clause isn’t a nice-to-have. It’s the whole point.</p>
+
+
+</section>
+
+ ]]></description>
+  <category>CJC-Lang</category>
+  <category>performance</category>
+  <category>determinism</category>
+  <category>green-computing</category>
+  <category>energy</category>
+  <category>architecture</category>
+  <guid>https://adamezzat1.github.io/blog/posts/deterministic-green-compute/index.html</guid>
+  <pubDate>Fri, 22 May 2026 07:00:00 GMT</pubDate>
+</item>
 <item>
   <title>ABNG on Real Clinical Data — The Diabetes-130 Readmission Task</title>
   <dc:creator>Adam Ezzat</dc:creator>

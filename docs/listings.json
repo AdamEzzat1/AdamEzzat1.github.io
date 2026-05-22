@@ -2,6 +2,7 @@
   {
     "listing": "/blog/index.html",
     "items": [
+      "/blog/posts/deterministic-green-compute/index.html",
       "/blog/posts/abng-diabetes-readmission/index.html",
       "/blog/posts/gibran-v0.1.0/index.html",
       "/blog/posts/abng-architecture/index.html",
