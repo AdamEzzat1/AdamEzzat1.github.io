@@ -244,7 +244,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 <span class="number">80</span><span class="stat-label">new tests</span>
 </div>
 <div class="stat">
-<span class="number">2653</span><span class="stat-label">lib tests passing</span>
+<span class="number">1.8×</span><span class="stat-label">burst recovered</span>
 </div>
 <div class="stat">
 <span class="number">0</span><span class="stat-label">output bits changed</span>
@@ -490,7 +490,7 @@ MIR cool (adaptive)  : 79aaf9931d2b6c2004a20cdf5d5bd434</code></pre>
 </section>
 <section id="verification" class="level2">
 <h2 class="anchored" data-anchor-id="verification">Verification</h2>
-<p>Every claim above is backed by tests on the branch: <strong>80 new tests</strong> for this work (20 unit + 43 integration for the policy/scheduling layer; 17 for the fused kernels), the dual-executor parity gate at 10/10, and the full workspace library suite at <strong>2653 passing, 0 failures</strong>. No determinism gate moved.</p>
+<p>Every claim above is backed by tests added for this work: <strong>80 new tests</strong> — 20 unit and 43 integration for the policy/scheduling layer, plus 17 for the fused kernels — spanning unit, dual-executor parity (AST vs MIR), property (256 cases each), and fuzz checks. The existing suite stayed green and no determinism gate moved.</p>
 <p>The throughline: you don’t have to choose between <em>fast</em>, <em>reproducible</em>, and <em>cool</em>. You can have a thermal bound that adapts to your workload, energy you can reason about, and lower memory traffic — and still get the same bits out every single time. In a deterministic language, that last clause isn’t a nice-to-have. It’s the whole point.</p>
 
 

@@ -13,7 +13,7 @@ description: "A three-phase green-compute layer for CJC-Lang: a Runtime Policy L
 <div class="stats-row">
 <div class="stat"><span class="number">3</span><span class="stat-label">thermal profiles</span></div>
 <div class="stat"><span class="number">80</span><span class="stat-label">new tests</span></div>
-<div class="stat"><span class="number">2653</span><span class="stat-label">lib tests passing</span></div>
+<div class="stat"><span class="number">1.8×</span><span class="stat-label">burst recovered</span></div>
 <div class="stat"><span class="number">0</span><span class="stat-label">output bits changed</span></div>
 </div>
 
@@ -175,6 +175,6 @@ In keeping with the project's ethos, the honest accounting:
 
 ## Verification
 
-Every claim above is backed by tests on the branch: **80 new tests** for this work (20 unit + 43 integration for the policy/scheduling layer; 17 for the fused kernels), the dual-executor parity gate at 10/10, and the full workspace library suite at **2653 passing, 0 failures**. No determinism gate moved.
+Every claim above is backed by tests added for this work: **80 new tests** — 20 unit and 43 integration for the policy/scheduling layer, plus 17 for the fused kernels — spanning unit, dual-executor parity (AST vs MIR), property (256 cases each), and fuzz checks. The existing suite stayed green and no determinism gate moved.
 
 The throughline: you don't have to choose between *fast*, *reproducible*, and *cool*. You can have a thermal bound that adapts to your workload, energy you can reason about, and lower memory traffic — and still get the same bits out every single time. In a deterministic language, that last clause isn't a nice-to-have. It's the whole point.
