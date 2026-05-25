@@ -10,7 +10,154 @@
 <atom:link href="https://adamezzat1.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>Systems engineer building CJC-Lang — a deterministic scientific computing language</description>
 <generator>quarto-1.3.340</generator>
-<lastBuildDate>Fri, 22 May 2026 07:00:00 GMT</lastBuildDate>
+<lastBuildDate>Mon, 25 May 2026 07:00:00 GMT</lastBuildDate>
+<item>
+  <title>Qalam: A Deterministic Arabic Morphology Engine — and a Way to Learn Arabic</title>
+  <dc:creator>Adam Ezzat</dc:creator>
+  <link>https://adamezzat1.github.io/blog/posts/qalam-v0.1/index.html</link>
+  <description><![CDATA[ 
+
+
+
+<div class="reading-time">
+🕑 ~9 min read
+</div>
+<div class="stats-row">
+<div class="stat">
+<span class="number">5</span><span class="stat-label">Rust crates</span>
+</div>
+<div class="stat">
+<span class="number">98</span><span class="stat-label">tests passing</span>
+</div>
+<div class="stat">
+<span class="number">0</span><span class="stat-label">bits differ across 3 OSes</span>
+</div>
+<div class="stat">
+<span class="number">1</span><span class="stat-label">language I’m learning</span>
+</div>
+</div>
+<div class="callout callout-style-simple callout-tip no-icon callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+TL;DR
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><strong>Qalam</strong> is a deterministic Arabic morphological analyzer I’m building in Rust, structured like a compiler pipeline (text → normalize → tokenize → clitics → morphology). Today it <strong>reliably</strong> normalizes, tokenizes, and builds variant-aware word-frequency tables over <em>any</em> Arabic text, and it does <strong>real morphology</strong> — splitting clitics and extracting roots (strong <em>and</em> weak), each with an explainable confidence and an audit trail. The catch: morphology only <em>confirms</em> the ~99 roots in its bootstrap lexicon, which on arbitrary text is about <strong>a quarter of words</strong>. It’s <strong>bit-identical across Linux, macOS, and Windows</strong>, enforced in CI. It is <strong>not</strong> a finished tool — no big lexicon yet, no syntax, no dialect, no measured accuracy. And the honest truth: half the reason it exists is that building it forces me to actually learn Arabic.</p>
+</div>
+</div>
+<section id="why-im-building-this" class="level2">
+<h2 class="anchored" data-anchor-id="why-im-building-this">Why I’m building this</h2>
+<p>I’ll start with the part that isn’t an engineering decision: <strong>I’m learning Arabic, and I learn far better when I have a concrete goal.</strong> Flashcards and grammar drills bounce off me. But “make the analyzer recover the root of قال correctly” is a problem I can’t hand-wave my way through — I have to actually understand that قال comes from the root ق-و-ل, that the middle و <em>surfaces</em> as a long ا, and that without context you genuinely cannot tell whether that ا is hiding a و or a ي.</p>
+<p>So Qalam is a passion project with a double payoff. Every feature I add is a grammar lesson I’m forced to internalize, because the code won’t work until I do. Arabic morphology is unusually well-suited to this: it’s <em>systematic</em> in a way that rewards a programmer’s instincts — words are built from three-consonant <strong>roots</strong> poured into <strong>patterns</strong> (أوزان), like <code>كَاتِب</code> (writer) and <code>مَكْتُوب</code> (written) and <code>كِتَاب</code> (book) all sharing the root ك-ت-ب. That structure is almost begging to be modeled as code. Building the model is how I’m learning the language.</p>
+</section>
+<section id="what-qalam-is" class="level2">
+<h2 class="anchored" data-anchor-id="what-qalam-is">What Qalam is</h2>
+<p>Qalam treats Arabic the way a compiler treats source code: as a series of typed intermediate representations, each lowering into the next.</p>
+<pre class="text"><code>raw text
+  → Unicode normalization      (NFC + Arabic letter folds)
+  → tokenization               (script-aware, raw-anchored spans)
+  → clitic splitting           (peel و/ف/ب/ك/ل/س/ال and pronoun suffixes)
+  → morphology                 (templatic patterns → root extraction)
+  → lexicon confirmation       (promote real roots, suppress spurious ones)
+  → a ranked analysis "forest"</code></pre>
+<p>The non-negotiable design principle is <strong>determinism</strong>: the same input plus the same lexicon plus the same config produces <em>byte-identical</em> output, on every machine, every time — with a provenance trail explaining <em>why</em> each interpretation was produced. Ambiguity (and Arabic is full of it) is never silently resolved; it’s enumerated as a ranked forest of candidates, each carrying a confidence and the evidence behind it.</p>
+<p>The code lives in five small Rust crates: <code>qalam-core</code> (the IR types), <code>qalam-text</code> (normalization, tokenization, clitics), <code>qalam-morph</code> (patterns, roots, the analyzer, the lexicon), <code>qalam-lexicon-builder</code>, and <code>qalam-cli</code>.</p>
+</section>
+<section id="why-rust" class="level2">
+<h2 class="anchored" data-anchor-id="why-rust">Why Rust</h2>
+<p>A few reasons, and they’re specific to <em>this</em> project rather than generic Rust enthusiasm:</p>
+<ul>
+<li><strong>Determinism is controllable.</strong> The whole pitch is bit-reproducibility, and Rust lets me choose data structures with that in mind: <code>BTreeMap</code> where iteration order must be stable, no garbage collector introducing timing-dependent behavior, no hidden hashing randomization unless I opt into it. The output forest is sorted by explicit, total keys. In a language with more “convenient” defaults, I’d be fighting nondeterminism the whole way.</li>
+<li><strong>The IR design maps onto Rust’s strengths.</strong> A layered analyzer is mostly enums and exhaustive pattern matching — <code>TokenKind</code>, <code>Pos</code>, <code>Slot</code>, <code>WeakResolution</code> are all enums, and the compiler forces me to handle every case. That’s exactly the discipline a morphology engine needs.</li>
+<li><strong>Reproducible artifacts across platforms.</strong> Rust’s defined numeric behavior plus a single compiled binary means I can <em>prove</em> the cross-OS guarantee — and I do, in CI, by diffing the analyzer’s output across Linux, macOS, and Windows on every push.</li>
+<li><strong>No GPU, no runtime, fast.</strong> Morphology is rule-and-table work, not matrix math. Rust gives me speed and a tiny footprint without a heavyweight runtime.</li>
+<li><strong>It sharpens both skills at once.</strong> I’m strengthening my Rust <em>and</em> my Arabic on the same project. That’s efficient.</li>
+</ul>
+</section>
+<section id="what-it-can-do-today-and-ive-checked-every-claim-below" class="level2">
+<h2 class="anchored" data-anchor-id="what-it-can-do-today-and-ive-checked-every-claim-below">What it can do today (and I’ve checked every claim below)</h2>
+<p>There are really two tiers of capability, and being honest about the line between them matters.</p>
+<p><strong>Tier 1 — full coverage, works on any text.</strong> Normalization, tokenization, and frequency analysis don’t need a lexicon, so they work on arbitrary Arabic:</p>
+<ul>
+<li><code>qalam normalize</code> applies Unicode NFC plus an Arabic fold table — collapsing the alef variants (أ إ آ ٱ → ا) and stripping tatweel (the ـــ elongation) — while <em>preserving</em> diacritics, teh marbuta, and the hamza-bearing letters. It’s idempotent.</li>
+<li><code>qalam freq</code> builds a word-frequency table grouped by normalized form, so <code>أحمد</code> and <code>احمد</code> are correctly counted as the same word and you can see which raw spellings collapsed together.</li>
+<li><code>qalam segment</code> shows the clitic-splitting forest for each word.</li>
+</ul>
+<p><strong>Tier 2 — real morphology, but only as far as the lexicon reaches.</strong> <code>qalam analyze</code> runs the whole pipeline. Here’s its actual output on a handful of words (verbatim — <code>root=</code> is the extracted root, <code>pat=</code> the matched pattern, the leading number is confidence):</p>
+<pre class="text"><code>الكتاب   0.782  ال · كتاب   root=ك-ت-ب  pat=4    (the book — article peeled, root found)
+مكتوب    0.808  مكتوب       root=ك-ت-ب  pat=3    (written — passive participle مفعول)
+مدرسة    0.790  مدرسة       root=د-ر-س  pat=8    (school — place noun مفعلة)
+قال      0.790  قال         root=ق-و-ل  pat=20   (he said — hollow weak root)
+قِ        0.880  قِ          root=و-ق-ي  pat=—    (protect! — see below)
+في       0.940  في          root=—      (particle — function word, no root)</code></pre>
+<p>Those roots are all correct. And it works without diacritics, because the <em>written</em> long vowels and pattern letters pin the alignment — <code>كاتب</code> and <code>كتاب</code> both resolve to ك-ت-ب even though neither carries a single short vowel mark.</p>
+<p><strong>And it’s deterministic.</strong> A CI job runs <code>qalam normalize</code>, <code>freq</code>, and <code>analyze</code> over a fixed corpus on Linux, macOS <em>and</em> macOS-on-ARM, and Windows, then diffs the outputs byte-for-byte. They have never differed — including the floating-point confidence values. That cross-architecture bit-equality is the property I care about most, and it’s machine-checked on every commit.</p>
+</section>
+<section id="the-honest-limitation-coverage" class="level2">
+<h2 class="anchored" data-anchor-id="the-honest-limitation-coverage">The honest limitation: coverage</h2>
+<p>Here’s the number that frames everything. I ran <code>analyze</code> on a neutral, <em>non</em>-cherry-picked MSA sentence — a generic news-style line about ministries and infrastructure. Of 17 tokens, exactly <strong>4 got a lexicon-confirmed root.</strong> That’s roughly a quarter of the content words.</p>
+<p>Why? The bootstrap lexicon currently holds <strong>99 roots, 37 particles, and 5 irregular forms.</strong> Arabic has thousands of roots and hundreds of thousands of words. So on real text, most words fall back to either an <em>unconfirmed</em> pattern guess (which I deliberately down-weight, because it’s often spurious) or nothing at all. The engine is correct on what it knows; it just doesn’t yet know much.</p>
+<p>Two more honest caveats:</p>
+<ul>
+<li><strong>There is no accuracy benchmark.</strong> I can’t tell you “Qalam is <em>X%</em> accurate,” because I haven’t evaluated it against a gold-standard treebank. The confidence numbers above are deterministic, hand-tuned priors — useful for <em>ranking</em>, not calibrated probabilities.</li>
+<li><strong>It does not beat the established tools.</strong> MADAMIRA, Farasa, and CAMeL Tools have enormous lexicons and statistical models; on coverage and accuracy they win, easily. Qalam’s only real edges are <em>determinism</em>, <em>explainability</em>, and being a clean, dependency-light Rust codebase — which matter to a niche (reproducible research, auditable pipelines, and people learning the language), not to the broad market.</li>
+</ul>
+</section>
+<section id="the-part-im-proudest-of-weak-roots" class="level2">
+<h2 class="anchored" data-anchor-id="the-part-im-proudest-of-weak-roots">The part I’m proudest of: weak roots</h2>
+<p>If you’ve studied Arabic, you know the “weak” roots — the ones containing و, ي, or ء — are where the tidy three-consonant system gets messy. The radical mutates, lengthens, or vanishes entirely. This is the part that’s genuinely hard to do deterministically, and it’s also the part that taught me the most.</p>
+<p>Qalam handles the main classes by <strong>enumerate-then-disambiguate</strong>:</p>
+<ul>
+<li><strong>Hollow</strong> roots (weak middle radical) surface with a long ا: <code>قال</code> could be ق-<strong>و</strong>-ل <em>or</em> ق-<strong>ي</strong>-ل — the surface honestly doesn’t say which. So the engine produces <em>both</em> candidates, and the lexicon breaks the tie: ق-و-ل is a known root, ق-ي-ل isn’t, so the real one is promoted (0.79) and the phantom is demoted (0.12).</li>
+<li><strong>Defective</strong> roots (weak final radical) are luckier — <code>ا</code> vs <code>ى</code> actually distinguishes them, so <code>دعا → د-ع-و</code> and <code>رمى → ر-م-ي</code> are directly recoverable.</li>
+<li><strong>Assimilated</strong> roots (weak initial radical) like <code>وصل → و-ص-ل</code> are visible and straightforward.</li>
+</ul>
+<p>And then there’s the one I included precisely <em>because</em> it’s the hardest: <strong>قِ</strong>, the imperative of و-ق-ي (“protect”), famous as possibly the shortest complete sentence in Arabic — a single letter. There is no rule that recovers و-ق-ي from a lone ق; it’s pure lexical knowledge. So I handled it the only honest way: a small table of irregular forms, documented as exactly that — a lexical exception, not a morphophonemic rule. <code>analyze قِ</code> returns و-ق-ي. Pretending a rule could derive it would have been a lie, and the whole project is built on not telling those.</p>
+</section>
+<section id="what-it-cant-do-yet" class="level2">
+<h2 class="anchored" data-anchor-id="what-it-cant-do-yet">What it can’t do (yet)</h2>
+<p>To be completely clear about the boundaries:</p>
+<ul>
+<li><strong>No large lexicon.</strong> This is the single biggest gap, and it’s <em>data</em> work, not code — sourcing and license-cleaning open Arabic corpora. It’s what stands between “a quarter of words” and “most words.”</li>
+<li><strong>No diacritization.</strong> It reads partially- or un-diacritized text fine, but it doesn’t <em>generate</em> the vowel marks.</li>
+<li><strong>No Egyptian dialect yet.</strong> Egyptian↔︎MSA normalization is designed but unbuilt — and it’s the second half of the project’s whole reason for being.</li>
+<li><strong>No syntax, no semantics, no knowledge graph, no search, no learning engine.</strong> These are all designed on paper as later phases. None exist yet.</li>
+</ul>
+<p>The morphology <em>engine</em> is roughly feature-complete for a v0.1 — strong roots, weak roots, clitics, particles, irregulars. What it lacks is <em>data</em> and the higher layers.</p>
+</section>
+<section id="what-i-measured-vs.-what-im-claiming" class="level2">
+<h2 class="anchored" data-anchor-id="what-i-measured-vs.-what-im-claiming">What I measured vs.&nbsp;what I’m claiming</h2>
+<p>In the spirit of not overselling:</p>
+<ul>
+<li><strong>Measured / verified:</strong> the analyze outputs above (reproduced verbatim), the 98 passing tests, the 5-crate layout, the lexicon counts (99/37/5), the 4-of-17 coverage probe, and the cross-OS byte-identical determinism (machine-checked in CI).</li>
+<li><strong>A deterministic prior, not a calibrated probability:</strong> every confidence number. They rank candidates sensibly; they are not validated against ground truth.</li>
+<li><strong>Not measured at all:</strong> accuracy. No treebank evaluation exists yet, so I make no accuracy claim.</li>
+<li><strong>Designed, not built:</strong> dialect normalization, syntax, semantic IR, knowledge graph, search, the learning engine, and the full lexicon ingestion.</li>
+</ul>
+</section>
+<section id="the-road-ahead" class="level2">
+<h2 class="anchored" data-anchor-id="the-road-ahead">The road ahead</h2>
+<p>The next move is almost forced: <strong>the lexicon.</strong> Nothing else lifts that “quarter of words” number — not dialect, not syntax, not search. They all sit <em>on top of</em> morphology, which sits on top of the lexicon. So the plan is to build the ingestion pipeline (open sources → a content-hashed, memory-mapped FST the analyzer already knows how to consume) so that the data, when it arrives, is a drop-in that makes every other capability better at once.</p>
+<p>But I want to end where I started, because it’s the honest center of the project. Qalam is not trying to beat MADAMIRA. It’s a deterministic, explainable, carefully-engineered Arabic morphology engine wrapped around a deliberately small lexicon — and it’s the thing that’s actually getting me to learn Arabic. Every weak-root rule I implemented, I now <em>understand</em>, in a way no flashcard ever managed. Building the tool turned out to be the lesson.</p>
+
+
+</section>
+
+ ]]></description>
+  <category>Qalam</category>
+  <category>Arabic</category>
+  <category>NLP</category>
+  <category>morphology</category>
+  <category>determinism</category>
+  <category>Rust</category>
+  <category>language-learning</category>
+  <guid>https://adamezzat1.github.io/blog/posts/qalam-v0.1/index.html</guid>
+  <pubDate>Mon, 25 May 2026 07:00:00 GMT</pubDate>
+</item>
 <item>
   <title>Green by Construction: Thermal Bounds Without Losing a Bit</title>
   <dc:creator>Adam Ezzat</dc:creator>

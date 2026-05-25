@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.3.340">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Adam Ezzat">
+<meta name="dcterms.date" content="2026-05-25">
+<meta name="description" content="Qalam is a deterministic Arabic morphological analyzer I’m building in Rust. Today it reliably normalizes, tokenizes, and frequency-counts any Arabic text, and does real morphology — clitic splitting and root extraction for strong AND weak roots, with explainable confidence — but only for the ~99 roots in its bootstrap lexicon, about a quarter of words in arbitrary text. It’s bit-identical across Linux/macOS/Windows. It is NOT finished: no large lexicon, no syntax, no dialect, no measured accuracy yet. And honestly, half the reason it exists is that building it is teaching me Arabic.">
+
+<title>Adam Ezzat - Qalam: A Deterministic Arabic Morphology Engine — and a Way to Learn Arabic</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+</style>
+
+
+<script src="../../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../../">
+<script src="../../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<script src="../../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-dark.min.css" rel="prefetch" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+<style>html{ scroll-behavior: smooth; }</style>
+
+
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../../index.html">
+    <span class="navbar-title">Adam Ezzat</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../../index.html" rel="" target="">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../about.html" rel="" target="">
+ <span class="menu-text">About</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../projects.html" rel="" target="">
+ <span class="menu-text">Projects</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../blog/index.html" rel="" target="">
+ <span class="menu-text">Blog</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/AdamEzzat1" rel="" target=""><i class="bi bi-github" role="img" aria-label="GitHub">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://linkedin.com/in/adamezzat" rel="" target=""><i class="bi bi-linkedin" role="img" aria-label="LinkedIn">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+            <div class="quarto-navbar-tools">
+  <a href="" class="quarto-color-scheme-toggle quarto-navigation-tool  px-1" onclick="window.quartoToggleColorScheme(); return false;" title="Toggle dark mode"><i class="bi"></i></a>
+</div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#why-im-building-this" id="toc-why-im-building-this" class="nav-link active" data-scroll-target="#why-im-building-this">Why I’m building this</a></li>
+  <li><a href="#what-qalam-is" id="toc-what-qalam-is" class="nav-link" data-scroll-target="#what-qalam-is">What Qalam is</a></li>
+  <li><a href="#why-rust" id="toc-why-rust" class="nav-link" data-scroll-target="#why-rust">Why Rust</a></li>
+  <li><a href="#what-it-can-do-today-and-ive-checked-every-claim-below" id="toc-what-it-can-do-today-and-ive-checked-every-claim-below" class="nav-link" data-scroll-target="#what-it-can-do-today-and-ive-checked-every-claim-below">What it can do today (and I’ve checked every claim below)</a></li>
+  <li><a href="#the-honest-limitation-coverage" id="toc-the-honest-limitation-coverage" class="nav-link" data-scroll-target="#the-honest-limitation-coverage">The honest limitation: coverage</a></li>
+  <li><a href="#the-part-im-proudest-of-weak-roots" id="toc-the-part-im-proudest-of-weak-roots" class="nav-link" data-scroll-target="#the-part-im-proudest-of-weak-roots">The part I’m proudest of: weak roots</a></li>
+  <li><a href="#what-it-cant-do-yet" id="toc-what-it-cant-do-yet" class="nav-link" data-scroll-target="#what-it-cant-do-yet">What it can’t do (yet)</a></li>
+  <li><a href="#what-i-measured-vs.-what-im-claiming" id="toc-what-i-measured-vs.-what-im-claiming" class="nav-link" data-scroll-target="#what-i-measured-vs.-what-im-claiming">What I measured vs.&nbsp;what I’m claiming</a></li>
+  <li><a href="#the-road-ahead" id="toc-the-road-ahead" class="nav-link" data-scroll-target="#the-road-ahead">The road ahead</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Qalam: A Deterministic Arabic Morphology Engine — and a Way to Learn Arabic</h1>
+<p class="subtitle lead">What my Arabic NLP engine can and can’t do today, why it’s written in Rust, and why the real point is motivating myself to learn the language.</p>
+  <div class="quarto-categories">
+    <div class="quarto-category">Qalam</div>
+    <div class="quarto-category">Arabic</div>
+    <div class="quarto-category">NLP</div>
+    <div class="quarto-category">morphology</div>
+    <div class="quarto-category">determinism</div>
+    <div class="quarto-category">Rust</div>
+    <div class="quarto-category">language-learning</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    Qalam is a deterministic Arabic morphological analyzer I’m building in Rust. Today it reliably normalizes, tokenizes, and frequency-counts any Arabic text, and does real morphology — clitic splitting and root extraction for strong AND weak roots, with explainable confidence — but only for the ~99 roots in its bootstrap lexicon, about a quarter of words in arbitrary text. It’s bit-identical across Linux/macOS/Windows. It is NOT finished: no large lexicon, no syntax, no dialect, no measured accuracy yet. And honestly, half the reason it exists is that building it is teaching me Arabic.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Adam Ezzat </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">May 25, 2026</p>
+    </div>
+  </div>
+  
+    <div>
+    <div class="quarto-title-meta-heading">Modified</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date-modified">May 25, 2026</p>
+    </div>
+  </div>
+    
+  </div>
+  
+
+</header>
+
+<div class="reading-time">
+🕑 ~9 min read
+</div>
+<div class="stats-row">
+<div class="stat">
+<span class="number">5</span><span class="stat-label">Rust crates</span>
+</div>
+<div class="stat">
+<span class="number">98</span><span class="stat-label">tests passing</span>
+</div>
+<div class="stat">
+<span class="number">0</span><span class="stat-label">bits differ across 3 OSes</span>
+</div>
+<div class="stat">
+<span class="number">1</span><span class="stat-label">language I’m learning</span>
+</div>
+</div>
+<div class="callout callout-style-simple callout-tip no-icon callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+TL;DR
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><strong>Qalam</strong> is a deterministic Arabic morphological analyzer I’m building in Rust, structured like a compiler pipeline (text → normalize → tokenize → clitics → morphology). Today it <strong>reliably</strong> normalizes, tokenizes, and builds variant-aware word-frequency tables over <em>any</em> Arabic text, and it does <strong>real morphology</strong> — splitting clitics and extracting roots (strong <em>and</em> weak), each with an explainable confidence and an audit trail. The catch: morphology only <em>confirms</em> the ~99 roots in its bootstrap lexicon, which on arbitrary text is about <strong>a quarter of words</strong>. It’s <strong>bit-identical across Linux, macOS, and Windows</strong>, enforced in CI. It is <strong>not</strong> a finished tool — no big lexicon yet, no syntax, no dialect, no measured accuracy. And the honest truth: half the reason it exists is that building it forces me to actually learn Arabic.</p>
+</div>
+</div>
+<section id="why-im-building-this" class="level2">
+<h2 class="anchored" data-anchor-id="why-im-building-this">Why I’m building this</h2>
+<p>I’ll start with the part that isn’t an engineering decision: <strong>I’m learning Arabic, and I learn far better when I have a concrete goal.</strong> Flashcards and grammar drills bounce off me. But “make the analyzer recover the root of قال correctly” is a problem I can’t hand-wave my way through — I have to actually understand that قال comes from the root ق-و-ل, that the middle و <em>surfaces</em> as a long ا, and that without context you genuinely cannot tell whether that ا is hiding a و or a ي.</p>
+<p>So Qalam is a passion project with a double payoff. Every feature I add is a grammar lesson I’m forced to internalize, because the code won’t work until I do. Arabic morphology is unusually well-suited to this: it’s <em>systematic</em> in a way that rewards a programmer’s instincts — words are built from three-consonant <strong>roots</strong> poured into <strong>patterns</strong> (أوزان), like <code>كَاتِب</code> (writer) and <code>مَكْتُوب</code> (written) and <code>كِتَاب</code> (book) all sharing the root ك-ت-ب. That structure is almost begging to be modeled as code. Building the model is how I’m learning the language.</p>
+</section>
+<section id="what-qalam-is" class="level2">
+<h2 class="anchored" data-anchor-id="what-qalam-is">What Qalam is</h2>
+<p>Qalam treats Arabic the way a compiler treats source code: as a series of typed intermediate representations, each lowering into the next.</p>
+<pre class="text"><code>raw text
+  → Unicode normalization      (NFC + Arabic letter folds)
+  → tokenization               (script-aware, raw-anchored spans)
+  → clitic splitting           (peel و/ف/ب/ك/ل/س/ال and pronoun suffixes)
+  → morphology                 (templatic patterns → root extraction)
+  → lexicon confirmation       (promote real roots, suppress spurious ones)
+  → a ranked analysis "forest"</code></pre>
+<p>The non-negotiable design principle is <strong>determinism</strong>: the same input plus the same lexicon plus the same config produces <em>byte-identical</em> output, on every machine, every time — with a provenance trail explaining <em>why</em> each interpretation was produced. Ambiguity (and Arabic is full of it) is never silently resolved; it’s enumerated as a ranked forest of candidates, each carrying a confidence and the evidence behind it.</p>
+<p>The code lives in five small Rust crates: <code>qalam-core</code> (the IR types), <code>qalam-text</code> (normalization, tokenization, clitics), <code>qalam-morph</code> (patterns, roots, the analyzer, the lexicon), <code>qalam-lexicon-builder</code>, and <code>qalam-cli</code>.</p>
+</section>
+<section id="why-rust" class="level2">
+<h2 class="anchored" data-anchor-id="why-rust">Why Rust</h2>
+<p>A few reasons, and they’re specific to <em>this</em> project rather than generic Rust enthusiasm:</p>
+<ul>
+<li><strong>Determinism is controllable.</strong> The whole pitch is bit-reproducibility, and Rust lets me choose data structures with that in mind: <code>BTreeMap</code> where iteration order must be stable, no garbage collector introducing timing-dependent behavior, no hidden hashing randomization unless I opt into it. The output forest is sorted by explicit, total keys. In a language with more “convenient” defaults, I’d be fighting nondeterminism the whole way.</li>
+<li><strong>The IR design maps onto Rust’s strengths.</strong> A layered analyzer is mostly enums and exhaustive pattern matching — <code>TokenKind</code>, <code>Pos</code>, <code>Slot</code>, <code>WeakResolution</code> are all enums, and the compiler forces me to handle every case. That’s exactly the discipline a morphology engine needs.</li>
+<li><strong>Reproducible artifacts across platforms.</strong> Rust’s defined numeric behavior plus a single compiled binary means I can <em>prove</em> the cross-OS guarantee — and I do, in CI, by diffing the analyzer’s output across Linux, macOS, and Windows on every push.</li>
+<li><strong>No GPU, no runtime, fast.</strong> Morphology is rule-and-table work, not matrix math. Rust gives me speed and a tiny footprint without a heavyweight runtime.</li>
+<li><strong>It sharpens both skills at once.</strong> I’m strengthening my Rust <em>and</em> my Arabic on the same project. That’s efficient.</li>
+</ul>
+</section>
+<section id="what-it-can-do-today-and-ive-checked-every-claim-below" class="level2">
+<h2 class="anchored" data-anchor-id="what-it-can-do-today-and-ive-checked-every-claim-below">What it can do today (and I’ve checked every claim below)</h2>
+<p>There are really two tiers of capability, and being honest about the line between them matters.</p>
+<p><strong>Tier 1 — full coverage, works on any text.</strong> Normalization, tokenization, and frequency analysis don’t need a lexicon, so they work on arbitrary Arabic:</p>
+<ul>
+<li><code>qalam normalize</code> applies Unicode NFC plus an Arabic fold table — collapsing the alef variants (أ إ آ ٱ → ا) and stripping tatweel (the ـــ elongation) — while <em>preserving</em> diacritics, teh marbuta, and the hamza-bearing letters. It’s idempotent.</li>
+<li><code>qalam freq</code> builds a word-frequency table grouped by normalized form, so <code>أحمد</code> and <code>احمد</code> are correctly counted as the same word and you can see which raw spellings collapsed together.</li>
+<li><code>qalam segment</code> shows the clitic-splitting forest for each word.</li>
+</ul>
+<p><strong>Tier 2 — real morphology, but only as far as the lexicon reaches.</strong> <code>qalam analyze</code> runs the whole pipeline. Here’s its actual output on a handful of words (verbatim — <code>root=</code> is the extracted root, <code>pat=</code> the matched pattern, the leading number is confidence):</p>
+<pre class="text"><code>الكتاب   0.782  ال · كتاب   root=ك-ت-ب  pat=4    (the book — article peeled, root found)
+مكتوب    0.808  مكتوب       root=ك-ت-ب  pat=3    (written — passive participle مفعول)
+مدرسة    0.790  مدرسة       root=د-ر-س  pat=8    (school — place noun مفعلة)
+قال      0.790  قال         root=ق-و-ل  pat=20   (he said — hollow weak root)
+قِ        0.880  قِ          root=و-ق-ي  pat=—    (protect! — see below)
+في       0.940  في          root=—      (particle — function word, no root)</code></pre>
+<p>Those roots are all correct. And it works without diacritics, because the <em>written</em> long vowels and pattern letters pin the alignment — <code>كاتب</code> and <code>كتاب</code> both resolve to ك-ت-ب even though neither carries a single short vowel mark.</p>
+<p><strong>And it’s deterministic.</strong> A CI job runs <code>qalam normalize</code>, <code>freq</code>, and <code>analyze</code> over a fixed corpus on Linux, macOS <em>and</em> macOS-on-ARM, and Windows, then diffs the outputs byte-for-byte. They have never differed — including the floating-point confidence values. That cross-architecture bit-equality is the property I care about most, and it’s machine-checked on every commit.</p>
+</section>
+<section id="the-honest-limitation-coverage" class="level2">
+<h2 class="anchored" data-anchor-id="the-honest-limitation-coverage">The honest limitation: coverage</h2>
+<p>Here’s the number that frames everything. I ran <code>analyze</code> on a neutral, <em>non</em>-cherry-picked MSA sentence — a generic news-style line about ministries and infrastructure. Of 17 tokens, exactly <strong>4 got a lexicon-confirmed root.</strong> That’s roughly a quarter of the content words.</p>
+<p>Why? The bootstrap lexicon currently holds <strong>99 roots, 37 particles, and 5 irregular forms.</strong> Arabic has thousands of roots and hundreds of thousands of words. So on real text, most words fall back to either an <em>unconfirmed</em> pattern guess (which I deliberately down-weight, because it’s often spurious) or nothing at all. The engine is correct on what it knows; it just doesn’t yet know much.</p>
+<p>Two more honest caveats:</p>
+<ul>
+<li><strong>There is no accuracy benchmark.</strong> I can’t tell you “Qalam is <em>X%</em> accurate,” because I haven’t evaluated it against a gold-standard treebank. The confidence numbers above are deterministic, hand-tuned priors — useful for <em>ranking</em>, not calibrated probabilities.</li>
+<li><strong>It does not beat the established tools.</strong> MADAMIRA, Farasa, and CAMeL Tools have enormous lexicons and statistical models; on coverage and accuracy they win, easily. Qalam’s only real edges are <em>determinism</em>, <em>explainability</em>, and being a clean, dependency-light Rust codebase — which matter to a niche (reproducible research, auditable pipelines, and people learning the language), not to the broad market.</li>
+</ul>
+</section>
+<section id="the-part-im-proudest-of-weak-roots" class="level2">
+<h2 class="anchored" data-anchor-id="the-part-im-proudest-of-weak-roots">The part I’m proudest of: weak roots</h2>
+<p>If you’ve studied Arabic, you know the “weak” roots — the ones containing و, ي, or ء — are where the tidy three-consonant system gets messy. The radical mutates, lengthens, or vanishes entirely. This is the part that’s genuinely hard to do deterministically, and it’s also the part that taught me the most.</p>
+<p>Qalam handles the main classes by <strong>enumerate-then-disambiguate</strong>:</p>
+<ul>
+<li><strong>Hollow</strong> roots (weak middle radical) surface with a long ا: <code>قال</code> could be ق-<strong>و</strong>-ل <em>or</em> ق-<strong>ي</strong>-ل — the surface honestly doesn’t say which. So the engine produces <em>both</em> candidates, and the lexicon breaks the tie: ق-و-ل is a known root, ق-ي-ل isn’t, so the real one is promoted (0.79) and the phantom is demoted (0.12).</li>
+<li><strong>Defective</strong> roots (weak final radical) are luckier — <code>ا</code> vs <code>ى</code> actually distinguishes them, so <code>دعا → د-ع-و</code> and <code>رمى → ر-م-ي</code> are directly recoverable.</li>
+<li><strong>Assimilated</strong> roots (weak initial radical) like <code>وصل → و-ص-ل</code> are visible and straightforward.</li>
+</ul>
+<p>And then there’s the one I included precisely <em>because</em> it’s the hardest: <strong>قِ</strong>, the imperative of و-ق-ي (“protect”), famous as possibly the shortest complete sentence in Arabic — a single letter. There is no rule that recovers و-ق-ي from a lone ق; it’s pure lexical knowledge. So I handled it the only honest way: a small table of irregular forms, documented as exactly that — a lexical exception, not a morphophonemic rule. <code>analyze قِ</code> returns و-ق-ي. Pretending a rule could derive it would have been a lie, and the whole project is built on not telling those.</p>
+</section>
+<section id="what-it-cant-do-yet" class="level2">
+<h2 class="anchored" data-anchor-id="what-it-cant-do-yet">What it can’t do (yet)</h2>
+<p>To be completely clear about the boundaries:</p>
+<ul>
+<li><strong>No large lexicon.</strong> This is the single biggest gap, and it’s <em>data</em> work, not code — sourcing and license-cleaning open Arabic corpora. It’s what stands between “a quarter of words” and “most words.”</li>
+<li><strong>No diacritization.</strong> It reads partially- or un-diacritized text fine, but it doesn’t <em>generate</em> the vowel marks.</li>
+<li><strong>No Egyptian dialect yet.</strong> Egyptian↔︎MSA normalization is designed but unbuilt — and it’s the second half of the project’s whole reason for being.</li>
+<li><strong>No syntax, no semantics, no knowledge graph, no search, no learning engine.</strong> These are all designed on paper as later phases. None exist yet.</li>
+</ul>
+<p>The morphology <em>engine</em> is roughly feature-complete for a v0.1 — strong roots, weak roots, clitics, particles, irregulars. What it lacks is <em>data</em> and the higher layers.</p>
+</section>
+<section id="what-i-measured-vs.-what-im-claiming" class="level2">
+<h2 class="anchored" data-anchor-id="what-i-measured-vs.-what-im-claiming">What I measured vs.&nbsp;what I’m claiming</h2>
+<p>In the spirit of not overselling:</p>
+<ul>
+<li><strong>Measured / verified:</strong> the analyze outputs above (reproduced verbatim), the 98 passing tests, the 5-crate layout, the lexicon counts (99/37/5), the 4-of-17 coverage probe, and the cross-OS byte-identical determinism (machine-checked in CI).</li>
+<li><strong>A deterministic prior, not a calibrated probability:</strong> every confidence number. They rank candidates sensibly; they are not validated against ground truth.</li>
+<li><strong>Not measured at all:</strong> accuracy. No treebank evaluation exists yet, so I make no accuracy claim.</li>
+<li><strong>Designed, not built:</strong> dialect normalization, syntax, semantic IR, knowledge graph, search, the learning engine, and the full lexicon ingestion.</li>
+</ul>
+</section>
+<section id="the-road-ahead" class="level2">
+<h2 class="anchored" data-anchor-id="the-road-ahead">The road ahead</h2>
+<p>The next move is almost forced: <strong>the lexicon.</strong> Nothing else lifts that “quarter of words” number — not dialect, not syntax, not search. They all sit <em>on top of</em> morphology, which sits on top of the lexicon. So the plan is to build the ingestion pipeline (open sources → a content-hashed, memory-mapped FST the analyzer already knows how to consume) so that the data, when it arrives, is a drop-in that makes every other capability better at once.</p>
+<p>But I want to end where I started, because it’s the honest center of the project. Qalam is not trying to beat MADAMIRA. It’s a deterministic, explainable, carefully-engineered Arabic morphology engine wrapped around a deliberately small lexicon — and it’s the thing that’s actually getting me to learn Arabic. Every weak-root rule I implemented, I now <em>understand</em>, in a way no flashcard ever managed. Building the tool turned out to be the lesson.</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const disableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'prefetch';
+    }
+  }
+  const enableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'stylesheet';
+    }
+  }
+  const manageTransitions = (selector, allowTransitions) => {
+    const els = window.document.querySelectorAll(selector);
+    for (let i=0; i < els.length; i++) {
+      const el = els[i];
+      if (allowTransitions) {
+        el.classList.remove('notransition');
+      } else {
+        el.classList.add('notransition');
+      }
+    }
+  }
+  const toggleColorMode = (alternate) => {
+    // Switch the stylesheets
+    const alternateStylesheets = window.document.querySelectorAll('link.quarto-color-scheme.quarto-color-alternate');
+    manageTransitions('#quarto-margin-sidebar .nav-link', false);
+    if (alternate) {
+      enableStylesheet(alternateStylesheets);
+      for (const sheetNode of alternateStylesheets) {
+        if (sheetNode.id === "quarto-bootstrap") {
+          toggleBodyColorMode(sheetNode);
+        }
+      }
+    } else {
+      disableStylesheet(alternateStylesheets);
+      toggleBodyColorPrimary();
+    }
+    manageTransitions('#quarto-margin-sidebar .nav-link', true);
+    // Switch the toggles
+    const toggles = window.document.querySelectorAll('.quarto-color-scheme-toggle');
+    for (let i=0; i < toggles.length; i++) {
+      const toggle = toggles[i];
+      if (toggle) {
+        if (alternate) {
+          toggle.classList.add("alternate");     
+        } else {
+          toggle.classList.remove("alternate");
+        }
+      }
+    }
+    // Hack to workaround the fact that safari doesn't
+    // properly recolor the scrollbar when toggling (#1455)
+    if (navigator.userAgent.indexOf('Safari') > 0 && navigator.userAgent.indexOf('Chrome') == -1) {
+      manageTransitions("body", false);
+      window.scrollTo(0, 1);
+      setTimeout(() => {
+        window.scrollTo(0, 0);
+        manageTransitions("body", true);
+      }, 40);  
+    }
+  }
+  const isFileUrl = () => { 
+    return window.location.protocol === 'file:';
+  }
+  const hasAlternateSentinel = () => {  
+    let styleSentinel = getColorSchemeSentinel();
+    if (styleSentinel !== null) {
+      return styleSentinel === "alternate";
+    } else {
+      return false;
+    }
+  }
+  const setStyleSentinel = (alternate) => {
+    const value = alternate ? "alternate" : "default";
+    if (!isFileUrl()) {
+      window.localStorage.setItem("quarto-color-scheme", value);
+    } else {
+      localAlternateSentinel = value;
+    }
+  }
+  const getColorSchemeSentinel = () => {
+    if (!isFileUrl()) {
+      const storageValue = window.localStorage.getItem("quarto-color-scheme");
+      return storageValue != null ? storageValue : localAlternateSentinel;
+    } else {
+      return localAlternateSentinel;
+    }
+  }
+  let localAlternateSentinel = 'default';
+  // Dark / light mode switch
+  window.quartoToggleColorScheme = () => {
+    // Read the current dark / light value 
+    let toAlternate = !hasAlternateSentinel();
+    toggleColorMode(toAlternate);
+    setStyleSentinel(toAlternate);
+  };
+  // Ensure there is a toggle, if there isn't float one in the top right
+  if (window.document.querySelector('.quarto-color-scheme-toggle') === null) {
+    const a = window.document.createElement('a');
+    a.classList.add('top-right');
+    a.classList.add('quarto-color-scheme-toggle');
+    a.href = "";
+    a.onclick = function() { try { window.quartoToggleColorScheme(); } catch {} return false; };
+    const i = window.document.createElement("i");
+    i.classList.add('bi');
+    a.appendChild(i);
+    window.document.body.appendChild(a);
+  }
+  // Switch to dark mode if need be
+  if (hasAlternateSentinel()) {
+    toggleColorMode(true);
+  } else {
+    toggleColorMode(false);
+  }
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+      &nbsp;
+    </div>   
+    <div class="nav-footer-center">© 2026 Adam Ezzat. Built with <a href="https://quarto.org/">Quarto</a>.</div>
+    <div class="nav-footer-right">
+      &nbsp;
+    </div>
+  </div>
+</footer>
+
+
+
+<script src="../../../site_libs/quarto-html/zenscroll-min.js"></script>
+</body></html>
