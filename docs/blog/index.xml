@@ -14,7 +14,7 @@
 <item>
   <title>Gibran: Windowed CTEs and the Row-Filter Fix You Can’t See</title>
   <dc:creator>Adam Ezzat</dc:creator>
-  <link>https://adamezzat1.github.io/blog/posts/gibran-charts-and-cte-governance/index.html</link>
+  <link>https://adamezzat1.github.io/blog/posts/gibran-windowed-ctes-and-row-filters/index.html</link>
   <description><![CDATA[ 
 
 
@@ -285,7 +285,7 @@ Why fail-closed mattered
   <category>NL-to-SQL</category>
   <category>security</category>
   <category>DuckDB</category>
-  <guid>https://adamezzat1.github.io/blog/posts/gibran-charts-and-cte-governance/index.html</guid>
+  <guid>https://adamezzat1.github.io/blog/posts/gibran-windowed-ctes-and-row-filters/index.html</guid>
   <pubDate>Mon, 25 May 2026 07:00:00 GMT</pubDate>
 </item>
 <item>

@@ -2,7 +2,7 @@
   {
     "listing": "/blog/index.html",
     "items": [
-      "/blog/posts/gibran-charts-and-cte-governance/index.html",
+      "/blog/posts/gibran-windowed-ctes-and-row-filters/index.html",
       "/blog/posts/qalam-v0.1/index.html",
       "/blog/posts/deterministic-green-compute/index.html",
       "/blog/posts/abng-diabetes-readmission/index.html",
