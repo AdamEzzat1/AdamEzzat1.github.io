@@ -1,0 +1,140 @@
+---
+title: "Gibran: Charts, Windowed CTEs, and the Row-Filter Fix You Can't See"
+subtitle: "Adding visualization to a governed metric layer surfaced a latent security gap — row filters didn't compose with CTE queries. The fix matters more than the charts."
+author: "Adam Ezzat"
+date: "2026-05-25"
+date-modified: "2026-05-25"
+categories: [Gibran, analytics, governance, visualization, NL-to-SQL, security, DuckDB]
+description: "An update to Gibran's governed metric layer: a lazy-loaded Plotly chart layer, an ad-hoc top-N-per-group question shape (windowed CTE), and a row-level-security fix — the policy filter now composes with CTE queries (cohort retention, funnels, per-group ranking) under row-filtered roles."
+---
+
+<div class="reading-time">&#128337; ~10 min read</div>
+
+<div class="stats-row">
+<div class="stat"><span class="number">6</span><span class="stat-label">chart types</span></div>
+<div class="stat"><span class="number">+3</span><span class="stat-label">question shapes</span></div>
+<div class="stat"><span class="number">807</span><span class="stat-label">tests passing</span></div>
+<div class="stat"><span class="number">1</span><span class="stat-label">row-filter fix</span></div>
+</div>
+
+::: {.callout-tip appearance="minimal"}
+## TL;DR
+Gibran's Workbench got a real **visualization layer** (lazy-loaded Plotly: bar / line / area / scatter / horizontal-bar / pie, with multi-series). The NL layer learned an *ad-hoc* shape it couldn't express before — **top-N-per-group** ("top 3 products per region by revenue"), which compiles to a windowed CTE. But the headline isn't the charts. Building them surfaced a latent **row-level-security gap**: the policy filter only worked on flat queries, so *every* CTE-based metric — cohort retention, funnels, the new per-group ranking — silently broke under a row-filtered role. That's the fix that mattered.
+:::
+
+If you missed the launch, [Gibran v0.1.0](../gibran-v0.1.0/) is a governed metric layer with a **non-LLM** natural-language surface: questions resolve against your real catalog or get a clean "I don't know" — the layer is structurally incapable of inventing a column name. This post is what shipped since.
+
+## 1. From a table to a picture (lazily)
+
+Until now the Workbench could only render a result *table*. v0.1.0's own "what's not here" list said it plainly: *"No charts."* Now every result has a **Table / Chart** toggle, with six chart types and **multi-series** support.
+
+Ask:
+
+```
+revenue by month
+```
+
+…hit **Chart**, pick **Line**, and you get a trend. Want to compare two measures on one axis?
+
+```
+revenue and order_count by month
+```
+
+…tick both series. Done.
+
+The chart is governed for free — it just renders the rows the engine already filtered, so there's no new way to see data you aren't allowed to. And there's a deliberate weight decision: Plotly is a big library, so it's the *basic* partial bundle, **lazy-loaded into its own chunk**. The app's initial download stays ~53 KB gzipped; the ~375 KB of Plotly only arrives the first time you actually open a chart.
+
+::: {.callout-note appearance="minimal"}
+The bundle split is the whole trick: the entry chunk is unchanged, and a `Chart-*.js` chunk (Plotly) is fetched on first chart render. You pay for visualization only when you use it.
+:::
+
+## 2. A question you'd otherwise write a window function for
+
+"For each region, the top 3 products by revenue" is a `ROW_NUMBER() OVER (PARTITION BY …)` query — easy to get subtly wrong by hand. It's also the first thing Gibran can express as a genuinely *ad-hoc* query: the N, the group, and the entity all come from your sentence, not a pre-declared metric.
+
+```
+top 3 product per region by revenue
+```
+
+compiles to a windowed CTE:
+
+```sql
+WITH grouped AS (
+  SELECT region, product, SUM(amount) AS revenue
+  FROM orders GROUP BY 1, 2
+),
+ranked AS (
+  SELECT region, product, revenue,
+         ROW_NUMBER() OVER (PARTITION BY region ORDER BY revenue DESC) AS rn
+  FROM grouped
+)
+SELECT region, product, revenue FROM ranked WHERE rn <= 3 ORDER BY region, rn
+```
+
+No SQL typed, still governed, still no fabrication — `product`, `region`, and `revenue` each have to resolve to a real schema entry or the question fails. Under the hood it's a new optional `partition_by` field on the query intent that reinterprets the existing `limit` as a *per-group* cap; the rest of the machinery (dimensions, order-by) is reused.
+
+Two more advanced shapes are now reachable by name *and* surfaced as one-click examples in the Workbench, so people discover them:
+
+```
+funnel
+retention
+```
+
+## 3. The fix you can't see
+
+Here's the one that actually mattered.
+
+Gibran enforces row-level security by injecting a policy filter into every query. A west-region analyst's queries silently get `region = 'west'` AND-ed in. That injection assumed a *flat* `SELECT … FROM table` and attached the filter to the **outermost** SELECT.
+
+But cohort-retention, funnels, and the new top-N-per-group all compile to **CTE** queries — where the outer SELECT reads a *CTE*, not the source table. So the filter landed in the wrong place:
+
+```sql
+-- BEFORE (broken): filter on the outer SELECT, which reads `ranked`, not `orders`
+... SELECT region, product, revenue
+    FROM ranked
+    WHERE rn <= 3 AND region = 'west'   -- `region` isn't a column of `ranked`
+-- -> binder error
+```
+
+Every CTE-based metric was effectively **unusable for any row-filtered role** — which, in a governed system, is most of them. It failed *closed* (it errored; it never leaked), and because the existing CTE tests only ran *un-filtered* roles, nothing caught it. It just sat there, silently.
+
+The fix makes filter injection **CTE-aware**: the policy filter is AND-ed into each *source-reading* SELECT, **before** aggregation or ranking:
+
+```sql
+-- AFTER (correct + safe): filter inside the CTE that scans the source
+WITH grouped AS (
+  SELECT region, product, SUM(amount) AS revenue
+  FROM orders WHERE region = 'west'   -- here
+  GROUP BY 1, 2
+),
+ranked AS ( … )
+SELECT region, product, revenue FROM ranked WHERE rn <= 3 …
+```
+
+That's both *correct* (the column resolves) and *safe*: the ranking only ever sees rows the role is allowed to see. A west-region analyst's "top 3 products per region" can't accidentally rank over another region's data — the source scan is filtered before the window function runs.
+
+::: {.callout-important appearance="minimal"}
+## Why fail-closed mattered
+The bug erred instead of leaking, which is the *right* failure mode — but it also meant the feature was quietly broken for the people who'd use it most. The lesson: test the **irregular** case. cohort/top-N each read the source in one CTE; a funnel reads it in *several* (each step self-joins the source). The fix iterates every source-reading SELECT precisely to cover funnels — so the funnel-under-a-row-filtered-role test is the one whose absence actually mattered.
+:::
+
+The fix is pinned with end-to-end tests for cohort-retention, funnel, and top-N-per-group, all under a row-filtered role.
+
+## 4. Groundwork: a seam for smarter matching
+
+There's also a quieter, no-behavior-change refactor: NL phrase-resolution now lives behind a `SlotResolver` protocol. Today it's still deterministic exact/substring matching. But it turns "add embedding-based matching" from a rewrite into a one-class addition — for whenever the deterministic layer's "I don't know" rate justifies a local model. (Still no LLM in the answer path: embeddings can *fail to match*, but they can't *invent*.)
+
+## What's next
+
+- **Calendar-aware time parsing.** Today "last 3 months" approximates as 90 days; a dedicated parser makes it exact and is reused by every time-based question.
+- **An approved-functions registry** — the governance-safe path to UDF-like power: author-vetted functions the NL layer can *select*, never *emit*.
+- **Embedding retrieval**, via the seam above.
+
+## Closing
+
+The charts are the demo; the row-filter fix is the substance. Adding a visible feature is what dragged a latent correctness bug in the boring infrastructure into the light — a pattern that shows up again and again in governed-data systems. Gibran's bet is still the same one v0.1.0 made: trade natural-language breadth for hard correctness guarantees, and weave governance into the SQL so there's no boundary to escape across. This release makes that bet hold for one more class of query.
+
+- **GitHub**: <https://github.com/AdamEzzat1/gibran>
+- **Previous post**: [Gibran v0.1.0: Natural-Language Analytics Without an LLM](../gibran-v0.1.0/)
+
+*Verification: 807 Python tests passing, plus a TypeScript type-check, production build, and 26 frontend component tests. The SQL shown is illustrative — real output uses fully-qualified, quoted identifiers.*
