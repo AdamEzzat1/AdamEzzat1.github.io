@@ -1,5 +1,5 @@
 ---
-title: "Gibran: Charts, Windowed CTEs, and the Row-Filter Fix You Can't See"
+title: "Gibran: Windowed CTEs and the Row-Filter Fix You Can't See"
 subtitle: "Adding visualization to a governed metric layer surfaced a latent security gap — row filters didn't compose with CTE queries. The fix matters more than the charts."
 author: "Adam Ezzat"
 date: "2026-05-25"
