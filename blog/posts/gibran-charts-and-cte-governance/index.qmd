@@ -5,7 +5,7 @@ author: "Adam Ezzat"
 date: "2026-05-25"
 date-modified: "2026-05-25"
 categories: [Gibran, analytics, governance, visualization, NL-to-SQL, security, DuckDB]
-description: "An update to Gibran's governed metric layer: a lazy-loaded Plotly chart layer, an ad-hoc top-N-per-group question shape (windowed CTE), and a row-level-security fix — the policy filter now composes with CTE queries (cohort retention, funnels, per-group ranking) under row-filtered roles."
+description: "An update to Gibran's governed metric layer: a lazy-loaded chart layer, an ad-hoc top-N-per-group question shape (windowed CTE), and a row-level-security fix — the policy filter now composes with CTE queries (cohort retention, funnels, per-group ranking) under row-filtered roles."
 ---
 
 <div class="reading-time">&#128337; ~10 min read</div>
@@ -19,7 +19,7 @@ description: "An update to Gibran's governed metric layer: a lazy-loaded Plotly 
 
 ::: {.callout-tip appearance="minimal"}
 ## TL;DR
-Gibran's Workbench got a real **visualization layer** (lazy-loaded Plotly: bar / line / area / scatter / horizontal-bar / pie, with multi-series). The NL layer learned an *ad-hoc* shape it couldn't express before — **top-N-per-group** ("top 3 products per region by revenue"), which compiles to a windowed CTE. But the headline isn't the charts. Building them surfaced a latent **row-level-security gap**: the policy filter only worked on flat queries, so *every* CTE-based metric — cohort retention, funnels, the new per-group ranking — silently broke under a row-filtered role. That's the fix that mattered.
+Gibran's Workbench got a real **visualization layer** (lazy-loaded: bar / line / area / scatter / horizontal-bar / pie, with multi-series). The NL layer learned an *ad-hoc* shape it couldn't express before — **top-N-per-group** ("top 3 products per region by revenue"), which compiles to a windowed CTE. But the headline isn't the charts. Building them surfaced a latent **row-level-security gap**: the policy filter only worked on flat queries, so *every* CTE-based metric — cohort retention, funnels, the new per-group ranking — silently broke under a row-filtered role. That's the fix that mattered.
 :::
 
 If you missed the launch, [Gibran v0.1.0](../gibran-v0.1.0/) is a governed metric layer with a **non-LLM** natural-language surface: questions resolve against your real catalog or get a clean "I don't know" — the layer is structurally incapable of inventing a column name. This post is what shipped since.
@@ -42,10 +42,10 @@ revenue and order_count by month
 
 …tick both series. Done.
 
-The chart is governed for free — it just renders the rows the engine already filtered, so there's no new way to see data you aren't allowed to. And there's a deliberate weight decision: Plotly is a big library, so it's the *basic* partial bundle, **lazy-loaded into its own chunk**. The app's initial download stays ~53 KB gzipped; the ~375 KB of Plotly only arrives the first time you actually open a chart.
+The chart is governed for free — it just renders the rows the engine already filtered, so there's no new way to see data you aren't allowed to. And there's a deliberate weight decision: the charting library is big, so it's a slimmed-down partial bundle, **lazy-loaded into its own chunk**. The app's initial download stays ~53 KB gzipped; the ~375 KB chart bundle only arrives the first time you actually open a chart.
 
 ::: {.callout-note appearance="minimal"}
-The bundle split is the whole trick: the entry chunk is unchanged, and a `Chart-*.js` chunk (Plotly) is fetched on first chart render. You pay for visualization only when you use it.
+The bundle split is the whole trick: the entry chunk is unchanged, and a `Chart-*.js` chunk (the charting library) is fetched on first chart render. You pay for visualization only when you use it.
 :::
 
 ## 2. A question you'd otherwise write a window function for
@@ -72,6 +72,16 @@ SELECT region, product, revenue FROM ranked WHERE rn <= 3 ORDER BY region, rn
 ```
 
 No SQL typed, still governed, still no fabrication — `product`, `region`, and `revenue` each have to resolve to a real schema entry or the question fails. Under the hood it's a new optional `partition_by` field on the query intent that reinterprets the existing `limit` as a *per-group* cap; the rest of the machinery (dimensions, order-by) is reused.
+
+The shape generalizes: any of `top` / `biggest` / `largest` / `highest`, any N, any two distinct dimensions, and any rankable metric compile to the same windowed-CTE plan. A few more it handles —
+
+```
+biggest 5 customer per country by spend
+highest 2 campaign per channel by conversions
+largest 10 sku per warehouse by units sold
+```
+
+(Verified end-to-end against the engine across the four ranking synonyms, both dimension orderings, and `sum` / `count` / `ratio` / `count_distinct` / `max` metrics — the domain terms above are illustrative; swap in your own catalog's dimensions and metrics.)
 
 Two more advanced shapes are now reachable by name *and* surfaced as one-click examples in the Workbench, so people discover them:
 

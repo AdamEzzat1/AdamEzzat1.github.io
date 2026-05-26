@@ -8,7 +8,7 @@
 
 <meta name="author" content="Adam Ezzat">
 <meta name="dcterms.date" content="2026-05-25">
-<meta name="description" content="An update to Gibran’s governed metric layer: a lazy-loaded Plotly chart layer, an ad-hoc top-N-per-group question shape (windowed CTE), and a row-level-security fix — the policy filter now composes with CTE queries (cohort retention, funnels, per-group ranking) under row-filtered roles.">
+<meta name="description" content="An update to Gibran’s governed metric layer: a lazy-loaded chart layer, an ad-hoc top-N-per-group question shape (windowed CTE), and a row-level-security fix — the policy filter now composes with CTE queries (cohort retention, funnels, per-group ranking) under row-filtered roles.">
 
 <title>Adam Ezzat - Gibran: Charts, Windowed CTEs, and the Row-Filter Fix You Can’t See</title>
 <style>
@@ -191,7 +191,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <div>
   <div class="description">
-    An update to Gibran’s governed metric layer: a lazy-loaded Plotly chart layer, an ad-hoc top-N-per-group question shape (windowed CTE), and a row-level-security fix — the policy filter now composes with CTE queries (cohort retention, funnels, per-group ranking) under row-filtered roles.
+    An update to Gibran’s governed metric layer: a lazy-loaded chart layer, an ad-hoc top-N-per-group question shape (windowed CTE), and a row-level-security fix — the policy filter now composes with CTE queries (cohort retention, funnels, per-group ranking) under row-filtered roles.
   </div>
 </div>
 
@@ -251,7 +251,7 @@ TL;DR
 </div>
 </div>
 <div class="callout-body-container callout-body">
-<p>Gibran’s Workbench got a real <strong>visualization layer</strong> (lazy-loaded Plotly: bar / line / area / scatter / horizontal-bar / pie, with multi-series). The NL layer learned an <em>ad-hoc</em> shape it couldn’t express before — <strong>top-N-per-group</strong> (“top 3 products per region by revenue”), which compiles to a windowed CTE. But the headline isn’t the charts. Building them surfaced a latent <strong>row-level-security gap</strong>: the policy filter only worked on flat queries, so <em>every</em> CTE-based metric — cohort retention, funnels, the new per-group ranking — silently broke under a row-filtered role. That’s the fix that mattered.</p>
+<p>Gibran’s Workbench got a real <strong>visualization layer</strong> (lazy-loaded: bar / line / area / scatter / horizontal-bar / pie, with multi-series). The NL layer learned an <em>ad-hoc</em> shape it couldn’t express before — <strong>top-N-per-group</strong> (“top 3 products per region by revenue”), which compiles to a windowed CTE. But the headline isn’t the charts. Building them surfaced a latent <strong>row-level-security gap</strong>: the policy filter only worked on flat queries, so <em>every</em> CTE-based metric — cohort retention, funnels, the new per-group ranking — silently broke under a row-filtered role. That’s the fix that mattered.</p>
 </div>
 </div>
 <p>If you missed the launch, <a href="../gibran-v0.1.0/">Gibran v0.1.0</a> is a governed metric layer with a <strong>non-LLM</strong> natural-language surface: questions resolve against your real catalog or get a clean “I don’t know” — the layer is structurally incapable of inventing a column name. This post is what shipped since.</p>
@@ -263,14 +263,14 @@ TL;DR
 <p>…hit <strong>Chart</strong>, pick <strong>Line</strong>, and you get a trend. Want to compare two measures on one axis?</p>
 <pre><code>revenue and order_count by month</code></pre>
 <p>…tick both series. Done.</p>
-<p>The chart is governed for free — it just renders the rows the engine already filtered, so there’s no new way to see data you aren’t allowed to. And there’s a deliberate weight decision: Plotly is a big library, so it’s the <em>basic</em> partial bundle, <strong>lazy-loaded into its own chunk</strong>. The app’s initial download stays ~53 KB gzipped; the ~375 KB of Plotly only arrives the first time you actually open a chart.</p>
+<p>The chart is governed for free — it just renders the rows the engine already filtered, so there’s no new way to see data you aren’t allowed to. And there’s a deliberate weight decision: the charting library is big, so it’s a slimmed-down partial bundle, <strong>lazy-loaded into its own chunk</strong>. The app’s initial download stays ~53 KB gzipped; the ~375 KB chart bundle only arrives the first time you actually open a chart.</p>
 <div class="callout callout-style-simple callout-note no-icon">
 <div class="callout-body d-flex">
 <div class="callout-icon-container">
 <i class="callout-icon no-icon"></i>
 </div>
 <div class="callout-body-container">
-<p>The bundle split is the whole trick: the entry chunk is unchanged, and a <code>Chart-*.js</code> chunk (Plotly) is fetched on first chart render. You pay for visualization only when you use it.</p>
+<p>The bundle split is the whole trick: the entry chunk is unchanged, and a <code>Chart-*.js</code> chunk (the charting library) is fetched on first chart render. You pay for visualization only when you use it.</p>
 </div>
 </div>
 </div>
@@ -291,6 +291,11 @@ TL;DR
 <span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>)</span>
 <span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> region, product, revenue <span class="kw">FROM</span> ranked <span class="kw">WHERE</span> rn <span class="op">&lt;=</span> <span class="dv">3</span> <span class="kw">ORDER</span> <span class="kw">BY</span> region, rn</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>No SQL typed, still governed, still no fabrication — <code>product</code>, <code>region</code>, and <code>revenue</code> each have to resolve to a real schema entry or the question fails. Under the hood it’s a new optional <code>partition_by</code> field on the query intent that reinterprets the existing <code>limit</code> as a <em>per-group</em> cap; the rest of the machinery (dimensions, order-by) is reused.</p>
+<p>The shape generalizes: any of <code>top</code> / <code>biggest</code> / <code>largest</code> / <code>highest</code>, any N, any two distinct dimensions, and any rankable metric compile to the same windowed-CTE plan. A few more it handles —</p>
+<pre><code>biggest 5 customer per country by spend
+highest 2 campaign per channel by conversions
+largest 10 sku per warehouse by units sold</code></pre>
+<p>(Verified end-to-end against the engine across the four ranking synonyms, both dimension orderings, and <code>sum</code> / <code>count</code> / <code>ratio</code> / <code>count_distinct</code> / <code>max</code> metrics — the domain terms above are illustrative; swap in your own catalog’s dimensions and metrics.)</p>
 <p>Two more advanced shapes are now reachable by name <em>and</em> surfaced as one-click examples in the Workbench, so people discover them:</p>
 <pre><code>funnel
 retention</code></pre>
@@ -300,21 +305,21 @@ retention</code></pre>
 <p>Here’s the one that actually mattered.</p>
 <p>Gibran enforces row-level security by injecting a policy filter into every query. A west-region analyst’s queries silently get <code>region = 'west'</code> AND-ed in. That injection assumed a <em>flat</em> <code>SELECT … FROM table</code> and attached the filter to the <strong>outermost</strong> SELECT.</p>
 <p>But cohort-retention, funnels, and the new top-N-per-group all compile to <strong>CTE</strong> queries — where the outer SELECT reads a <em>CTE</em>, not the source table. So the filter landed in the wrong place:</p>
-<div class="sourceCode" id="cb6"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- BEFORE (broken): filter on the outer SELECT, which reads `ranked`, not `orders`</span></span>
-<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a><span class="op">..</span>. <span class="kw">SELECT</span> region, product, revenue</span>
-<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">FROM</span> ranked</span>
-<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">WHERE</span> rn <span class="op">&lt;=</span> <span class="dv">3</span> <span class="kw">AND</span> region <span class="op">=</span> <span class="st">'west'</span>   <span class="co">-- `region` isn't a column of `ranked`</span></span>
-<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a><span class="co">-- -&gt; binder error</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb7"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- BEFORE (broken): filter on the outer SELECT, which reads `ranked`, not `orders`</span></span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="op">..</span>. <span class="kw">SELECT</span> region, product, revenue</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">FROM</span> ranked</span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">WHERE</span> rn <span class="op">&lt;=</span> <span class="dv">3</span> <span class="kw">AND</span> region <span class="op">=</span> <span class="st">'west'</span>   <span class="co">-- `region` isn't a column of `ranked`</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="co">-- -&gt; binder error</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Every CTE-based metric was effectively <strong>unusable for any row-filtered role</strong> — which, in a governed system, is most of them. It failed <em>closed</em> (it errored; it never leaked), and because the existing CTE tests only ran <em>un-filtered</em> roles, nothing caught it. It just sat there, silently.</p>
 <p>The fix makes filter injection <strong>CTE-aware</strong>: the policy filter is AND-ed into each <em>source-reading</em> SELECT, <strong>before</strong> aggregation or ranking:</p>
-<div class="sourceCode" id="cb7"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- AFTER (correct + safe): filter inside the CTE that scans the source</span></span>
-<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a><span class="kw">WITH</span> grouped <span class="kw">AS</span> (</span>
-<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SELECT</span> region, product, <span class="fu">SUM</span>(amount) <span class="kw">AS</span> revenue</span>
-<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FROM</span> orders <span class="kw">WHERE</span> region <span class="op">=</span> <span class="st">'west'</span>   <span class="co">-- here</span></span>
-<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">GROUP</span> <span class="kw">BY</span> <span class="dv">1</span>, <span class="dv">2</span></span>
-<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>),</span>
-<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>ranked <span class="kw">AS</span> ( … )</span>
-<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> region, product, revenue <span class="kw">FROM</span> ranked <span class="kw">WHERE</span> rn <span class="op">&lt;=</span> <span class="dv">3</span> …</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb8"><pre class="sourceCode sql code-with-copy"><code class="sourceCode sql"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="co">-- AFTER (correct + safe): filter inside the CTE that scans the source</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="kw">WITH</span> grouped <span class="kw">AS</span> (</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">SELECT</span> region, product, <span class="fu">SUM</span>(amount) <span class="kw">AS</span> revenue</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>  <span class="kw">FROM</span> orders <span class="kw">WHERE</span> region <span class="op">=</span> <span class="st">'west'</span>   <span class="co">-- here</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">GROUP</span> <span class="kw">BY</span> <span class="dv">1</span>, <span class="dv">2</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>),</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>ranked <span class="kw">AS</span> ( … )</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a><span class="kw">SELECT</span> region, product, revenue <span class="kw">FROM</span> ranked <span class="kw">WHERE</span> rn <span class="op">&lt;=</span> <span class="dv">3</span> …</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>That’s both <em>correct</em> (the column resolves) and <em>safe</em>: the ranking only ever sees rows the role is allowed to see. A west-region analyst’s “top 3 products per region” can’t accidentally rank over another region’s data — the source scan is filtered before the window function runs.</p>
 <div class="callout callout-style-simple callout-important no-icon callout-titled">
 <div class="callout-header d-flex align-content-center">
