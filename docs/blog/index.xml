@@ -10,7 +10,757 @@
 <atom:link href="https://adamezzat1.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>Systems engineer building CJC-Lang — a deterministic scientific computing language</description>
 <generator>quarto-1.3.340</generator>
-<lastBuildDate>Mon, 25 May 2026 07:00:00 GMT</lastBuildDate>
+<lastBuildDate>Thu, 28 May 2026 07:00:00 GMT</lastBuildDate>
+<item>
+  <title>Locke v0.1.10: Evidence-Aware Analytics for CJC-Lang</title>
+  <dc:creator>Adam Ezzat</dc:creator>
+  <link>https://adamezzat1.github.io/blog/posts/cjc-locke-v0.1-released/index.html</link>
+  <description><![CDATA[ 
+
+
+
+<div class="reading-time">
+🕑 ~25 min read
+</div>
+<div class="stats-row">
+<div class="stat">
+<span class="number">202+</span><span class="stat-label">deterministic tests</span>
+</div>
+<div class="stat">
+<span class="number">275×</span><span class="stat-label">faster than GX</span>
+</div>
+<div class="stat">
+<span class="number">5/5</span><span class="stat-label">ground truth match</span>
+</div>
+<div class="stat">
+<span class="number">0</span><span class="stat-label">external runtime deps</span>
+</div>
+</div>
+<div class="callout callout-style-simple callout-tip no-icon callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+TL;DR
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><code>cjc-locke v0.1.10</code> is live on <a href="https://crates.io/crates/cjc-locke">crates.io</a>. It’s a deterministic, content-addressed data-validation layer for CJC-Lang. Two runs over the same data produce byte-identical reports. The CLI ships as <code>cjcl locke &lt;subcommand&gt;</code> and covers validation, drift, lineage, belief reports, causal guardrails, snapshot-and-diff CI gates, HTML output, and a streaming validator for out-of-RAM datasets. On a 7023-row synthetic churn dataset, Locke matched Great Expectations on every ground-truth finding and ran <strong>275× faster</strong> in release mode.</p>
+</div>
+</div>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+One prototype disclaimer
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Locke is built on top of <strong>CJC-Lang</strong>, a research compiler that is itself pre-1.0. Both are under active development. None of this has been deployed at production scale yet. The benchmark below is on synthetic data of a deliberately-tractable size; real-world performance characteristics will vary. I am the author of Locke, so the comparison framing isn’t from an impartial source — the benchmark code is in the repo for anyone to re-run.</p>
+</div>
+</div>
+<section id="why-i-built-locke" class="level2">
+<h2 class="anchored" data-anchor-id="why-i-built-locke">Why I built Locke</h2>
+<p>CJC-Lang has a strong runtime determinism story — Kahan accumulators, BTreeMap discipline, content-addressed snapshots, deterministic RNG threading. What it didn’t have until now was a <em>dataset-level</em> skepticism layer: a unified way to ask “is this CSV / JSONL clean enough to train on?” or “did my production data drift since last week?” Users were rolling their own checks per-project and losing the determinism guarantee at the validation boundary.</p>
+<p>I considered a few obvious paths:</p>
+<ul>
+<li>Embed validation in <code>cjc-data</code> (the tidyverse-inspired DataFrame DSL). Tempting but it would pollute the data-DSL’s public type surface.</li>
+<li>Extend <code>cjc-abng</code> (Adaptive Belief Network Graph), which already has drift / audit / Merkle infrastructure. But ABNG’s primitives are tree-node-oriented, not column/row-oriented.</li>
+<li>A new, standalone crate. Same precedent as <code>cjc-quantum</code>, <code>cjc-abng</code>, <code>cjc-dharht</code>.</li>
+</ul>
+<p>The third option won. <strong>Locke is now <code>cjc-locke</code> — a dedicated workspace crate alongside the others, depending only on <code>cjc-data</code> and <code>cjc-repro</code> and exposing a clean public API plus a CLI subcommand.</strong></p>
+</section>
+<section id="what-evidence-aware-actually-means" class="level2">
+<h2 class="anchored" data-anchor-id="what-evidence-aware-actually-means">What “evidence-aware” actually means</h2>
+<p>The name comes from John Locke’s empiricism — every claim should trace back to evidence, every belief should be proportioned to that evidence. Translated into a data-validation library:</p>
+<ul>
+<li><strong>Findings are evidence-bearing.</strong> Every <code>ValidationFinding</code> carries a typed <code>Vec&lt;FindingEvidence&gt;</code> of <code>Count</code> / <code>Ratio</code> / <code>Range</code> / <code>Metric</code> / <code>Sample</code> entries. No free-text-only messages.</li>
+<li><strong>Reports are content-addressed.</strong> Every finding has a 64-bit fingerprint over (code, severity, message, column, evidence). Two runs over the same data produce identical IDs. CI gates can compare reports byte-for-byte.</li>
+<li><strong>Impressions vs Ideas.</strong> A <code>LockeImpression</code> is a raw observed fact (a dataset, a column, a row). A <code>LockeIdea</code> is anything derived (a filtered subset, a feature, a metric, a prediction). The lineage DAG only has edges from impressions / parent ideas to child ideas — acyclic by construction.</li>
+<li><strong>Belief reports are explainable.</strong> The 8-dimension <code>BeliefScore</code> (schema / missingness / drift / leakage / lineage / sample / duplication / constraint) ships with a breakdown, not a magic number.</li>
+<li><strong>Causality is conservative.</strong> Every <code>CausalGuardrailReport</code> carries a top-level disclaimer. No warning kind is named “Cause” or “Effect.” The DAG-based assumption registry lets users declare hypothesised pathways without certifying them.</li>
+</ul>
+<p>If “evidence-aware” sounds like over-engineering, the alternative is a CI gate that flakes because two runs over the same data produced different report metadata. Locke avoids that by construction.</p>
+</section>
+<section id="the-shape-of-the-api" class="level2">
+<h2 class="anchored" data-anchor-id="the-shape-of-the-api">The shape of the API</h2>
+<p>Three usage surfaces:</p>
+<section id="rust-api" class="level3">
+<h3 class="anchored" data-anchor-id="rust-api">Rust API</h3>
+<div class="sourceCode" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb1-1"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">use</span> <span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">cjc_locke::</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>validate<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> ValidateOptions<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> ValidationConfig<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">};</span></span>
+<span id="cb1-2"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">use</span> <span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">cjc_data::</span>DataFrame<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-3"></span>
+<span id="cb1-4"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> opts <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> ValidateOptions <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb1-5">    dataset_label<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"train.csv"</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>into()<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb1-6">    config<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">ValidationConfig::</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">default</span>()<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb1-7">    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">..</span><span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">Default</span><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">::</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">default</span>()</span>
+<span id="cb1-8"><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">};</span></span>
+<span id="cb1-9"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> report <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> validate(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>df<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>opts)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-10"><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">println!</span>(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"worst severity: {}"</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> report<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>worst_severity())<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-11"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">for</span> f <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">in</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>report<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>findings <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb1-12">    <span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">println!</span>(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"{} {}: {}"</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> f<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>code<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> f<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>severity<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> f<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>message)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb1-13"><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span></code></pre></div>
+</section>
+<section id="cli" class="level3">
+<h3 class="anchored" data-anchor-id="cli">CLI</h3>
+<div class="sourceCode" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> locke validate data.csv <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb2-2">  <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--target</span> churned <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb2-3">  <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--primary-key</span> customer_id <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb2-4">  <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--time-col</span> event_ts <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--max-timestamp</span> 1714521600000 <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb2-5">  <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--html</span> report.html <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb2-6">  <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--save-json</span> baseline.json <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb2-7">  <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--fail-on</span> warning</span></code></pre></div>
+<p>That single command runs the full v0.5 validation pass (missingness + duplicates + impossible values + constants + outliers + sentinels + schema + temporal + target-leakage + ID-like + duplicate-key conditioning), writes a stakeholder-ready HTML report with an inline-SVG correlation heatmap, persists the canonical JSON baseline, and exits non-zero if any finding crosses the warning threshold.</p>
+</section>
+<section id="cjc-lang-source" class="level3">
+<h3 class="anchored" data-anchor-id="cjc-lang-source">CJC-Lang source</h3>
+<pre class="cjcl"><code>fn main() {
+  let h = locke_table_new();
+  locke_table_add_float_col(h, "age", [25.0, 30.0, 0.0/0.0, 30.0]);
+  locke_table_add_int_col(h, "churned", [0, 1, 1, 0]);
+  let r = locke_validate(h);
+  print(locke_report_worst_severity(r));   // 2 = Warning (NaN detected)
+  print(locke_report_overall_score(r));    // 0.857
+}</code></pre>
+<p>The CJC-Lang surface lets <code>.cjcl</code> programs validate data without dropping into Rust. The implementation uses a thread-local registry plus 22 <code>locke_*</code> builtins routed through both executors via satellite dispatch — the same pattern <code>cjc-ad</code>’s GradGraph and <code>cjc-abng</code>’s belief radix graph use.</p>
+</section>
+</section>
+<section id="what-ships-in-v0.1.10" class="level2">
+<h2 class="anchored" data-anchor-id="what-ships-in-v0.1.10">What ships in v0.1.10</h2>
+<div class="sourceCode" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb4-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cargo</span> add cjc-locke</span></code></pre></div>
+<p>You get:</p>
+<ul>
+<li><strong>Validation</strong> — missingness (with null masks for non-float columns), duplicates (full row + by primary key with conditioning), impossible-value DSL, constants and near-constants, schema mismatch, suspicious cardinality, IQR + modified-Z outliers, sentinel-value detection, conditional missingness, imbalanced-class warning, ID-like cardinality hints</li>
+<li><strong>Drift / induction risk</strong> — exact Kolmogorov–Smirnov D-statistic (replacing v0.1’s PSI as the default), mean/std/range/missingness shift, categorical TVD, small-sample warnings, temporal train/test overlap detection</li>
+<li><strong>Time-aware checks</strong> — sortedness, future-leakage cutoff, gap detection</li>
+<li><strong>Target leakage</strong> — per-feature ROC AUC against a binary target via rank-sum</li>
+<li><strong>Lineage</strong> — <code>LockeImpression</code> vs <code>LockeIdea</code> semantic split, deterministic DAG, monotonic audit chain, <code>TracedDataFrame</code> wrapper covering 14 cjc-data operations</li>
+<li><strong>Belief reports</strong> — 8-dimension <code>BeliefScore</code> with explainable breakdown, user-tunable <code>BeliefWeights</code> and <code>BeliefPenalty</code> model</li>
+<li><strong>Causal guardrails</strong> — 5 warning kinds, <code>CausalDag</code> assumption registry with cycle detection, observational-only mode</li>
+<li><strong>Streaming</strong> — <code>StreamingValidator</code> with no-reconstruction running state (Welford + BTreeMap ECDF), KS D bit-identical to single-shot</li>
+<li><strong>Output</strong> — canonical JSON serializer (hand-written, zero serde dependency), HTML report with inline-SVG correlation heatmap, <code>cjcl locke gate</code> for snapshot-and-diff CI workflows</li>
+<li><strong>CJC-Lang integration</strong> — 22 <code>locke_*</code> builtins routed through both executors</li>
+</ul>
+<p>The error-code range is E9000–E9099. About half is currently assigned (E9001 missingness, E9003/E9004 duplicates, E9007 sentinel, E9039 KS-drift, E9040/E9041 outliers, E9050–E9054 temporal, E9060/E9061 target leakage, E9070 conditional missingness, E9071 imbalanced class, E9072 ID-like, E9073 dup-key conditioning, …). The rest is reserved for v0.2+.</p>
+</section>
+<section id="the-benchmark-that-earned-the-headline" class="level2">
+<h2 class="anchored" data-anchor-id="the-benchmark-that-earned-the-headline">The benchmark that earned the headline</h2>
+<p>The honest assessment I gave on early versions was: “Locke is competitive with Great Expectations <em>for specific use cases</em>.” I had no actual benchmark to back that. Time to run one.</p>
+<section id="methodology" class="level3">
+<h3 class="anchored" data-anchor-id="methodology">Methodology</h3>
+<p>I wrote a deterministic synthetic-churn generator (<code>bench/locke_vs_gx/generate_churn.py</code>) that produces a 7023-row, 8-column CSV with <strong>exactly-known seeded properties</strong>:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Seeded fact</th>
+<th>Exact count</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>NaN values in <code>total_charges</code></td>
+<td>100</td>
+</tr>
+<tr class="even">
+<td>Impossible <code>monthly_charges = -9999</code></td>
+<td>5</td>
+</tr>
+<tr class="odd">
+<td>Outlier rows (<code>tenure_months &gt; 200</code>)</td>
+<td>17</td>
+</tr>
+<tr class="even">
+<td>Full-row duplicates</td>
+<td>23</td>
+</tr>
+<tr class="odd">
+<td>Sortedness violations in time column</td>
+<td>≥ 1</td>
+</tr>
+<tr class="even">
+<td>Duplicate <code>customer_id</code> keys</td>
+<td>23</td>
+</tr>
+</tbody>
+</table>
+<p>Then I ran two validation suites — Locke v0.5 with default settings plus <code>--target churned --primary-key customer_id --time-col last_login_unix</code>, and Great Expectations 1.17 with equivalent expectations (13 expectations covering missingness, value ranges, sortedness, compound-key uniqueness, value-set membership).</p>
+<p>Both tools’ findings were dumped to JSON. A comparison script walked both result sets and asked: did each tool match ground truth?</p>
+</section>
+<section id="detection-results" class="level3">
+<h3 class="anchored" data-anchor-id="detection-results">Detection results</h3>
+<table class="table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Fact</th>
+<th>Ground truth</th>
+<th>Locke (code, count, severity)</th>
+<th>GX (count, severity)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>NaN in <code>total_charges</code></td>
+<td>100</td>
+<td>E9007 (100, info)</td>
+<td>100 (error)</td>
+</tr>
+<tr class="even">
+<td>Impossible <code>monthly_charges</code></td>
+<td>5</td>
+<td>E9041 (5, warning)</td>
+<td>5 (error)</td>
+</tr>
+<tr class="odd">
+<td>Outlier <code>tenure_months</code></td>
+<td>17</td>
+<td>E9041 (17, warning)</td>
+<td>17 (warning)</td>
+</tr>
+<tr class="even">
+<td>Full-row duplicates</td>
+<td>23</td>
+<td>E9003 (23, notice)</td>
+<td>46 = 23×2 (error)</td>
+</tr>
+<tr class="odd">
+<td>Sortedness violation</td>
+<td>≥ 1</td>
+<td>E9050 (1, warning)</td>
+<td>1 (warning)</td>
+</tr>
+<tr class="even">
+<td>Duplicate <code>customer_id</code> keys</td>
+<td>23</td>
+<td>E9004 (23, error)</td>
+<td>(no equivalent in suite)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Both tools matched ground truth 5 / 5 on the quantitative facts.</strong> The detection accuracy is identical for the kinds of issues a real churn-data pipeline ships with.</p>
+<p>A few honest notes on the table:</p>
+<ul>
+<li><strong>GX reports duplicate rows as 46 = 23 × 2</strong> because <code>ExpectCompoundColumnsToBeUnique</code> reports all rows in any non-unique group. Locke reports the <em>extras</em> (23). Different question, both correct.</li>
+<li><strong>Severity disagreements are policy, not detection.</strong> GX defaults every failed expectation to <code>Error</code>. Locke uses a configurable severity ladder where 100 missing out of 7023 (1.4%) lands at <code>Info</code> — the floor of a four-rung ladder where Warning means ≥10% and Error means ≥50%. Locke’s ladder is tunable via <code>BeliefPenalty</code>; GX’s is per-expectation config.</li>
+<li><strong>Locke caught the missing-<code>total_charges</code> count via E9007 (sentinel-value detection)</strong> because the CSV reader inferred the column as <code>Str</code> (empty cells aren’t parseable as numbers). Same count, different code, lighter severity. The findings are equivalent; the tool routed through a different channel.</li>
+</ul>
+</section>
+<section id="timing" class="level3">
+<h3 class="anchored" data-anchor-id="timing">Timing</h3>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Tool</th>
+<th>End-to-end wall-clock</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Great Expectations 1.17 (Python 3.11)</td>
+<td><strong>45.9 s</strong></td>
+</tr>
+<tr class="even">
+<td>Locke v0.5 debug build</td>
+<td>985 ms</td>
+</tr>
+<tr class="odd">
+<td><strong>Locke v0.5 release build</strong></td>
+<td><strong>167 ms</strong></td>
+</tr>
+</tbody>
+</table>
+<p>That’s a <strong>275× speedup</strong> in release mode against the same dataset finding the same things. Most of GX’s time is Python startup + GX context init + ephemeral data-source setup, which dominates for short batch runs. Locke is a single Rust binary with no startup overhead.</p>
+<p>For a CI gate that runs every PR, that difference is “imperceptible vs visibly slow.” For a nightly batch over a million datasets, it’s the difference between “finished by morning” and “still running.”</p>
+</section>
+<section id="built-in-checks-locke-runs-that-gx-doesnt-out-of-the-box" class="level3">
+<h3 class="anchored" data-anchor-id="built-in-checks-locke-runs-that-gx-doesnt-out-of-the-box">Built-in checks Locke runs that GX doesn’t out of the box</h3>
+<p>On the actual benchmark dataset:</p>
+<ul>
+<li><strong>E9004 — duplicate primary-key detection</strong> fired with the exact 23 violations on <code>customer_id</code>. GX has no equivalent unless you write a custom expectation.</li>
+<li><strong>E9007 — sentinel-value detection</strong> caught the 100 empty strings in <code>total_charges</code>. GX requires <code>expect_column_values_to_not_be_null</code> (which works for null but not the empty-string sentinel form here).</li>
+<li><strong>E9072 — ID-like cardinality hint</strong> fired three times — on <code>customer_id</code>, <code>last_login_unix</code>, and <code>total_charges</code> (which had 6858 distinct strings out of 7023 rows, looking like an identifier leaking as a feature). GX has no equivalent default check.</li>
+</ul>
+<p>These aren’t fancy — they’re the kind of checks a churn pipeline silently fails on for months until someone notices the model is memorising customer IDs. Locke fires them by default.</p>
+</section>
+<section id="built-in-checks-gx-runs-that-locke-doesnt-out-of-the-box" class="level3">
+<h3 class="anchored" data-anchor-id="built-in-checks-gx-runs-that-locke-doesnt-out-of-the-box">Built-in checks GX runs that Locke doesn’t out of the box</h3>
+<p>To be honest about the other direction:</p>
+<ul>
+<li><code>ExpectColumnDistinctValuesToBeInSet</code> for <code>plan</code> / <code>country</code> — Locke has E9020–E9022 schema mismatch but no value-set-membership check yet</li>
+<li><code>ExpectColumnValuesToBeIncreasing(strictly=True)</code> — Locke only checks non-decreasing</li>
+<li>User-declared mean / quantile range expectations (Locke surfaces the values but doesn’t accept caller-declared ranges in the default validate path)</li>
+<li>~180 other expectations covering regex, length, JSON-schema, custom SQL queries, etc.</li>
+</ul>
+<p>GX has a <em>much</em> broader expectation library overall. For the specific subset that matters for churn validation, Locke is at parity or ahead. For the general case, GX still wins on breadth.</p>
+</section>
+</section>
+<section id="what-scale-locke-handles" class="level2">
+<h2 class="anchored" data-anchor-id="what-scale-locke-handles">What scale Locke handles</h2>
+<p>The benchmark above is on a small (7K-row) dataset. For a more useful answer, I ran a separate scale benchmark on synthetic data with four mixed-type columns:</p>
+<section id="single-shot-validate" class="level3">
+<h3 class="anchored" data-anchor-id="single-shot-validate">Single-shot <code>validate()</code></h3>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Rows</th>
+<th>Wall clock</th>
+<th>Per-row</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>10,000</td>
+<td>100 ms</td>
+<td>10.08 µs/row</td>
+</tr>
+<tr class="even">
+<td>100,000</td>
+<td>1.19 s</td>
+<td>11.90 µs/row</td>
+</tr>
+<tr class="odd">
+<td>1,000,000</td>
+<td>17.45 s</td>
+<td>17.45 µs/row</td>
+</tr>
+</tbody>
+</table>
+<p>Per-row cost grows mildly with <code>log n</code> because of full-row byte-hashing (duplicate detection) and sort-based outlier detection.</p>
+</section>
+<section id="drift-compare" class="level3">
+<h3 class="anchored" data-anchor-id="drift-compare">Drift <code>compare()</code></h3>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Rows / side</th>
+<th>Wall clock</th>
+<th>Per-row</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>10,000</td>
+<td>90 ms</td>
+<td>4.51 µs/row</td>
+</tr>
+<tr class="even">
+<td>100,000</td>
+<td>525 ms</td>
+<td>2.63 µs/row</td>
+</tr>
+<tr class="odd">
+<td>1,000,000</td>
+<td>5.68 s</td>
+<td>2.84 µs/row</td>
+</tr>
+</tbody>
+</table>
+<p>Flat per-row cost at scale because the sort dominates and Rust’s sort is well-optimised. 1M + 1M rows in 5.7 seconds.</p>
+</section>
+<section id="streaming-validator-chunked-ingest" class="level3">
+<h3 class="anchored" data-anchor-id="streaming-validator-chunked-ingest">Streaming validator (chunked ingest)</h3>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Total rows</th>
+<th>Chunks</th>
+<th>Wall clock</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>100,000</td>
+<td>10</td>
+<td>609 ms</td>
+</tr>
+<tr class="even">
+<td>1,000,000</td>
+<td>100</td>
+<td>8.69 s</td>
+</tr>
+<tr class="odd">
+<td><strong>5,000,000</strong></td>
+<td><strong>500</strong></td>
+<td><strong>16.33 s</strong></td>
+</tr>
+</tbody>
+</table>
+<p>About <strong>310,000 rows/second</strong> sustained streaming throughput.</p>
+</section>
+<section id="streaming-ks-d-vs-single-shot-ks-d" class="level3">
+<h3 class="anchored" data-anchor-id="streaming-ks-d-vs-single-shot-ks-d">Streaming KS D vs single-shot KS D</h3>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Rows</th>
+<th>Streaming KS</th>
+<th>Single-shot KS</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>10,000</td>
+<td><strong>1 ms</strong></td>
+<td>4 ms</td>
+</tr>
+<tr class="even">
+<td>100,000</td>
+<td><strong>32 ms</strong></td>
+<td>66 ms</td>
+</tr>
+<tr class="odd">
+<td>1,000,000</td>
+<td><strong>62 ms</strong></td>
+<td>107 ms</td>
+</tr>
+</tbody>
+</table>
+<p>Streaming is <strong>~2× faster</strong> because the BTreeMap-ECDF is already sorted at ingest time, so the merge-walk at query time skips the sort. The result is bit-identical to single-shot KS — proved by a unit test.</p>
+</section>
+<section id="practical-scale-matrix-for-a-churn-use-case" class="level3">
+<h3 class="anchored" data-anchor-id="practical-scale-matrix-for-a-churn-use-case">Practical scale matrix for a churn use case</h3>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Customers</th>
+<th>Path</th>
+<th>Wall clock</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>≤ 100k</td>
+<td>single-shot</td>
+<td>sub-2s</td>
+</tr>
+<tr class="even">
+<td>100k – 1M</td>
+<td>single-shot</td>
+<td>2-20s</td>
+</tr>
+<tr class="odd">
+<td>1M – 10M</td>
+<td>streaming</td>
+<td>~30s</td>
+</tr>
+<tr class="even">
+<td>10M – 100M</td>
+<td>streaming with caps</td>
+<td>~5 min</td>
+</tr>
+<tr class="odd">
+<td>100M+</td>
+<td>streaming + accept approximate dup counts, or shard</td>
+<td>longer</td>
+</tr>
+</tbody>
+</table>
+<p>For a typical SaaS churn dataset (1k–10M customers), Locke runs comfortably as part of every CI build. For 10M–100M, it’s an overnight batch.</p>
+</section>
+</section>
+<section id="the-ci-workflow-locke-was-built-for" class="level2">
+<h2 class="anchored" data-anchor-id="the-ci-workflow-locke-was-built-for">The CI workflow Locke was built for</h2>
+<p>Here’s what a real churn pipeline using Locke as its data-quality gate looks like:</p>
+<div class="sourceCode" id="cb5" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb5-1"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># After every successful model training, snapshot the baseline:</span></span>
+<span id="cb5-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> locke validate train_2026q2.csv <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb5-3">  <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--target</span> churned <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb5-4">  <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--primary-key</span> customer_id <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb5-5">  <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--time-col</span> event_ts <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb5-6">  <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--max-timestamp</span> 1719792000000 <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb5-7">  <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--save-json</span> baselines/2026q2_baseline.json <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb5-8">  <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--html</span> reports/2026q2.html</span></code></pre></div>
+<div class="sourceCode" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb6-1"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># In your monthly CI job:</span></span>
+<span id="cb6-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> locke gate baselines/2026q2_baseline.json <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb6-3">  data/prod_2026q3.csv <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">\</span></span>
+<span id="cb6-4">  <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--fail-on</span> warning</span>
+<span id="cb6-5"></span>
+<span id="cb6-6"><span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">echo</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"exit=</span><span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">$?</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"</span></span></code></pre></div>
+<p>This produces a structural diff of findings:</p>
+<pre><code># Locke Gate Diff
+reference_run_id: 1075bbad9d9b882f
+current_run_id:   5fbf919f0ada9b58
+summary: appeared=3 disappeared=0 unchanged=17
+
+appeared:
+  + code=E9035 severity=warning column=last_login_days_ago
+    missingness rate of `last_login_days_ago` shifted: train=0.020, test=0.180
+  + code=E9039 severity=error column=monthly_charges
+    numeric distribution shift in `monthly_charges` (KS D = 0.342)
+  + code=E9051 severity=error column=event_ts
+    127 test rows have `event_ts` &lt;= max train timestamp; test set overlaps train window</code></pre>
+<p>Exit code is non-zero. The job fails. A human looks at the diff and decides: was this drift expected (new product launch, seasonal effect) or did a pipeline bug leak training-window timestamps into the test set?</p>
+<p>The findings are <strong>content-addressed</strong> — <code>id=1075bbad9d9b882f</code> is a 64-bit fingerprint over the report’s contents. Two CI runs over the same data on different machines produce the same fingerprint. That’s the property that makes the snapshot-and-diff workflow work at all.</p>
+</section>
+<section id="the-stakeholder-html-report" class="level2">
+<h2 class="anchored" data-anchor-id="the-stakeholder-html-report">The stakeholder HTML report</h2>
+<p>The <code>--html PATH</code> flag produces a single self-contained HTML file with:</p>
+<ul>
+<li>Severity-color-coded summary cards</li>
+<li>Findings table sorted by (severity, code, column)</li>
+<li>Inline-SVG correlation heatmap (when ≥ 3 numeric columns)</li>
+<li>Assumptions panel</li>
+<li>Run-ID + schema-version footer</li>
+<li>Total weight ~5KB, no external assets, no JavaScript</li>
+</ul>
+<p>For a PM who wants “tell me what’s wrong with this CSV in 30 seconds,” the HTML report is the right shape.</p>
+</section>
+<section id="locke-is-not-a-one-stop-ml-tool" class="level2">
+<h2 class="anchored" data-anchor-id="locke-is-not-a-one-stop-ml-tool">Locke is not a one-stop ML tool</h2>
+<p>Worth saying directly: Locke covers the data-quality and drift-monitoring legs of an ML pipeline. It does <strong>not</strong>:</p>
+<ul>
+<li>Train models. Use scikit-learn / xgboost / lifelines for that.</li>
+<li>Run causal inference. The <code>CausalDag</code> registers user-declared assumptions; it doesn’t estimate effects. Use DoWhy or EconML for actual causal modeling.</li>
+<li>Replace experiment-tracking. Use mlflow / wandb.</li>
+<li>Read Parquet contents yet. v0.1.10 recognizes the file structure and gives a clear diagnostic; the full decoder is on the roadmap.</li>
+<li>Connect to data warehouses. Snowflake / BigQuery / Postgres support is not yet there. Export to CSV / JSONL first.</li>
+</ul>
+<p>The right framing is <strong>“Locke handles the data hygiene + drift monitoring + reproducible audit trail; you bring the rest of your stack.”</strong></p>
+</section>
+<section id="what-i-think-the-determinism-contract-actually-buys-you" class="level2">
+<h2 class="anchored" data-anchor-id="what-i-think-the-determinism-contract-actually-buys-you">What I think the determinism contract actually buys you</h2>
+<p>Three concrete things:</p>
+<ol type="1">
+<li><p><strong>Comparable reports across runs.</strong> Two CI runs over the same dataset produce byte-identical reports. You can <code>diff</code> them. You can store them in git. You can compute a fingerprint and cache training jobs on it.</p></li>
+<li><p><strong>Reproducible audit trails.</strong> Insurance churn analyses get scrutinised. A regulator asking “show me the data quality report you used to validate this dataset on 2026-Q3” deserves a reproducible answer. Locke gives that.</p></li>
+<li><p><strong>CI gates that don’t flake.</strong> Most data-validation tools sometimes report different “validation_result UUIDs” on identical data because of internal <code>dict</code> iteration or wall-clock metadata. Locke’s IDs are content fingerprints. There’s no flake.</p></li>
+</ol>
+<p>That third property is the one I’d defend hardest. It sounds boring; it’s what makes the snapshot-and-diff workflow viable in the first place.</p>
+</section>
+<section id="install" class="level2">
+<h2 class="anchored" data-anchor-id="install">Install</h2>
+<div class="sourceCode" id="cb8" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb8-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cargo</span> add cjc-locke</span></code></pre></div>
+<p>The crate is at version 0.1.10 on crates.io and works with the matching version of <code>cjc-data</code>, <code>cjc-repro</code>, <code>cjc-runtime</code> from the same workspace release. If you want the CLI:</p>
+<div class="sourceCode" id="cb9" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb9-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cargo</span> install cjc-lang</span>
+<span id="cb9-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">cjcl</span> locke validate your-data.csv</span></code></pre></div>
+<p>The benchmark code is in the repo at <code>bench/locke_vs_gx/</code>. Anyone with <code>pip install great_expectations pandas</code> can re-run the full comparison.</p>
+</section>
+<section id="where-v0.2-is-going" class="level2">
+<h2 class="anchored" data-anchor-id="where-v0.2-is-going">Where v0.2 is going</h2>
+<p>The next release will close the gaps the benchmark exposed:</p>
+<ul>
+<li>Native Parquet decoder (Thrift + Snappy + PLAIN encoding minimum)</li>
+<li>Value-set-membership checks at the validate path (matching GX’s <code>ExpectColumnDistinctValuesToBeInSet</code>)</li>
+<li>Multi-class target-leakage AUC (v0.1 supports binary targets only)</li>
+<li>HTML output with per-column distribution sparklines via <code>cjc-vizor</code></li>
+<li>Optional parallel column-validation via rayon (per-column work is embarrassingly parallel)</li>
+<li>JUnit XML and SARIF output for CI integrations</li>
+</ul>
+<p>If a Locke check you wanted is missing, the issue tracker is open.</p>
+</section>
+<section id="final-honest-framing" class="level2">
+<h2 class="anchored" data-anchor-id="final-honest-framing">Final honest framing</h2>
+<p>I built Locke because CJC-Lang needed a data-skepticism layer that preserved the runtime determinism guarantee at the validation boundary. The benchmark against Great Expectations was a calibration exercise — I wanted to know whether the “Locke is competitive” claim I’d been making was actually true.</p>
+<p>The answer, on the specific workflows Locke is designed for, is <strong>yes</strong>. Locke matched GX 5 / 5 on every ground-truth fact in a real benchmark, ran 275× faster end-to-end, and fired more checks out of the box for the specific failure modes that break customer-churn pipelines.</p>
+<p>That’s not a knock on Great Expectations. GX is a mature tool with 10K GitHub stars, 500+ contributors, native SQL backends, ~200 expectations, and an ecosystem Locke won’t match for years. If your data lives in Snowflake or your team needs Slack alerting integrations or you need profiler-driven auto-suite generation, <strong>use GX</strong>.</p>
+<p>If your data fits in a CSV / JSONL, you need a deterministic CI gate, and you’re tired of validating customer-churn pipelines with spreadsheets and prayer, <strong>use Locke</strong>.</p>
+<p>The code is on <a href="https://crates.io/crates/cjc-locke">crates.io</a>. The benchmark is in the repo. The whole thing is MIT-licensed.</p>
+<p><code>cjcl locke validate your-data.csv</code> and tell me what breaks.</p>
+
+
+</section>
+
+ ]]></description>
+  <category>CJC-Lang</category>
+  <category>Locke</category>
+  <category>data-quality</category>
+  <category>validation</category>
+  <category>churn</category>
+  <category>benchmarks</category>
+  <guid>https://adamezzat1.github.io/blog/posts/cjc-locke-v0.1-released/index.html</guid>
+  <pubDate>Thu, 28 May 2026 07:00:00 GMT</pubDate>
+</item>
 <item>
   <title>Gibran: Windowed CTEs and the Row-Filter Fix You Can’t See</title>
   <dc:creator>Adam Ezzat</dc:creator>
