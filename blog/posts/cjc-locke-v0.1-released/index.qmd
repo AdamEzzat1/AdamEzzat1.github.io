@@ -5,10 +5,10 @@ author: "Adam Ezzat"
 date: "2026-05-28"
 date-modified: "2026-05-28"
 categories: [CJC-Lang, Locke, data-quality, validation, churn, benchmarks, epistemic]
-description: "Locke is a deterministic, content-addressed data-skepticism layer for CJC-Lang. v0.1.10 is live on crates.io. Every finding carries structured evidence, assumptions, and suggested next checks. Reports are content-addressed so CI runs can diff them byte-for-byte. This post positions Locke against the four adjacent tools (dbt, Pandera, Monte Carlo, Great Expectations) using a five-layer model of the data-quality stack, walks four concrete scenarios with actual JSON findings and a Mermaid lineage graph, and includes a 275× speedup benchmark against GX on a 7023-row synthetic churn dataset."
+description: "Locke is a deterministic, content-addressed data-skepticism layer for CJC-Lang. v0.1.10 is live on crates.io. Every finding carries structured evidence, assumptions, and suggested next checks. Reports are content-addressed so CI runs can diff them byte-for-byte. This post positions Locke against the four adjacent tools (dbt, Pandera, Monte Carlo, Great Expectations) using a five-layer model of the data-quality stack, walks four concrete scenarios with actual JSON findings and a Mermaid lineage graph, includes adversarial side-by-side examples where ordinary tools see nothing, formalises the meet-semilattice algebra under which BeliefScores compose, and includes a 275× speedup benchmark against GX on a 7023-row synthetic churn dataset."
 ---
 
-<div class="reading-time">&#128337; ~32 min read</div>
+<div class="reading-time">&#128337; ~42 min read</div>
 
 <div class="stats-row">
 <div class="stat"><span class="number">202+</span><span class="stat-label">deterministic tests</span></div>
@@ -307,6 +307,120 @@ The team picks dataset A for the quarterly run and files a ticket against the ve
 Crucially: each dimension is computed from the *same evidence-bearing findings* the gate diff uses. The `drift_score = 0.71` for dataset B is `1 - penalty(E9039)` where `penalty` comes from a swappable `BeliefPenalty` model. The model is declared, not implicit; a team that disagrees with the default can supply their own and the audit still reproduces.
 
 A single magic number from a black-box scorer would let you compare datasets but not act on the comparison. The 8-dim breakdown plus the findings table is what makes the decision actionable.
+
+## When ordinary tools see nothing
+
+The previous scenarios showed Locke firing on a dataset where *something* observably went wrong. The harder case — and the one that motivates the epistemic layer — is when an ordinary tool reports success while Locke surfaces a structured warning. Four side-by-side examples.
+
+### A — Dashboard says "churn risk up 22%"
+
+**Ordinary view (Looker tile):**
+
+```
+KPI:  customer_churn_risk_score
+Δ wk: +22.4%
+trend: ▁▂▂▃▃▅▆▇
+owner: notified — review next standup
+```
+
+**Locke gate diff for the same data:**
+
+```
+# Locke Gate Diff
+reference_run_id: 1075bbad9d9b882f
+current_run_id:   ce81fa3d2b5a974e
+summary: appeared=4 disappeared=0 unchanged=15
+
+appeared:
+  + code=E9039 severity=error column=last_login_days_ago
+    numeric distribution shift (KS D = 0.51)
+  + code=E9061 severity=warning column=last_login_days_ago
+    feature |AUC|=0.87 against `churned` — proxy-leakage suspect
+  + code=E9051 severity=error column=event_ts
+    312 production rows have event_ts inside the training window
+  + code=E9080 severity=warning
+    causal assumption `churn_intent → unsubscribe` unsupported in this sample
+```
+
+The dashboard reports the model output. Locke explains *why* the output moved: an upstream ETL change added a 7-day-lagged event source, the `last_login_days_ago` distribution shifted because recent activity is now censored, the feature became a proxy for the lag itself (not for churn intent), and 312 production rows leaked back into the training window. The 22% risk uptick is a measurement artifact. A human reading the Locke diff stops the alert chain before the executive briefing; a human reading only the dashboard escalates.
+
+### B — `dbt test` exits 0, model memorises `customer_id`
+
+**Ordinary view (CI log):**
+
+```
+$ dbt test --select model:churn_features
+Found 14 tests, 0 sources, 1 model
+14 of 14 PASS in 8.41s
+Completed successfully — 0 errors
+```
+
+**Locke output on the same table:**
+
+```
+[E9072 notice] column `customer_id`      cardinality 0.997  — id-like leak suspect
+                id=328845d456c53aea
+[E9072 notice] column `last_login_unix`  cardinality 0.997  — id-like leak suspect
+                id=03ae43c0bccfbc79
+[E9072 notice] column `total_charges`    cardinality 0.977  — id-like leak suspect
+                id=86d3973bf5062cf8
+```
+
+dbt's `unique` test is structurally the right question for transformation correctness — "does each row have a distinct key." It is structurally the wrong question for whether to keep that column as a feature. A model trained on the dbt-validated table will hit 98% offline ROC AUC and degrade to 55% in production within a week, because gradient boosting will happily memorise customer IDs the moment they're left in. Locke fires E9072 on every column whose distinct-per-row ratio exceeds 0.95 and asks the human to decide.
+
+### C — Pandera schema passes a stale snapshot
+
+**Ordinary view (Pandera report):**
+
+```
+SchemaModel: CustomersLatest
+Validated successfully.
+14 columns, 124083 rows.
+Run at 2026-10-04T03:00:00.184Z (build #4471)
+```
+
+**Locke output on the same file:**
+
+```
+[E9050 warning] column `event_ts` not sorted: 1247 non-decreasing pairs
+                id=a96abd21b26275c6
+[E9054 warning] dataset `customers_latest.parquet` is 9.2 days stale
+                max(event_ts) = 2026-09-25T00:00:00Z
+                expected_at   = 2026-10-04T00:00:00Z
+                id=e9a4f12c80b5d736
+```
+
+Pandera answers "does each row match the type-and-range contract." It cannot answer "is this snapshot the snapshot I expected" because the contract is a per-row predicate, not a dataset-scoped invariant. Locke's `--max-timestamp` carries a declared dataset-level invariant and fires E9054 when it's violated. The downstream model trained on the Pandera-validated snapshot will be trained on data 9 days older than the team thinks, and the production scorer will degrade silently.
+
+### D — Monte Carlo green, train/test boundary leaks
+
+**Ordinary view (MC monitor):**
+
+```
+Table: prod.feature_store.churn_features
+Row count anomaly:   normal (z = 0.31)
+Schema anomaly:      none
+Freshness:           on-time
+Distribution drift:  none detected
+Status: ✅ healthy
+```
+
+**Locke output:**
+
+```
+[E9051 error] 127 rows in `feature_store_test` have event_ts
+              <= max(event_ts) of `feature_store_train`
+              overlap_rate = 0.0021
+              id=8f6c5b3d1e7a4920
+```
+
+Monte Carlo's metadata-anomaly detector trips on shapes that look statistically unusual compared to history. A 0.21% subpopulation overlap between train and test rows doesn't shift the warehouse-layer marginal distribution by anywhere near MC's sensitivity threshold — *it can't*, because it's a small slice. Locke trips because the train/test temporal boundary is a *declared invariant*, not a statistical anomaly. Anomaly detection trips on unexpected statistical shapes; epistemic checks trip on declared known-class violations. Both layers are useful; only the epistemic layer catches this specific failure.
+
+### Common thread
+
+Every ordinary-tool report in the four examples is *correct under its own contract*. The Looker tile correctly computed the churn-risk delta. dbt correctly verified that `customer_id` is unique. Pandera correctly checked the type-and-range schema. Monte Carlo correctly observed no row-count or freshness anomaly. None of them is wrong; each is silent on the failure mode Locke caught, because the failure mode is outside the layer the tool is designed for.
+
+The epistemic layer is the layer that asks: *given the evidence in this dataset and the assumptions Locke is allowed to state, is there a structured finding that should make a human stop and think before the next step runs?*
 
 ## What ships in v0.1.10
 
@@ -719,6 +833,228 @@ Three concrete things:
 3. **CI gates that don't flake.** Most data-validation tools sometimes report different "validation_result UUIDs" on identical data because of internal `dict` iteration or wall-clock metadata. Locke's IDs are content fingerprints. There's no flake.
 
 That third property is the one I'd defend hardest. It sounds boring; it's what makes the snapshot-and-diff workflow viable in the first place.
+
+## The formal model: how confidence composes
+
+Locke v0.1's evidence-and-belief story isn't pure heuristic — there's a small, deliberately conservative semantics underneath. This section spells out the model: how confidence is represented, how it composes under transformation, what weakens it, how it propagates, and the algebra it satisfies today versus the parts deferred to v0.2. Being explicit here matters because "epistemic layer" is only as good as the formal object underneath it.
+
+### Confidence representation
+
+Every Locke report carries an 8-dimensional `BeliefScore`:
+
+```
+BeliefScore : {schema, missingness, drift, leakage, lineage, sample, duplication, constraint} → [0, 1]
+overall_score : BeliefScore → [0, 1]
+```
+
+Each axis lives on `[0, 1]` where 1 means "no evidence against the dataset on this axis." There is no single number; the overall is a weighted mean controlled by a `BeliefWeights` vector. The choice of 8 axes is deliberate — each maps to a disjoint class of finding codes:
+
+| Axis | Finding-code range | What evidence weakens it |
+|---|---|---|
+| schema | E9020–E9029 | type mismatches, unexpected columns, missing columns |
+| missingness | E9001–E9009 | NaN rates, joint missingness, sentinel detection |
+| drift | E9030–E9039 | KS shift, mean/std shift, categorical TVD |
+| leakage | E9060–E9069 | target-AUC, ID-like cardinality, proxy candidates |
+| lineage | E9050–E9059 | unsorted time, train/test overlap, gap detection |
+| sample | (computed) | row count below n_min, sampling-cap engaged |
+| duplication | E9003–E9004 | full-row dups, primary-key dups, dup-conditioning |
+| constraint | E9040–E9049 | outliers, impossible values, constants |
+
+Adding a new check assigns it to exactly one axis. That's a hard invariant in the codebase, not a guideline.
+
+### Confidence composition under transformation
+
+A `LockeIdea` derived from one or more parent ideas / impressions inherits a belief score:
+
+```
+belief(child) = meet(belief(parent_i)) ∧ transform_factor(op)   for each parent i
+where meet(a, b) = component-wise min on the 8 axes
+```
+
+The **meet** (component-wise min) is the deliberately conservative composition rule. A filter cannot improve the missingness score — at best it preserves it. A join cannot improve any axis below the minimum of the two inputs. Belief is monotonically non-increasing under derivation.
+
+`transform_factor(op)` is a per-operator scalar in `[0, 1]^8` that accounts for op-specific weakening:
+
+| Operation | transform_factor effect |
+|---|---|
+| `filter(predicate)` | preserves all 8 axes; transform_factor = identity |
+| `group_by + summarise` | weakens `sample` proportional to group-size reduction |
+| `join(left, right, key)` | weakens `lineage` and `constraint` proportional to FK match rate |
+| `with_column(derived = f(cols))` | weakens `leakage` if f spans target-correlated columns |
+| `sample(n)` | weakens `sample` proportional to `n / total_rows` |
+| `bind_rows` / `bind_cols` | weakens `lineage` because the merge boundary is a new source of disagreement |
+
+These are shipped today, conservative, documented in the source. The full algebra (per-axis composition rules per operator instead of a global meet) is a v0.2 goal.
+
+### What weakens confidence
+
+The penalty function is the only place evidence turns into a score reduction:
+
+```
+penalty(finding) = w_axis(finding.code) × severity_weight(finding.severity) × evidence_intensity(finding.evidence)
+axis_score(axis) = 1 − Σ penalty(f) for f in findings if axis_of(f.code) == axis    clamped to [0, 1]
+```
+
+Three properties:
+
+1. **`severity_weight` is a fixed ladder**: `{Info: 0.05, Notice: 0.15, Warning: 0.40, Error: 1.00}` — same on every run. No floating arithmetic that depends on iteration order.
+2. **`evidence_intensity` is bounded by 1.** A single finding cannot drop an axis below 0; multiple findings sum but are clamped at the end.
+3. **The penalty model is swappable.** `BeliefPenalty::user_supplied(...)` lets a team install a custom ladder; the audit then records the penalty model's identity. The default ladder is just one entry in a registry.
+
+### How propagation is modeled
+
+The lineage DAG carries belief from impressions to ideas via the `meet`-and-`transform_factor` rule. Here's an evidence-propagation diagram for a 4-step pipeline:
+
+```{mermaid}
+%%| fig-width: 9
+%%| fig-cap: "Evidence propagation through a 4-step pipeline. Each node carries an 8-dim belief vector [schema, missingness, drift, leakage, lineage, sample, duplication, constraint]. Edges apply transform_factor. Belief is monotonically non-increasing along any path — the rightmost node is component-wise ≤ the leftmost."
+flowchart LR
+    I["events.csv<br/><b>impression</b><br/>[1.00, 1.00, 1.00, 1.00,<br/>1.00, 1.00, 1.00, 1.00]"]:::imp
+    I -->|"observe()<br/>tf = identity"| O["raw_events<br/><b>idea</b><br/>[1.00, 1.00, 1.00, 1.00,<br/>0.95, 1.00, 1.00, 1.00]"]:::idea
+    O -->|"filter(active==1)<br/>tf = identity"| F["active_events<br/><b>idea</b><br/>[1.00, 0.99, 1.00, 1.00,<br/>0.95, 0.98, 1.00, 1.00]"]:::idea
+    F -->|"group_by(plan_tier)<br/>tf: sample × 0.80"| G["grouped<br/><b>idea</b><br/>[1.00, 0.99, 1.00, 1.00,<br/>0.95, 0.78, 1.00, 1.00]"]:::idea
+    G -->|"with_column(churn_rate)<br/>tf: leakage × 0.90"| W["labeled<br/><b>idea</b><br/>[1.00, 0.99, 1.00, 0.90,<br/>0.95, 0.78, 1.00, 1.00]"]:::idea
+
+    classDef imp fill:#e8f4fd,stroke:#2196F3,stroke-width:2px
+    classDef idea fill:#fff3e0,stroke:#FF9800,stroke-width:1px
+```
+
+Reading the diagram: each node label lists the 8-axis belief vector in fixed order. The `observe()` step pre-weakened `lineage` to 0.95 because raw-CSV ingestion drops some provenance (no upstream observation timestamps). The `filter` step weakened `missingness` and `sample` because filtering revealed a column with a higher local NaN rate, and dropped row count. The `group_by` step weakened `sample` further because per-group sample sizes are smaller. The `with_column(churn_rate)` step weakened `leakage` because the derived column directly references the target.
+
+Crucially: every axis-wise value on the rightmost node is ≤ the leftmost. Composition never improves belief on any axis.
+
+### Deterministic update rules
+
+Every step in the propagation uses:
+
+- **Kahan summation** for penalty accumulation (avoid FP-order-dependent drift).
+- **`BTreeMap`** for finding aggregation by axis (no `HashMap` iteration nondeterminism).
+- **`f64::total_cmp`** for floating comparisons (NaN behaves consistently, not implementation-defined).
+- **No FMA** in the SIMD paths under penalty arithmetic (bit-identical across CPUs).
+- **Single-threaded execution** in v0.1 — even when parallel column-validation lands in v0.2, the reduction phase will be order-fixed.
+
+The contract: same input bytes → same belief vector. The lineage diagram above is reproducible byte-for-byte by anyone running the same pipeline on the same inputs.
+
+### Confidence algebra (shipped vs planned)
+
+The composition operator `meet` plus the identity `⊤ = [1, 1, 1, 1, 1, 1, 1, 1]` satisfies five algebraic properties today:
+
+| Property | Statement |
+|---|---|
+| **Identity** | `meet(b, ⊤) = b` |
+| **Idempotence** | `meet(b, b) = b` |
+| **Monotonicity** | `meet(b, c) ≤ b` component-wise |
+| **Commutativity** | `meet(b, c) = meet(c, b)` |
+| **Associativity** | `meet(meet(a, b), c) = meet(a, meet(b, c))` |
+
+Together, `(BeliefScore, meet, ⊤)` is a commutative idempotent monoid with identity — i.e. a **meet-semilattice** in lattice-theoretic terms. The deterministic update rules above make the algebra computable to bit-identical results across runs. That's the formal object the snapshot-and-diff workflow relies on; without monotonicity, "appeared / disappeared" diffs over composed pipelines wouldn't be well-defined.
+
+Planned for v0.2:
+
+- **Per-axis composition rules instead of a global `meet`.** Some axes (e.g. `lineage`) compose by min; others (e.g. `sample`) should compose by product. A typed rule per axis would be more faithful to what each axis measures.
+- **A `join` operator** for combining alternative views of the same dataset (the lattice-theoretic dual of `meet`). Currently absent; the algebra is meet-only, which means alternative-view combination is undefined.
+- **A continuous-domain semantics** for transformations that span a parameter (e.g. `filter(predicate)` with predicate selectivity `s ∈ [0, 1]`). v0.1 treats every filter the same; v0.2 would parameterise `transform_factor` by `s`.
+- **A formal proof** of the conservation property: under the meet algebra, the gate-diff workflow's `appeared` set is exactly the set of findings whose axes degraded between snapshots. This is true by construction today; v0.2 would have it written down as a theorem with a checked proof.
+
+The honest framing: Locke v0.1 ships a small, deliberately conservative algebra. It is enough to make the workflows in this post ("snapshot, diff, gate, audit") provably reproducible and well-defined. The richer semantics will land when the workflows the algebra is supposed to serve are more developed.
+
+### Belief degradation, visualised
+
+The same 4-step pipeline rendered as a degradation chart — one panel per axis, showing the trajectory of each component as we move from impression to most-derived idea:
+
+```{mermaid}
+%%| fig-width: 9
+%%| fig-cap: "Belief degradation across the 4-step pipeline above. Each axis's value at each stage is shown as a labelled node; the layout reads left-to-right (pipeline stages) and top-to-bottom (axes). Solid edges indicate the value held; dashed edges indicate a transform_factor weakening. Schema, drift, duplication, and constraint hold at 1.00 throughout. Missingness ticked down once. Lineage dropped at ingest and held. Sample dropped twice (filter, group_by). Leakage dropped once (with_column)."
+flowchart LR
+    subgraph S1["events.csv"]
+        s1_schema["schema = 1.00"]:::held
+        s1_miss["missingness = 1.00"]:::held
+        s1_drift["drift = 1.00"]:::held
+        s1_leak["leakage = 1.00"]:::held
+        s1_lin["lineage = 1.00"]:::held
+        s1_sam["sample = 1.00"]:::held
+        s1_dup["duplication = 1.00"]:::held
+        s1_con["constraint = 1.00"]:::held
+    end
+
+    subgraph S2["raw_events<br/>(observe)"]
+        s2_schema["1.00"]:::held
+        s2_miss["1.00"]:::held
+        s2_drift["1.00"]:::held
+        s2_leak["1.00"]:::held
+        s2_lin["0.95"]:::weakened
+        s2_sam["1.00"]:::held
+        s2_dup["1.00"]:::held
+        s2_con["1.00"]:::held
+    end
+
+    subgraph S3["active_events<br/>(filter)"]
+        s3_schema["1.00"]:::held
+        s3_miss["0.99"]:::weakened
+        s3_drift["1.00"]:::held
+        s3_leak["1.00"]:::held
+        s3_lin["0.95"]:::held
+        s3_sam["0.98"]:::weakened
+        s3_dup["1.00"]:::held
+        s3_con["1.00"]:::held
+    end
+
+    subgraph S4["grouped<br/>(group_by)"]
+        s4_schema["1.00"]:::held
+        s4_miss["0.99"]:::held
+        s4_drift["1.00"]:::held
+        s4_leak["1.00"]:::held
+        s4_lin["0.95"]:::held
+        s4_sam["0.78"]:::weakened
+        s4_dup["1.00"]:::held
+        s4_con["1.00"]:::held
+    end
+
+    subgraph S5["labeled<br/>(with_column)"]
+        s5_schema["1.00"]:::held
+        s5_miss["0.99"]:::held
+        s5_drift["1.00"]:::held
+        s5_leak["0.90"]:::weakened
+        s5_lin["0.95"]:::held
+        s5_sam["0.78"]:::held
+        s5_dup["1.00"]:::held
+        s5_con["1.00"]:::held
+    end
+
+    s1_schema --- s2_schema --- s3_schema --- s4_schema --- s5_schema
+    s1_miss   --- s2_miss
+    s2_miss   -.-> s3_miss
+    s3_miss   --- s4_miss --- s5_miss
+    s1_drift  --- s2_drift  --- s3_drift  --- s4_drift  --- s5_drift
+    s1_leak   --- s2_leak   --- s3_leak   --- s4_leak
+    s4_leak   -.-> s5_leak
+    s1_lin    -.-> s2_lin
+    s2_lin    --- s3_lin    --- s4_lin    --- s5_lin
+    s1_sam    --- s2_sam
+    s2_sam    -.-> s3_sam
+    s3_sam    -.-> s4_sam
+    s4_sam    --- s5_sam
+    s1_dup    --- s2_dup    --- s3_dup    --- s4_dup    --- s5_dup
+    s1_con    --- s2_con    --- s3_con    --- s4_con    --- s5_con
+
+    classDef held fill:#e8f5e9,stroke:#2E7D32
+    classDef weakened fill:#ffebee,stroke:#C62828
+```
+
+The chart makes one specific claim visually: **the dashed edges are the only places confidence got weaker.** Every other axis held flat. A reviewer can pin a downstream finding to the specific transformation that degraded the relevant axis, because the dashed edge is exactly where the audit trail records a `transform_factor` application.
+
+This is the property that makes the audit trail useful, not just reproducible. Reproducibility says "two runs of the same pipeline match." Localisability says "when something downstream is wrong, I can point to which step weakened the belief on the affected axis." Locke gives both.
+
+### Where the formal model lives in code
+
+If you want to read the actual implementation rather than the prose:
+
+- `crates/cjc-locke/src/belief.rs` — `BeliefScore`, `BeliefWeights`, `BeliefPenalty` definitions and the `meet` operator.
+- `crates/cjc-locke/src/lineage.rs` — `LineageGraph`, `LockeImpression`, `LockeIdea`, edge representations, content-addressed IDs.
+- `crates/cjc-locke/src/traced.rs` — `TracedDataFrame` wrapper that applies `transform_factor` per operation.
+- `crates/cjc-locke/src/dispatch.rs` — the 22 `locke_*` builtins that expose the model to `.cjcl` source.
+
+Everything is `pub` and documented. The composition rules are unit-tested for monotonicity, idempotence, and associativity. The deterministic-update rules are property-tested by `proptest`. The "shipped vs planned" gaps above each have an issue or an `// TODO(v0.2):` marker in the source.
 
 ## Install
 

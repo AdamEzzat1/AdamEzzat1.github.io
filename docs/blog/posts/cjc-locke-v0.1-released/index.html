@@ -8,7 +8,7 @@
 
 <meta name="author" content="Adam Ezzat">
 <meta name="dcterms.date" content="2026-05-28">
-<meta name="description" content="Locke is a deterministic, content-addressed data-skepticism layer for CJC-Lang. v0.1.10 is live on crates.io. Every finding carries structured evidence, assumptions, and suggested next checks. Reports are content-addressed so CI runs can diff them byte-for-byte. This post positions Locke against the four adjacent tools (dbt, Pandera, Monte Carlo, Great Expectations) using a five-layer model of the data-quality stack, walks four concrete scenarios with actual JSON findings and a Mermaid lineage graph, and includes a 275× speedup benchmark against GX on a 7023-row synthetic churn dataset.">
+<meta name="description" content="Locke is a deterministic, content-addressed data-skepticism layer for CJC-Lang. v0.1.10 is live on crates.io. Every finding carries structured evidence, assumptions, and suggested next checks. Reports are content-addressed so CI runs can diff them byte-for-byte. This post positions Locke against the four adjacent tools (dbt, Pandera, Monte Carlo, Great Expectations) using a five-layer model of the data-quality stack, walks four concrete scenarios with actual JSON findings and a Mermaid lineage graph, includes adversarial side-by-side examples where ordinary tools see nothing, formalises the meet-semilattice algebra under which BeliefScores compose, and includes a 275× speedup benchmark against GX on a 7023-row synthetic churn dataset.">
 
 <title>Adam Ezzat - Locke v0.1.10: An Epistemic Layer for Data Validation</title>
 <style>
@@ -181,6 +181,14 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#scenario-3-the-lineage-diagram" id="toc-scenario-3-the-lineage-diagram" class="nav-link" data-scroll-target="#scenario-3-the-lineage-diagram">Scenario 3 — The lineage diagram</a></li>
   <li><a href="#scenario-4-belief-score-side-by-side" id="toc-scenario-4-belief-score-side-by-side" class="nav-link" data-scroll-target="#scenario-4-belief-score-side-by-side">Scenario 4 — Belief score side-by-side</a></li>
   </ul></li>
+  <li><a href="#when-ordinary-tools-see-nothing" id="toc-when-ordinary-tools-see-nothing" class="nav-link" data-scroll-target="#when-ordinary-tools-see-nothing">When ordinary tools see nothing</a>
+  <ul class="collapse">
+  <li><a href="#a-dashboard-says-churn-risk-up-22" id="toc-a-dashboard-says-churn-risk-up-22" class="nav-link" data-scroll-target="#a-dashboard-says-churn-risk-up-22">A — Dashboard says “churn risk up 22%”</a></li>
+  <li><a href="#b-dbt-test-exits-0-model-memorises-customer_id" id="toc-b-dbt-test-exits-0-model-memorises-customer_id" class="nav-link" data-scroll-target="#b-dbt-test-exits-0-model-memorises-customer_id">B — <code>dbt test</code> exits 0, model memorises <code>customer_id</code></a></li>
+  <li><a href="#c-pandera-schema-passes-a-stale-snapshot" id="toc-c-pandera-schema-passes-a-stale-snapshot" class="nav-link" data-scroll-target="#c-pandera-schema-passes-a-stale-snapshot">C — Pandera schema passes a stale snapshot</a></li>
+  <li><a href="#d-monte-carlo-green-traintest-boundary-leaks" id="toc-d-monte-carlo-green-traintest-boundary-leaks" class="nav-link" data-scroll-target="#d-monte-carlo-green-traintest-boundary-leaks">D — Monte Carlo green, train/test boundary leaks</a></li>
+  <li><a href="#common-thread" id="toc-common-thread" class="nav-link" data-scroll-target="#common-thread">Common thread</a></li>
+  </ul></li>
   <li><a href="#what-ships-in-v0.1.10" id="toc-what-ships-in-v0.1.10" class="nav-link" data-scroll-target="#what-ships-in-v0.1.10">What ships in v0.1.10</a></li>
   <li><a href="#how-locke-compares-to-adjacent-tools" id="toc-how-locke-compares-to-adjacent-tools" class="nav-link" data-scroll-target="#how-locke-compares-to-adjacent-tools">How Locke compares to adjacent tools</a>
   <ul class="collapse">
@@ -210,6 +218,17 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
   <li><a href="#the-stakeholder-html-report" id="toc-the-stakeholder-html-report" class="nav-link" data-scroll-target="#the-stakeholder-html-report">The stakeholder HTML report</a></li>
   <li><a href="#locke-is-not-a-one-stop-ml-tool" id="toc-locke-is-not-a-one-stop-ml-tool" class="nav-link" data-scroll-target="#locke-is-not-a-one-stop-ml-tool">Locke is not a one-stop ML tool</a></li>
   <li><a href="#what-i-think-the-determinism-contract-actually-buys-you" id="toc-what-i-think-the-determinism-contract-actually-buys-you" class="nav-link" data-scroll-target="#what-i-think-the-determinism-contract-actually-buys-you">What I think the determinism contract actually buys you</a></li>
+  <li><a href="#the-formal-model-how-confidence-composes" id="toc-the-formal-model-how-confidence-composes" class="nav-link" data-scroll-target="#the-formal-model-how-confidence-composes">The formal model: how confidence composes</a>
+  <ul class="collapse">
+  <li><a href="#confidence-representation" id="toc-confidence-representation" class="nav-link" data-scroll-target="#confidence-representation">Confidence representation</a></li>
+  <li><a href="#confidence-composition-under-transformation" id="toc-confidence-composition-under-transformation" class="nav-link" data-scroll-target="#confidence-composition-under-transformation">Confidence composition under transformation</a></li>
+  <li><a href="#what-weakens-confidence" id="toc-what-weakens-confidence" class="nav-link" data-scroll-target="#what-weakens-confidence">What weakens confidence</a></li>
+  <li><a href="#how-propagation-is-modeled" id="toc-how-propagation-is-modeled" class="nav-link" data-scroll-target="#how-propagation-is-modeled">How propagation is modeled</a></li>
+  <li><a href="#deterministic-update-rules" id="toc-deterministic-update-rules" class="nav-link" data-scroll-target="#deterministic-update-rules">Deterministic update rules</a></li>
+  <li><a href="#confidence-algebra-shipped-vs-planned" id="toc-confidence-algebra-shipped-vs-planned" class="nav-link" data-scroll-target="#confidence-algebra-shipped-vs-planned">Confidence algebra (shipped vs planned)</a></li>
+  <li><a href="#belief-degradation-visualised" id="toc-belief-degradation-visualised" class="nav-link" data-scroll-target="#belief-degradation-visualised">Belief degradation, visualised</a></li>
+  <li><a href="#where-the-formal-model-lives-in-code" id="toc-where-the-formal-model-lives-in-code" class="nav-link" data-scroll-target="#where-the-formal-model-lives-in-code">Where the formal model lives in code</a></li>
+  </ul></li>
   <li><a href="#install" id="toc-install" class="nav-link" data-scroll-target="#install">Install</a></li>
   <li><a href="#where-v0.2-is-going" id="toc-where-v0.2-is-going" class="nav-link" data-scroll-target="#where-v0.2-is-going">Where v0.2 is going</a></li>
   <li><a href="#final-honest-framing" id="toc-final-honest-framing" class="nav-link" data-scroll-target="#final-honest-framing">Final honest framing</a></li>
@@ -236,7 +255,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 
 <div>
   <div class="description">
-    Locke is a deterministic, content-addressed data-skepticism layer for CJC-Lang. v0.1.10 is live on crates.io. Every finding carries structured evidence, assumptions, and suggested next checks. Reports are content-addressed so CI runs can diff them byte-for-byte. This post positions Locke against the four adjacent tools (dbt, Pandera, Monte Carlo, Great Expectations) using a five-layer model of the data-quality stack, walks four concrete scenarios with actual JSON findings and a Mermaid lineage graph, and includes a 275× speedup benchmark against GX on a 7023-row synthetic churn dataset.
+    Locke is a deterministic, content-addressed data-skepticism layer for CJC-Lang. v0.1.10 is live on crates.io. Every finding carries structured evidence, assumptions, and suggested next checks. Reports are content-addressed so CI runs can diff them byte-for-byte. This post positions Locke against the four adjacent tools (dbt, Pandera, Monte Carlo, Great Expectations) using a five-layer model of the data-quality stack, walks four concrete scenarios with actual JSON findings and a Mermaid lineage graph, includes adversarial side-by-side examples where ordinary tools see nothing, formalises the meet-semilattice algebra under which BeliefScores compose, and includes a 275× speedup benchmark against GX on a 7023-row synthetic churn dataset.
   </div>
 </div>
 
@@ -270,7 +289,7 @@ pre > code.sourceCode > span > a:first-child::before { text-decoration: underlin
 </header>
 
 <div class="reading-time">
-🕑 ~32 min read
+🕑 ~42 min read
 </div>
 <div class="stats-row">
 <div class="stat">
@@ -583,9 +602,90 @@ dataset_b.csv
 <p>A single magic number from a black-box scorer would let you compare datasets but not act on the comparison. The 8-dim breakdown plus the findings table is what makes the decision actionable.</p>
 </section>
 </section>
+<section id="when-ordinary-tools-see-nothing" class="level2">
+<h2 class="anchored" data-anchor-id="when-ordinary-tools-see-nothing">When ordinary tools see nothing</h2>
+<p>The previous scenarios showed Locke firing on a dataset where <em>something</em> observably went wrong. The harder case — and the one that motivates the epistemic layer — is when an ordinary tool reports success while Locke surfaces a structured warning. Four side-by-side examples.</p>
+<section id="a-dashboard-says-churn-risk-up-22" class="level3">
+<h3 class="anchored" data-anchor-id="a-dashboard-says-churn-risk-up-22">A — Dashboard says “churn risk up 22%”</h3>
+<p><strong>Ordinary view (Looker tile):</strong></p>
+<pre><code>KPI:  customer_churn_risk_score
+Δ wk: +22.4%
+trend: ▁▂▂▃▃▅▆▇
+owner: notified — review next standup</code></pre>
+<p><strong>Locke gate diff for the same data:</strong></p>
+<pre><code># Locke Gate Diff
+reference_run_id: 1075bbad9d9b882f
+current_run_id:   ce81fa3d2b5a974e
+summary: appeared=4 disappeared=0 unchanged=15
+
+appeared:
+  + code=E9039 severity=error column=last_login_days_ago
+    numeric distribution shift (KS D = 0.51)
+  + code=E9061 severity=warning column=last_login_days_ago
+    feature |AUC|=0.87 against `churned` — proxy-leakage suspect
+  + code=E9051 severity=error column=event_ts
+    312 production rows have event_ts inside the training window
+  + code=E9080 severity=warning
+    causal assumption `churn_intent → unsubscribe` unsupported in this sample</code></pre>
+<p>The dashboard reports the model output. Locke explains <em>why</em> the output moved: an upstream ETL change added a 7-day-lagged event source, the <code>last_login_days_ago</code> distribution shifted because recent activity is now censored, the feature became a proxy for the lag itself (not for churn intent), and 312 production rows leaked back into the training window. The 22% risk uptick is a measurement artifact. A human reading the Locke diff stops the alert chain before the executive briefing; a human reading only the dashboard escalates.</p>
+</section>
+<section id="b-dbt-test-exits-0-model-memorises-customer_id" class="level3">
+<h3 class="anchored" data-anchor-id="b-dbt-test-exits-0-model-memorises-customer_id">B — <code>dbt test</code> exits 0, model memorises <code>customer_id</code></h3>
+<p><strong>Ordinary view (CI log):</strong></p>
+<pre><code>$ dbt test --select model:churn_features
+Found 14 tests, 0 sources, 1 model
+14 of 14 PASS in 8.41s
+Completed successfully — 0 errors</code></pre>
+<p><strong>Locke output on the same table:</strong></p>
+<pre><code>[E9072 notice] column `customer_id`      cardinality 0.997  — id-like leak suspect
+                id=328845d456c53aea
+[E9072 notice] column `last_login_unix`  cardinality 0.997  — id-like leak suspect
+                id=03ae43c0bccfbc79
+[E9072 notice] column `total_charges`    cardinality 0.977  — id-like leak suspect
+                id=86d3973bf5062cf8</code></pre>
+<p>dbt’s <code>unique</code> test is structurally the right question for transformation correctness — “does each row have a distinct key.” It is structurally the wrong question for whether to keep that column as a feature. A model trained on the dbt-validated table will hit 98% offline ROC AUC and degrade to 55% in production within a week, because gradient boosting will happily memorise customer IDs the moment they’re left in. Locke fires E9072 on every column whose distinct-per-row ratio exceeds 0.95 and asks the human to decide.</p>
+</section>
+<section id="c-pandera-schema-passes-a-stale-snapshot" class="level3">
+<h3 class="anchored" data-anchor-id="c-pandera-schema-passes-a-stale-snapshot">C — Pandera schema passes a stale snapshot</h3>
+<p><strong>Ordinary view (Pandera report):</strong></p>
+<pre><code>SchemaModel: CustomersLatest
+Validated successfully.
+14 columns, 124083 rows.
+Run at 2026-10-04T03:00:00.184Z (build #4471)</code></pre>
+<p><strong>Locke output on the same file:</strong></p>
+<pre><code>[E9050 warning] column `event_ts` not sorted: 1247 non-decreasing pairs
+                id=a96abd21b26275c6
+[E9054 warning] dataset `customers_latest.parquet` is 9.2 days stale
+                max(event_ts) = 2026-09-25T00:00:00Z
+                expected_at   = 2026-10-04T00:00:00Z
+                id=e9a4f12c80b5d736</code></pre>
+<p>Pandera answers “does each row match the type-and-range contract.” It cannot answer “is this snapshot the snapshot I expected” because the contract is a per-row predicate, not a dataset-scoped invariant. Locke’s <code>--max-timestamp</code> carries a declared dataset-level invariant and fires E9054 when it’s violated. The downstream model trained on the Pandera-validated snapshot will be trained on data 9 days older than the team thinks, and the production scorer will degrade silently.</p>
+</section>
+<section id="d-monte-carlo-green-traintest-boundary-leaks" class="level3">
+<h3 class="anchored" data-anchor-id="d-monte-carlo-green-traintest-boundary-leaks">D — Monte Carlo green, train/test boundary leaks</h3>
+<p><strong>Ordinary view (MC monitor):</strong></p>
+<pre><code>Table: prod.feature_store.churn_features
+Row count anomaly:   normal (z = 0.31)
+Schema anomaly:      none
+Freshness:           on-time
+Distribution drift:  none detected
+Status: ✅ healthy</code></pre>
+<p><strong>Locke output:</strong></p>
+<pre><code>[E9051 error] 127 rows in `feature_store_test` have event_ts
+              &lt;= max(event_ts) of `feature_store_train`
+              overlap_rate = 0.0021
+              id=8f6c5b3d1e7a4920</code></pre>
+<p>Monte Carlo’s metadata-anomaly detector trips on shapes that look statistically unusual compared to history. A 0.21% subpopulation overlap between train and test rows doesn’t shift the warehouse-layer marginal distribution by anywhere near MC’s sensitivity threshold — <em>it can’t</em>, because it’s a small slice. Locke trips because the train/test temporal boundary is a <em>declared invariant</em>, not a statistical anomaly. Anomaly detection trips on unexpected statistical shapes; epistemic checks trip on declared known-class violations. Both layers are useful; only the epistemic layer catches this specific failure.</p>
+</section>
+<section id="common-thread" class="level3">
+<h3 class="anchored" data-anchor-id="common-thread">Common thread</h3>
+<p>Every ordinary-tool report in the four examples is <em>correct under its own contract</em>. The Looker tile correctly computed the churn-risk delta. dbt correctly verified that <code>customer_id</code> is unique. Pandera correctly checked the type-and-range schema. Monte Carlo correctly observed no row-count or freshness anomaly. None of them is wrong; each is silent on the failure mode Locke caught, because the failure mode is outside the layer the tool is designed for.</p>
+<p>The epistemic layer is the layer that asks: <em>given the evidence in this dataset and the assumptions Locke is allowed to state, is there a structured finding that should make a human stop and think before the next step runs?</em></p>
+</section>
+</section>
 <section id="what-ships-in-v0.1.10" class="level2">
 <h2 class="anchored" data-anchor-id="what-ships-in-v0.1.10">What ships in v0.1.10</h2>
-<div class="sourceCode" id="cb10"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> add cjc-locke</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb18"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> add cjc-locke</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>You get:</p>
 <ul>
 <li><strong>Validation</strong> — missingness (with null masks for non-float columns), duplicates (full row + by primary key with conditioning), impossible-value DSL, constants and near-constants, schema mismatch, suspicious cardinality, IQR + modified-Z outliers, sentinel-value detection, conditional missingness, imbalanced-class warning, ID-like cardinality hints</li>
@@ -643,13 +743,13 @@ dataset_b.csv
 <section id="vs-pandera" class="level3">
 <h3 class="anchored" data-anchor-id="vs-pandera">vs Pandera</h3>
 <p>Pandera is the pandas-native schema-validation library. It’s the most direct comparable for “validate a DataFrame in-process.”</p>
-<div class="sourceCode" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandera <span class="im">as</span> pa</span>
-<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>schema <span class="op">=</span> pa.DataFrameSchema({</span>
-<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"customer_id"</span>: pa.Column(<span class="bu">int</span>, pa.Check.ge(<span class="dv">0</span>)),</span>
-<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"monthly_charges"</span>: pa.Column(<span class="bu">float</span>, pa.Check.in_range(<span class="dv">0</span>, <span class="dv">500</span>)),</span>
-<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"churned"</span>: pa.Column(<span class="bu">bool</span>),</span>
-<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>})</span>
-<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a>schema.validate(df)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb19"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandera <span class="im">as</span> pa</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>schema <span class="op">=</span> pa.DataFrameSchema({</span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>    <span class="st">"customer_id"</span>: pa.Column(<span class="bu">int</span>, pa.Check.ge(<span class="dv">0</span>)),</span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"monthly_charges"</span>: pa.Column(<span class="bu">float</span>, pa.Check.in_range(<span class="dv">0</span>, <span class="dv">500</span>)),</span>
+<span id="cb19-5"><a href="#cb19-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"churned"</span>: pa.Column(<span class="bu">bool</span>),</span>
+<span id="cb19-6"><a href="#cb19-6" aria-hidden="true" tabindex="-1"></a>})</span>
+<span id="cb19-7"><a href="#cb19-7" aria-hidden="true" tabindex="-1"></a>schema.validate(df)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>What Locke does differently:</p>
 <ul>
 <li><strong>Pandera reports include timestamps and walk dictionaries in iteration order. Locke reports are content-addressed.</strong> Pandera’s <code>SchemaErrors.failure_cases</code> is reproducible across runs as a <em>DataFrame</em>; the surrounding report metadata is not. Locke’s entire report serialises to canonical JSON with deterministic key ordering and content-addressed IDs.</li>
@@ -735,42 +835,42 @@ dataset_b.csv
 <section id="a-real-finding-byte-for-byte" class="level3">
 <h3 class="anchored" data-anchor-id="a-real-finding-byte-for-byte">A real finding, byte-for-byte</h3>
 <p>To make the determinism claim concrete, here is a literal <code>ValidationFinding</code> from the benchmark’s <code>locke_results.json</code> — the impossible-<code>monthly_charges</code> outlier:</p>
-<div class="sourceCode" id="cb12"><pre class="sourceCode json code-with-copy"><code class="sourceCode json"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
-<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"id"</span><span class="fu">:</span> <span class="st">"f615af023438bcb5"</span><span class="fu">,</span></span>
-<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"code"</span><span class="fu">:</span> <span class="st">"E9041"</span><span class="fu">,</span></span>
-<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"severity"</span><span class="fu">:</span> <span class="st">"warning"</span><span class="fu">,</span></span>
-<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"message"</span><span class="fu">:</span> <span class="st">"column `monthly_charges` has 5 extreme outliers (3×IQR or |mod-Z| ≥ 5.0)"</span><span class="fu">,</span></span>
-<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"column"</span><span class="fu">:</span> <span class="st">"monthly_charges"</span><span class="fu">,</span></span>
-<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"row_range"</span><span class="fu">:</span> <span class="kw">null</span><span class="fu">,</span></span>
-<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"sample_size"</span><span class="fu">:</span> <span class="dv">7023</span><span class="fu">,</span></span>
-<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"evidence"</span><span class="fu">:</span> <span class="ot">[</span></span>
-<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span><span class="dt">"kind"</span><span class="fu">:</span> <span class="st">"count"</span><span class="fu">,</span>  <span class="dt">"label"</span><span class="fu">:</span> <span class="st">"n_extreme"</span><span class="fu">,</span>  <span class="dt">"value"</span><span class="fu">:</span> <span class="dv">5</span><span class="fu">}</span><span class="ot">,</span></span>
-<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span><span class="dt">"kind"</span><span class="fu">:</span> <span class="st">"sample"</span><span class="fu">,</span> <span class="dt">"label"</span><span class="fu">:</span> <span class="st">"sample"</span><span class="fu">,</span>     <span class="dt">"value"</span><span class="fu">:</span> <span class="st">"row150=-9999,row151=-9999,row152=-9999"</span><span class="fu">}</span><span class="ot">,</span></span>
-<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span><span class="dt">"kind"</span><span class="fu">:</span> <span class="st">"range"</span><span class="fu">,</span>  <span class="dt">"label"</span><span class="fu">:</span> <span class="st">"iqr_q1_q3"</span><span class="fu">,</span>  <span class="dt">"min"</span><span class="fu">:</span> <span class="fl">45.974999999999994</span><span class="fu">,</span> <span class="dt">"max"</span><span class="fu">:</span> <span class="fl">95.27</span><span class="fu">}</span></span>
-<span id="cb12-13"><a href="#cb12-13" aria-hidden="true" tabindex="-1"></a>  <span class="ot">]</span><span class="fu">,</span></span>
-<span id="cb12-14"><a href="#cb12-14" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"assumptions"</span><span class="fu">:</span> <span class="ot">[</span></span>
-<span id="cb12-15"><a href="#cb12-15" aria-hidden="true" tabindex="-1"></a>    <span class="st">"extreme outliers usually indicate sensor errors, sentinel values, or unit-mix-ups"</span></span>
-<span id="cb12-16"><a href="#cb12-16" aria-hidden="true" tabindex="-1"></a>  <span class="ot">]</span><span class="fu">,</span></span>
-<span id="cb12-17"><a href="#cb12-17" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"suggested_next_checks"</span><span class="fu">:</span> <span class="ot">[</span></span>
-<span id="cb12-18"><a href="#cb12-18" aria-hidden="true" tabindex="-1"></a>    <span class="st">"verify physical plausibility (e.g. age = 999, temperature = -9999)"</span><span class="ot">,</span></span>
-<span id="cb12-19"><a href="#cb12-19" aria-hidden="true" tabindex="-1"></a>    <span class="st">"consider declaring sentinel values as nulls via NullMask"</span></span>
-<span id="cb12-20"><a href="#cb12-20" aria-hidden="true" tabindex="-1"></a>  <span class="ot">]</span></span>
-<span id="cb12-21"><a href="#cb12-21" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb20"><pre class="sourceCode json code-with-copy"><code class="sourceCode json"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"id"</span><span class="fu">:</span> <span class="st">"f615af023438bcb5"</span><span class="fu">,</span></span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"code"</span><span class="fu">:</span> <span class="st">"E9041"</span><span class="fu">,</span></span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"severity"</span><span class="fu">:</span> <span class="st">"warning"</span><span class="fu">,</span></span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"message"</span><span class="fu">:</span> <span class="st">"column `monthly_charges` has 5 extreme outliers (3×IQR or |mod-Z| ≥ 5.0)"</span><span class="fu">,</span></span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"column"</span><span class="fu">:</span> <span class="st">"monthly_charges"</span><span class="fu">,</span></span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"row_range"</span><span class="fu">:</span> <span class="kw">null</span><span class="fu">,</span></span>
+<span id="cb20-8"><a href="#cb20-8" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"sample_size"</span><span class="fu">:</span> <span class="dv">7023</span><span class="fu">,</span></span>
+<span id="cb20-9"><a href="#cb20-9" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"evidence"</span><span class="fu">:</span> <span class="ot">[</span></span>
+<span id="cb20-10"><a href="#cb20-10" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span><span class="dt">"kind"</span><span class="fu">:</span> <span class="st">"count"</span><span class="fu">,</span>  <span class="dt">"label"</span><span class="fu">:</span> <span class="st">"n_extreme"</span><span class="fu">,</span>  <span class="dt">"value"</span><span class="fu">:</span> <span class="dv">5</span><span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb20-11"><a href="#cb20-11" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span><span class="dt">"kind"</span><span class="fu">:</span> <span class="st">"sample"</span><span class="fu">,</span> <span class="dt">"label"</span><span class="fu">:</span> <span class="st">"sample"</span><span class="fu">,</span>     <span class="dt">"value"</span><span class="fu">:</span> <span class="st">"row150=-9999,row151=-9999,row152=-9999"</span><span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb20-12"><a href="#cb20-12" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span><span class="dt">"kind"</span><span class="fu">:</span> <span class="st">"range"</span><span class="fu">,</span>  <span class="dt">"label"</span><span class="fu">:</span> <span class="st">"iqr_q1_q3"</span><span class="fu">,</span>  <span class="dt">"min"</span><span class="fu">:</span> <span class="fl">45.974999999999994</span><span class="fu">,</span> <span class="dt">"max"</span><span class="fu">:</span> <span class="fl">95.27</span><span class="fu">}</span></span>
+<span id="cb20-13"><a href="#cb20-13" aria-hidden="true" tabindex="-1"></a>  <span class="ot">]</span><span class="fu">,</span></span>
+<span id="cb20-14"><a href="#cb20-14" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"assumptions"</span><span class="fu">:</span> <span class="ot">[</span></span>
+<span id="cb20-15"><a href="#cb20-15" aria-hidden="true" tabindex="-1"></a>    <span class="st">"extreme outliers usually indicate sensor errors, sentinel values, or unit-mix-ups"</span></span>
+<span id="cb20-16"><a href="#cb20-16" aria-hidden="true" tabindex="-1"></a>  <span class="ot">]</span><span class="fu">,</span></span>
+<span id="cb20-17"><a href="#cb20-17" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"suggested_next_checks"</span><span class="fu">:</span> <span class="ot">[</span></span>
+<span id="cb20-18"><a href="#cb20-18" aria-hidden="true" tabindex="-1"></a>    <span class="st">"verify physical plausibility (e.g. age = 999, temperature = -9999)"</span><span class="ot">,</span></span>
+<span id="cb20-19"><a href="#cb20-19" aria-hidden="true" tabindex="-1"></a>    <span class="st">"consider declaring sentinel values as nulls via NullMask"</span></span>
+<span id="cb20-20"><a href="#cb20-20" aria-hidden="true" tabindex="-1"></a>  <span class="ot">]</span></span>
+<span id="cb20-21"><a href="#cb20-21" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>The <code>id</code> field is <code>f615af023438bcb5</code> — a 64-bit content fingerprint over the rest of the structure. Rerunning the same benchmark on a different machine produces the same 16 hex characters. That’s the property that makes the gate diff in Scenario 1 work: “unchanged” findings are recognised by ID, not by message text.</p>
 <p>Compare to the equivalent Great Expectations result for the same five rows (verbatim from <code>gx_results.json</code>):</p>
-<div class="sourceCode" id="cb13"><pre class="sourceCode json code-with-copy"><code class="sourceCode json"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"name"</span><span class="fu">:</span> <span class="st">"monthly_charges_in_range[-100,500]"</span><span class="fu">,</span></span>
-<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"severity"</span><span class="fu">:</span> <span class="st">"Error"</span><span class="fu">,</span></span>
-<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"success"</span><span class="fu">:</span> <span class="kw">false</span><span class="fu">,</span></span>
-<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"details"</span><span class="fu">:</span> <span class="fu">{</span></span>
-<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>    <span class="dt">"element_count"</span><span class="fu">:</span> <span class="dv">7023</span><span class="fu">,</span></span>
-<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>    <span class="dt">"unexpected_count"</span><span class="fu">:</span> <span class="dv">5</span><span class="fu">,</span></span>
-<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a>    <span class="dt">"unexpected_percent"</span><span class="fu">:</span> <span class="fl">0.07118041435995925</span><span class="fu">,</span></span>
-<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a>    <span class="dt">"partial_unexpected_list"</span><span class="fu">:</span> <span class="ot">[</span><span class="dv">-9999</span><span class="ot">,</span> <span class="dv">-9999</span><span class="ot">,</span> <span class="dv">-9999</span><span class="ot">,</span> <span class="dv">-9999</span><span class="ot">,</span> <span class="dv">-9999</span><span class="ot">]</span><span class="fu">,</span></span>
-<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a>    <span class="dt">"partial_unexpected_counts"</span><span class="fu">:</span> <span class="ot">[</span><span class="fu">{</span><span class="dt">"value"</span><span class="fu">:</span> <span class="dv">-9999</span><span class="fu">,</span> <span class="dt">"count"</span><span class="fu">:</span> <span class="dv">5</span><span class="fu">}</span><span class="ot">]</span><span class="fu">,</span></span>
-<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a>    <span class="dt">"partial_unexpected_index_list"</span><span class="fu">:</span> <span class="ot">[</span><span class="dv">150</span><span class="ot">,</span> <span class="dv">151</span><span class="ot">,</span> <span class="dv">152</span><span class="ot">,</span> <span class="dv">153</span><span class="ot">,</span> <span class="dv">154</span><span class="ot">]</span></span>
-<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">}</span></span>
-<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb21"><pre class="sourceCode json code-with-copy"><code class="sourceCode json"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"name"</span><span class="fu">:</span> <span class="st">"monthly_charges_in_range[-100,500]"</span><span class="fu">,</span></span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"severity"</span><span class="fu">:</span> <span class="st">"Error"</span><span class="fu">,</span></span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"success"</span><span class="fu">:</span> <span class="kw">false</span><span class="fu">,</span></span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"details"</span><span class="fu">:</span> <span class="fu">{</span></span>
+<span id="cb21-6"><a href="#cb21-6" aria-hidden="true" tabindex="-1"></a>    <span class="dt">"element_count"</span><span class="fu">:</span> <span class="dv">7023</span><span class="fu">,</span></span>
+<span id="cb21-7"><a href="#cb21-7" aria-hidden="true" tabindex="-1"></a>    <span class="dt">"unexpected_count"</span><span class="fu">:</span> <span class="dv">5</span><span class="fu">,</span></span>
+<span id="cb21-8"><a href="#cb21-8" aria-hidden="true" tabindex="-1"></a>    <span class="dt">"unexpected_percent"</span><span class="fu">:</span> <span class="fl">0.07118041435995925</span><span class="fu">,</span></span>
+<span id="cb21-9"><a href="#cb21-9" aria-hidden="true" tabindex="-1"></a>    <span class="dt">"partial_unexpected_list"</span><span class="fu">:</span> <span class="ot">[</span><span class="dv">-9999</span><span class="ot">,</span> <span class="dv">-9999</span><span class="ot">,</span> <span class="dv">-9999</span><span class="ot">,</span> <span class="dv">-9999</span><span class="ot">,</span> <span class="dv">-9999</span><span class="ot">]</span><span class="fu">,</span></span>
+<span id="cb21-10"><a href="#cb21-10" aria-hidden="true" tabindex="-1"></a>    <span class="dt">"partial_unexpected_counts"</span><span class="fu">:</span> <span class="ot">[</span><span class="fu">{</span><span class="dt">"value"</span><span class="fu">:</span> <span class="dv">-9999</span><span class="fu">,</span> <span class="dt">"count"</span><span class="fu">:</span> <span class="dv">5</span><span class="fu">}</span><span class="ot">]</span><span class="fu">,</span></span>
+<span id="cb21-11"><a href="#cb21-11" aria-hidden="true" tabindex="-1"></a>    <span class="dt">"partial_unexpected_index_list"</span><span class="fu">:</span> <span class="ot">[</span><span class="dv">150</span><span class="ot">,</span> <span class="dv">151</span><span class="ot">,</span> <span class="dv">152</span><span class="ot">,</span> <span class="dv">153</span><span class="ot">,</span> <span class="dv">154</span><span class="ot">]</span></span>
+<span id="cb21-12"><a href="#cb21-12" aria-hidden="true" tabindex="-1"></a>  <span class="fu">}</span></span>
+<span id="cb21-13"><a href="#cb21-13" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Both tools catch the same five rows. GX surfaces more detail per finding (sample list, index list, exact percent). Locke surfaces typed evidence kinds (<code>count</code>, <code>sample</code>, <code>range</code>), declared assumptions, suggested next checks — and the stable ID. They’re answering different questions about the same fact.</p>
 </section>
 <section id="detection-results" class="level3">
@@ -1053,64 +1153,64 @@ dataset_b.csv
 <section id="the-ci-workflow-locke-was-built-for" class="level2">
 <h2 class="anchored" data-anchor-id="the-ci-workflow-locke-was-built-for">The CI workflow Locke was built for</h2>
 <p>Scenario 1 above sketched the workflow. Here it is wired into a CI config, showing the exact JSON snapshot file the workflow checks in.</p>
-<div class="sourceCode" id="cb14"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="co"># After every successful model training, snapshot the baseline:</span></span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="ex">cjcl</span> locke validate train_2026q2.csv <span class="dt">\</span></span>
-<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">--target</span> churned <span class="dt">\</span></span>
-<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">--primary-key</span> customer_id <span class="dt">\</span></span>
-<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">--time-col</span> event_ts <span class="dt">\</span></span>
-<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">--max-timestamp</span> 1719792000000 <span class="dt">\</span></span>
-<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">--save-json</span> baselines/2026q2_baseline.json <span class="dt">\</span></span>
-<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>  <span class="at">--html</span> reports/2026q2.html</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb22"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="co"># After every successful model training, snapshot the baseline:</span></span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a><span class="ex">cjcl</span> locke validate train_2026q2.csv <span class="dt">\</span></span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">--target</span> churned <span class="dt">\</span></span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">--primary-key</span> customer_id <span class="dt">\</span></span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">--time-col</span> event_ts <span class="dt">\</span></span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">--max-timestamp</span> 1719792000000 <span class="dt">\</span></span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">--save-json</span> baselines/2026q2_baseline.json <span class="dt">\</span></span>
+<span id="cb22-8"><a href="#cb22-8" aria-hidden="true" tabindex="-1"></a>  <span class="at">--html</span> reports/2026q2.html</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>The <code>baselines/2026q2_baseline.json</code> that lands in the repo looks like this (truncated to one finding for brevity):</p>
-<div class="sourceCode" id="cb15"><pre class="sourceCode json code-with-copy"><code class="sourceCode json"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
-<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"schema_version"</span><span class="fu">:</span> <span class="dv">1</span><span class="fu">,</span></span>
-<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"run_id"</span><span class="fu">:</span> <span class="st">"1075bbad9d9b882f"</span><span class="fu">,</span></span>
-<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"input"</span><span class="fu">:</span> <span class="fu">{</span></span>
-<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>    <span class="dt">"dataset_label"</span><span class="fu">:</span> <span class="st">"train_2026q2.csv"</span><span class="fu">,</span></span>
-<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>    <span class="dt">"n_rows"</span><span class="fu">:</span> <span class="dv">124083</span><span class="fu">,</span></span>
-<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a>    <span class="dt">"n_cols"</span><span class="fu">:</span> <span class="dv">14</span><span class="fu">,</span></span>
-<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>    <span class="dt">"column_types"</span><span class="fu">:</span> <span class="fu">{</span></span>
-<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"churned"</span><span class="fu">:</span> <span class="st">"Bool"</span><span class="fu">,</span></span>
-<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"customer_id"</span><span class="fu">:</span> <span class="st">"Int"</span><span class="fu">,</span></span>
-<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"event_ts"</span><span class="fu">:</span> <span class="st">"Int"</span><span class="fu">,</span></span>
-<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"monthly_charges"</span><span class="fu">:</span> <span class="st">"Float"</span><span class="fu">,</span></span>
-<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"tenure_months"</span><span class="fu">:</span> <span class="st">"Int"</span><span class="fu">,</span></span>
-<span id="cb15-14"><a href="#cb15-14" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"..."</span><span class="fu">:</span> <span class="st">"..."</span></span>
-<span id="cb15-15"><a href="#cb15-15" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span></span>
-<span id="cb15-16"><a href="#cb15-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">},</span></span>
-<span id="cb15-17"><a href="#cb15-17" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"severity_counts"</span><span class="fu">:</span> <span class="fu">{</span><span class="dt">"info"</span><span class="fu">:</span> <span class="dv">6</span><span class="fu">,</span> <span class="dt">"notice"</span><span class="fu">:</span> <span class="dv">2</span><span class="fu">,</span> <span class="dt">"warning"</span><span class="fu">:</span> <span class="dv">0</span><span class="fu">,</span> <span class="dt">"error"</span><span class="fu">:</span> <span class="dv">0</span><span class="fu">},</span></span>
-<span id="cb15-18"><a href="#cb15-18" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"findings"</span><span class="fu">:</span> <span class="ot">[</span></span>
-<span id="cb15-19"><a href="#cb15-19" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
-<span id="cb15-20"><a href="#cb15-20" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"id"</span><span class="fu">:</span> <span class="st">"5a0309e1047ccdf8"</span><span class="fu">,</span></span>
-<span id="cb15-21"><a href="#cb15-21" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"code"</span><span class="fu">:</span> <span class="st">"E9004"</span><span class="fu">,</span></span>
-<span id="cb15-22"><a href="#cb15-22" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"severity"</span><span class="fu">:</span> <span class="st">"notice"</span><span class="fu">,</span></span>
-<span id="cb15-23"><a href="#cb15-23" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"message"</span><span class="fu">:</span> <span class="st">"key column `customer_id` has 0 duplicate values across 0 groups"</span><span class="fu">,</span></span>
-<span id="cb15-24"><a href="#cb15-24" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"column"</span><span class="fu">:</span> <span class="st">"customer_id"</span><span class="fu">,</span></span>
-<span id="cb15-25"><a href="#cb15-25" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"evidence"</span><span class="fu">:</span> <span class="ot">[</span></span>
-<span id="cb15-26"><a href="#cb15-26" aria-hidden="true" tabindex="-1"></a>        <span class="fu">{</span><span class="dt">"kind"</span><span class="fu">:</span> <span class="st">"count"</span><span class="fu">,</span> <span class="dt">"label"</span><span class="fu">:</span> <span class="st">"duplicate_keys"</span><span class="fu">,</span>   <span class="dt">"value"</span><span class="fu">:</span> <span class="dv">0</span><span class="fu">}</span><span class="ot">,</span></span>
-<span id="cb15-27"><a href="#cb15-27" aria-hidden="true" tabindex="-1"></a>        <span class="fu">{</span><span class="dt">"kind"</span><span class="fu">:</span> <span class="st">"count"</span><span class="fu">,</span> <span class="dt">"label"</span><span class="fu">:</span> <span class="st">"duplicate_groups"</span><span class="fu">,</span> <span class="dt">"value"</span><span class="fu">:</span> <span class="dv">0</span><span class="fu">}</span></span>
-<span id="cb15-28"><a href="#cb15-28" aria-hidden="true" tabindex="-1"></a>      <span class="ot">]</span><span class="fu">,</span></span>
-<span id="cb15-29"><a href="#cb15-29" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"assumptions"</span><span class="fu">:</span> <span class="ot">[</span></span>
-<span id="cb15-30"><a href="#cb15-30" aria-hidden="true" tabindex="-1"></a>        <span class="st">"key uniqueness assumed; primary-key constraint not enforced by cjc-data"</span></span>
-<span id="cb15-31"><a href="#cb15-31" aria-hidden="true" tabindex="-1"></a>      <span class="ot">]</span><span class="fu">,</span></span>
-<span id="cb15-32"><a href="#cb15-32" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"suggested_next_checks"</span><span class="fu">:</span> <span class="ot">[</span><span class="st">"check ingest pipeline; primary keys should be unique"</span><span class="ot">]</span></span>
-<span id="cb15-33"><a href="#cb15-33" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span></span>
-<span id="cb15-34"><a href="#cb15-34" aria-hidden="true" tabindex="-1"></a>  <span class="ot">]</span><span class="fu">,</span></span>
-<span id="cb15-35"><a href="#cb15-35" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"assumptions"</span><span class="fu">:</span> <span class="ot">[</span></span>
-<span id="cb15-36"><a href="#cb15-36" aria-hidden="true" tabindex="-1"></a>    <span class="st">"NaN treated as missing for Float columns; other types report a limitation"</span><span class="ot">,</span></span>
-<span id="cb15-37"><a href="#cb15-37" aria-hidden="true" tabindex="-1"></a>    <span class="st">"missingness, drift, and belief use deterministic Kahan summation"</span><span class="ot">,</span></span>
-<span id="cb15-38"><a href="#cb15-38" aria-hidden="true" tabindex="-1"></a>    <span class="st">"duplicate detection is byte-canonical"</span></span>
-<span id="cb15-39"><a href="#cb15-39" aria-hidden="true" tabindex="-1"></a>  <span class="ot">]</span></span>
-<span id="cb15-40"><a href="#cb15-40" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb23"><pre class="sourceCode json code-with-copy"><code class="sourceCode json"><span id="cb23-1"><a href="#cb23-1" aria-hidden="true" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb23-2"><a href="#cb23-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"schema_version"</span><span class="fu">:</span> <span class="dv">1</span><span class="fu">,</span></span>
+<span id="cb23-3"><a href="#cb23-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"run_id"</span><span class="fu">:</span> <span class="st">"1075bbad9d9b882f"</span><span class="fu">,</span></span>
+<span id="cb23-4"><a href="#cb23-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"input"</span><span class="fu">:</span> <span class="fu">{</span></span>
+<span id="cb23-5"><a href="#cb23-5" aria-hidden="true" tabindex="-1"></a>    <span class="dt">"dataset_label"</span><span class="fu">:</span> <span class="st">"train_2026q2.csv"</span><span class="fu">,</span></span>
+<span id="cb23-6"><a href="#cb23-6" aria-hidden="true" tabindex="-1"></a>    <span class="dt">"n_rows"</span><span class="fu">:</span> <span class="dv">124083</span><span class="fu">,</span></span>
+<span id="cb23-7"><a href="#cb23-7" aria-hidden="true" tabindex="-1"></a>    <span class="dt">"n_cols"</span><span class="fu">:</span> <span class="dv">14</span><span class="fu">,</span></span>
+<span id="cb23-8"><a href="#cb23-8" aria-hidden="true" tabindex="-1"></a>    <span class="dt">"column_types"</span><span class="fu">:</span> <span class="fu">{</span></span>
+<span id="cb23-9"><a href="#cb23-9" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"churned"</span><span class="fu">:</span> <span class="st">"Bool"</span><span class="fu">,</span></span>
+<span id="cb23-10"><a href="#cb23-10" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"customer_id"</span><span class="fu">:</span> <span class="st">"Int"</span><span class="fu">,</span></span>
+<span id="cb23-11"><a href="#cb23-11" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"event_ts"</span><span class="fu">:</span> <span class="st">"Int"</span><span class="fu">,</span></span>
+<span id="cb23-12"><a href="#cb23-12" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"monthly_charges"</span><span class="fu">:</span> <span class="st">"Float"</span><span class="fu">,</span></span>
+<span id="cb23-13"><a href="#cb23-13" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"tenure_months"</span><span class="fu">:</span> <span class="st">"Int"</span><span class="fu">,</span></span>
+<span id="cb23-14"><a href="#cb23-14" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"..."</span><span class="fu">:</span> <span class="st">"..."</span></span>
+<span id="cb23-15"><a href="#cb23-15" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span></span>
+<span id="cb23-16"><a href="#cb23-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">},</span></span>
+<span id="cb23-17"><a href="#cb23-17" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"severity_counts"</span><span class="fu">:</span> <span class="fu">{</span><span class="dt">"info"</span><span class="fu">:</span> <span class="dv">6</span><span class="fu">,</span> <span class="dt">"notice"</span><span class="fu">:</span> <span class="dv">2</span><span class="fu">,</span> <span class="dt">"warning"</span><span class="fu">:</span> <span class="dv">0</span><span class="fu">,</span> <span class="dt">"error"</span><span class="fu">:</span> <span class="dv">0</span><span class="fu">},</span></span>
+<span id="cb23-18"><a href="#cb23-18" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"findings"</span><span class="fu">:</span> <span class="ot">[</span></span>
+<span id="cb23-19"><a href="#cb23-19" aria-hidden="true" tabindex="-1"></a>    <span class="fu">{</span></span>
+<span id="cb23-20"><a href="#cb23-20" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"id"</span><span class="fu">:</span> <span class="st">"5a0309e1047ccdf8"</span><span class="fu">,</span></span>
+<span id="cb23-21"><a href="#cb23-21" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"code"</span><span class="fu">:</span> <span class="st">"E9004"</span><span class="fu">,</span></span>
+<span id="cb23-22"><a href="#cb23-22" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"severity"</span><span class="fu">:</span> <span class="st">"notice"</span><span class="fu">,</span></span>
+<span id="cb23-23"><a href="#cb23-23" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"message"</span><span class="fu">:</span> <span class="st">"key column `customer_id` has 0 duplicate values across 0 groups"</span><span class="fu">,</span></span>
+<span id="cb23-24"><a href="#cb23-24" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"column"</span><span class="fu">:</span> <span class="st">"customer_id"</span><span class="fu">,</span></span>
+<span id="cb23-25"><a href="#cb23-25" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"evidence"</span><span class="fu">:</span> <span class="ot">[</span></span>
+<span id="cb23-26"><a href="#cb23-26" aria-hidden="true" tabindex="-1"></a>        <span class="fu">{</span><span class="dt">"kind"</span><span class="fu">:</span> <span class="st">"count"</span><span class="fu">,</span> <span class="dt">"label"</span><span class="fu">:</span> <span class="st">"duplicate_keys"</span><span class="fu">,</span>   <span class="dt">"value"</span><span class="fu">:</span> <span class="dv">0</span><span class="fu">}</span><span class="ot">,</span></span>
+<span id="cb23-27"><a href="#cb23-27" aria-hidden="true" tabindex="-1"></a>        <span class="fu">{</span><span class="dt">"kind"</span><span class="fu">:</span> <span class="st">"count"</span><span class="fu">,</span> <span class="dt">"label"</span><span class="fu">:</span> <span class="st">"duplicate_groups"</span><span class="fu">,</span> <span class="dt">"value"</span><span class="fu">:</span> <span class="dv">0</span><span class="fu">}</span></span>
+<span id="cb23-28"><a href="#cb23-28" aria-hidden="true" tabindex="-1"></a>      <span class="ot">]</span><span class="fu">,</span></span>
+<span id="cb23-29"><a href="#cb23-29" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"assumptions"</span><span class="fu">:</span> <span class="ot">[</span></span>
+<span id="cb23-30"><a href="#cb23-30" aria-hidden="true" tabindex="-1"></a>        <span class="st">"key uniqueness assumed; primary-key constraint not enforced by cjc-data"</span></span>
+<span id="cb23-31"><a href="#cb23-31" aria-hidden="true" tabindex="-1"></a>      <span class="ot">]</span><span class="fu">,</span></span>
+<span id="cb23-32"><a href="#cb23-32" aria-hidden="true" tabindex="-1"></a>      <span class="dt">"suggested_next_checks"</span><span class="fu">:</span> <span class="ot">[</span><span class="st">"check ingest pipeline; primary keys should be unique"</span><span class="ot">]</span></span>
+<span id="cb23-33"><a href="#cb23-33" aria-hidden="true" tabindex="-1"></a>    <span class="fu">}</span></span>
+<span id="cb23-34"><a href="#cb23-34" aria-hidden="true" tabindex="-1"></a>  <span class="ot">]</span><span class="fu">,</span></span>
+<span id="cb23-35"><a href="#cb23-35" aria-hidden="true" tabindex="-1"></a>  <span class="dt">"assumptions"</span><span class="fu">:</span> <span class="ot">[</span></span>
+<span id="cb23-36"><a href="#cb23-36" aria-hidden="true" tabindex="-1"></a>    <span class="st">"NaN treated as missing for Float columns; other types report a limitation"</span><span class="ot">,</span></span>
+<span id="cb23-37"><a href="#cb23-37" aria-hidden="true" tabindex="-1"></a>    <span class="st">"missingness, drift, and belief use deterministic Kahan summation"</span><span class="ot">,</span></span>
+<span id="cb23-38"><a href="#cb23-38" aria-hidden="true" tabindex="-1"></a>    <span class="st">"duplicate detection is byte-canonical"</span></span>
+<span id="cb23-39"><a href="#cb23-39" aria-hidden="true" tabindex="-1"></a>  <span class="ot">]</span></span>
+<span id="cb23-40"><a href="#cb23-40" aria-hidden="true" tabindex="-1"></a><span class="fu">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>The <code>run_id</code> at the top is a 64-bit fingerprint over the full report’s content. Two runs on the same data produce the same <code>run_id</code>. The team checks <code>baselines/2026q2_baseline.json</code> into git, and the diff on the next PR is meaningful: any non-zero diff means data quality changed.</p>
 <p>In CI:</p>
-<div class="sourceCode" id="cb16"><pre class="sourceCode yaml code-with-copy"><code class="sourceCode yaml"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="co"># .github/workflows/data-quality-gate.yml (excerpt)</span></span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> Validate production data against Q2 baseline</span></span>
-<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a><span class="fu">  run</span><span class="kw">: </span><span class="ch">|</span></span>
-<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>    cjcl locke gate \</span>
-<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>      baselines/2026q2_baseline.json \</span>
-<span id="cb16-6"><a href="#cb16-6" aria-hidden="true" tabindex="-1"></a>      data/prod_$(date +%Y%m%d).csv \</span>
-<span id="cb16-7"><a href="#cb16-7" aria-hidden="true" tabindex="-1"></a>      --fail-on warning</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb24"><pre class="sourceCode yaml code-with-copy"><code class="sourceCode yaml"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="co"># .github/workflows/data-quality-gate.yml (excerpt)</span></span>
+<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a><span class="kw">-</span><span class="at"> </span><span class="fu">name</span><span class="kw">:</span><span class="at"> Validate production data against Q2 baseline</span></span>
+<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a><span class="fu">  run</span><span class="kw">: </span><span class="ch">|</span></span>
+<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>    cjcl locke gate \</span>
+<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>      baselines/2026q2_baseline.json \</span>
+<span id="cb24-6"><a href="#cb24-6" aria-hidden="true" tabindex="-1"></a>      data/prod_$(date +%Y%m%d).csv \</span>
+<span id="cb24-7"><a href="#cb24-7" aria-hidden="true" tabindex="-1"></a>      --fail-on warning</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>Exit code is non-zero when anything crosses the warning threshold. The structural diff goes to stdout. A human looks at it and decides: was this drift expected (new product launch, seasonal effect) or did a pipeline bug leak training-window timestamps into the test set?</p>
 <p>The diff’s findings are <strong>content-addressed</strong> — <code>id=1075bbad9d9b882f</code> is a 64-bit fingerprint over the report’s contents. Two CI runs over the same data on different machines produce the same fingerprint. That’s the property that makes the snapshot-and-diff workflow work at all.</p>
 </section>
@@ -1149,12 +1249,320 @@ dataset_b.csv
 </ol>
 <p>That third property is the one I’d defend hardest. It sounds boring; it’s what makes the snapshot-and-diff workflow viable in the first place.</p>
 </section>
+<section id="the-formal-model-how-confidence-composes" class="level2">
+<h2 class="anchored" data-anchor-id="the-formal-model-how-confidence-composes">The formal model: how confidence composes</h2>
+<p>Locke v0.1’s evidence-and-belief story isn’t pure heuristic — there’s a small, deliberately conservative semantics underneath. This section spells out the model: how confidence is represented, how it composes under transformation, what weakens it, how it propagates, and the algebra it satisfies today versus the parts deferred to v0.2. Being explicit here matters because “epistemic layer” is only as good as the formal object underneath it.</p>
+<section id="confidence-representation" class="level3">
+<h3 class="anchored" data-anchor-id="confidence-representation">Confidence representation</h3>
+<p>Every Locke report carries an 8-dimensional <code>BeliefScore</code>:</p>
+<pre><code>BeliefScore : {schema, missingness, drift, leakage, lineage, sample, duplication, constraint} → [0, 1]
+overall_score : BeliefScore → [0, 1]</code></pre>
+<p>Each axis lives on <code>[0, 1]</code> where 1 means “no evidence against the dataset on this axis.” There is no single number; the overall is a weighted mean controlled by a <code>BeliefWeights</code> vector. The choice of 8 axes is deliberate — each maps to a disjoint class of finding codes:</p>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Axis</th>
+<th>Finding-code range</th>
+<th>What evidence weakens it</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>schema</td>
+<td>E9020–E9029</td>
+<td>type mismatches, unexpected columns, missing columns</td>
+</tr>
+<tr class="even">
+<td>missingness</td>
+<td>E9001–E9009</td>
+<td>NaN rates, joint missingness, sentinel detection</td>
+</tr>
+<tr class="odd">
+<td>drift</td>
+<td>E9030–E9039</td>
+<td>KS shift, mean/std shift, categorical TVD</td>
+</tr>
+<tr class="even">
+<td>leakage</td>
+<td>E9060–E9069</td>
+<td>target-AUC, ID-like cardinality, proxy candidates</td>
+</tr>
+<tr class="odd">
+<td>lineage</td>
+<td>E9050–E9059</td>
+<td>unsorted time, train/test overlap, gap detection</td>
+</tr>
+<tr class="even">
+<td>sample</td>
+<td>(computed)</td>
+<td>row count below n_min, sampling-cap engaged</td>
+</tr>
+<tr class="odd">
+<td>duplication</td>
+<td>E9003–E9004</td>
+<td>full-row dups, primary-key dups, dup-conditioning</td>
+</tr>
+<tr class="even">
+<td>constraint</td>
+<td>E9040–E9049</td>
+<td>outliers, impossible values, constants</td>
+</tr>
+</tbody>
+</table>
+<p>Adding a new check assigns it to exactly one axis. That’s a hard invariant in the codebase, not a guideline.</p>
+</section>
+<section id="confidence-composition-under-transformation" class="level3">
+<h3 class="anchored" data-anchor-id="confidence-composition-under-transformation">Confidence composition under transformation</h3>
+<p>A <code>LockeIdea</code> derived from one or more parent ideas / impressions inherits a belief score:</p>
+<pre><code>belief(child) = meet(belief(parent_i)) ∧ transform_factor(op)   for each parent i
+where meet(a, b) = component-wise min on the 8 axes</code></pre>
+<p>The <strong>meet</strong> (component-wise min) is the deliberately conservative composition rule. A filter cannot improve the missingness score — at best it preserves it. A join cannot improve any axis below the minimum of the two inputs. Belief is monotonically non-increasing under derivation.</p>
+<p><code>transform_factor(op)</code> is a per-operator scalar in <code>[0, 1]^8</code> that accounts for op-specific weakening:</p>
+<table class="table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Operation</th>
+<th>transform_factor effect</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>filter(predicate)</code></td>
+<td>preserves all 8 axes; transform_factor = identity</td>
+</tr>
+<tr class="even">
+<td><code>group_by + summarise</code></td>
+<td>weakens <code>sample</code> proportional to group-size reduction</td>
+</tr>
+<tr class="odd">
+<td><code>join(left, right, key)</code></td>
+<td>weakens <code>lineage</code> and <code>constraint</code> proportional to FK match rate</td>
+</tr>
+<tr class="even">
+<td><code>with_column(derived = f(cols))</code></td>
+<td>weakens <code>leakage</code> if f spans target-correlated columns</td>
+</tr>
+<tr class="odd">
+<td><code>sample(n)</code></td>
+<td>weakens <code>sample</code> proportional to <code>n / total_rows</code></td>
+</tr>
+<tr class="even">
+<td><code>bind_rows</code> / <code>bind_cols</code></td>
+<td>weakens <code>lineage</code> because the merge boundary is a new source of disagreement</td>
+</tr>
+</tbody>
+</table>
+<p>These are shipped today, conservative, documented in the source. The full algebra (per-axis composition rules per operator instead of a global meet) is a v0.2 goal.</p>
+</section>
+<section id="what-weakens-confidence" class="level3">
+<h3 class="anchored" data-anchor-id="what-weakens-confidence">What weakens confidence</h3>
+<p>The penalty function is the only place evidence turns into a score reduction:</p>
+<pre><code>penalty(finding) = w_axis(finding.code) × severity_weight(finding.severity) × evidence_intensity(finding.evidence)
+axis_score(axis) = 1 − Σ penalty(f) for f in findings if axis_of(f.code) == axis    clamped to [0, 1]</code></pre>
+<p>Three properties:</p>
+<ol type="1">
+<li><strong><code>severity_weight</code> is a fixed ladder</strong>: <code>{Info: 0.05, Notice: 0.15, Warning: 0.40, Error: 1.00}</code> — same on every run. No floating arithmetic that depends on iteration order.</li>
+<li><strong><code>evidence_intensity</code> is bounded by 1.</strong> A single finding cannot drop an axis below 0; multiple findings sum but are clamped at the end.</li>
+<li><strong>The penalty model is swappable.</strong> <code>BeliefPenalty::user_supplied(...)</code> lets a team install a custom ladder; the audit then records the penalty model’s identity. The default ladder is just one entry in a registry.</li>
+</ol>
+</section>
+<section id="how-propagation-is-modeled" class="level3">
+<h3 class="anchored" data-anchor-id="how-propagation-is-modeled">How propagation is modeled</h3>
+<p>The lineage DAG carries belief from impressions to ideas via the <code>meet</code>-and-<code>transform_factor</code> rule. Here’s an evidence-propagation diagram for a 4-step pipeline:</p>
+<div class="cell" data-fig-width="9">
+<div class="cell-output-display">
+<div>
+<div>
+<pre class="mermaid mermaid-js">flowchart LR
+    I["events.csv&lt;br/&gt;&lt;b&gt;impression&lt;/b&gt;&lt;br/&gt;[1.00, 1.00, 1.00, 1.00,&lt;br/&gt;1.00, 1.00, 1.00, 1.00]"]:::imp
+    I --&gt;|"observe()&lt;br/&gt;tf = identity"| O["raw_events&lt;br/&gt;&lt;b&gt;idea&lt;/b&gt;&lt;br/&gt;[1.00, 1.00, 1.00, 1.00,&lt;br/&gt;0.95, 1.00, 1.00, 1.00]"]:::idea
+    O --&gt;|"filter(active==1)&lt;br/&gt;tf = identity"| F["active_events&lt;br/&gt;&lt;b&gt;idea&lt;/b&gt;&lt;br/&gt;[1.00, 0.99, 1.00, 1.00,&lt;br/&gt;0.95, 0.98, 1.00, 1.00]"]:::idea
+    F --&gt;|"group_by(plan_tier)&lt;br/&gt;tf: sample × 0.80"| G["grouped&lt;br/&gt;&lt;b&gt;idea&lt;/b&gt;&lt;br/&gt;[1.00, 0.99, 1.00, 1.00,&lt;br/&gt;0.95, 0.78, 1.00, 1.00]"]:::idea
+    G --&gt;|"with_column(churn_rate)&lt;br/&gt;tf: leakage × 0.90"| W["labeled&lt;br/&gt;&lt;b&gt;idea&lt;/b&gt;&lt;br/&gt;[1.00, 0.99, 1.00, 0.90,&lt;br/&gt;0.95, 0.78, 1.00, 1.00]"]:::idea
+
+    classDef imp fill:#e8f4fd,stroke:#2196F3,stroke-width:2px
+    classDef idea fill:#fff3e0,stroke:#FF9800,stroke-width:1px
+</pre>
+</div>
+<p>Evidence propagation through a 4-step pipeline. Each node carries an 8-dim belief vector [schema, missingness, drift, leakage, lineage, sample, duplication, constraint]. Edges apply transform_factor. Belief is monotonically non-increasing along any path — the rightmost node is component-wise ≤ the leftmost.</p>
+</div>
+</div>
+</div>
+<p>Reading the diagram: each node label lists the 8-axis belief vector in fixed order. The <code>observe()</code> step pre-weakened <code>lineage</code> to 0.95 because raw-CSV ingestion drops some provenance (no upstream observation timestamps). The <code>filter</code> step weakened <code>missingness</code> and <code>sample</code> because filtering revealed a column with a higher local NaN rate, and dropped row count. The <code>group_by</code> step weakened <code>sample</code> further because per-group sample sizes are smaller. The <code>with_column(churn_rate)</code> step weakened <code>leakage</code> because the derived column directly references the target.</p>
+<p>Crucially: every axis-wise value on the rightmost node is ≤ the leftmost. Composition never improves belief on any axis.</p>
+</section>
+<section id="deterministic-update-rules" class="level3">
+<h3 class="anchored" data-anchor-id="deterministic-update-rules">Deterministic update rules</h3>
+<p>Every step in the propagation uses:</p>
+<ul>
+<li><strong>Kahan summation</strong> for penalty accumulation (avoid FP-order-dependent drift).</li>
+<li><strong><code>BTreeMap</code></strong> for finding aggregation by axis (no <code>HashMap</code> iteration nondeterminism).</li>
+<li><strong><code>f64::total_cmp</code></strong> for floating comparisons (NaN behaves consistently, not implementation-defined).</li>
+<li><strong>No FMA</strong> in the SIMD paths under penalty arithmetic (bit-identical across CPUs).</li>
+<li><strong>Single-threaded execution</strong> in v0.1 — even when parallel column-validation lands in v0.2, the reduction phase will be order-fixed.</li>
+</ul>
+<p>The contract: same input bytes → same belief vector. The lineage diagram above is reproducible byte-for-byte by anyone running the same pipeline on the same inputs.</p>
+</section>
+<section id="confidence-algebra-shipped-vs-planned" class="level3">
+<h3 class="anchored" data-anchor-id="confidence-algebra-shipped-vs-planned">Confidence algebra (shipped vs planned)</h3>
+<p>The composition operator <code>meet</code> plus the identity <code>⊤ = [1, 1, 1, 1, 1, 1, 1, 1]</code> satisfies five algebraic properties today:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Property</th>
+<th>Statement</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Identity</strong></td>
+<td><code>meet(b, ⊤) = b</code></td>
+</tr>
+<tr class="even">
+<td><strong>Idempotence</strong></td>
+<td><code>meet(b, b) = b</code></td>
+</tr>
+<tr class="odd">
+<td><strong>Monotonicity</strong></td>
+<td><code>meet(b, c) ≤ b</code> component-wise</td>
+</tr>
+<tr class="even">
+<td><strong>Commutativity</strong></td>
+<td><code>meet(b, c) = meet(c, b)</code></td>
+</tr>
+<tr class="odd">
+<td><strong>Associativity</strong></td>
+<td><code>meet(meet(a, b), c) = meet(a, meet(b, c))</code></td>
+</tr>
+</tbody>
+</table>
+<p>Together, <code>(BeliefScore, meet, ⊤)</code> is a commutative idempotent monoid with identity — i.e.&nbsp;a <strong>meet-semilattice</strong> in lattice-theoretic terms. The deterministic update rules above make the algebra computable to bit-identical results across runs. That’s the formal object the snapshot-and-diff workflow relies on; without monotonicity, “appeared / disappeared” diffs over composed pipelines wouldn’t be well-defined.</p>
+<p>Planned for v0.2:</p>
+<ul>
+<li><strong>Per-axis composition rules instead of a global <code>meet</code>.</strong> Some axes (e.g.&nbsp;<code>lineage</code>) compose by min; others (e.g.&nbsp;<code>sample</code>) should compose by product. A typed rule per axis would be more faithful to what each axis measures.</li>
+<li><strong>A <code>join</code> operator</strong> for combining alternative views of the same dataset (the lattice-theoretic dual of <code>meet</code>). Currently absent; the algebra is meet-only, which means alternative-view combination is undefined.</li>
+<li><strong>A continuous-domain semantics</strong> for transformations that span a parameter (e.g.&nbsp;<code>filter(predicate)</code> with predicate selectivity <code>s ∈ [0, 1]</code>). v0.1 treats every filter the same; v0.2 would parameterise <code>transform_factor</code> by <code>s</code>.</li>
+<li><strong>A formal proof</strong> of the conservation property: under the meet algebra, the gate-diff workflow’s <code>appeared</code> set is exactly the set of findings whose axes degraded between snapshots. This is true by construction today; v0.2 would have it written down as a theorem with a checked proof.</li>
+</ul>
+<p>The honest framing: Locke v0.1 ships a small, deliberately conservative algebra. It is enough to make the workflows in this post (“snapshot, diff, gate, audit”) provably reproducible and well-defined. The richer semantics will land when the workflows the algebra is supposed to serve are more developed.</p>
+</section>
+<section id="belief-degradation-visualised" class="level3">
+<h3 class="anchored" data-anchor-id="belief-degradation-visualised">Belief degradation, visualised</h3>
+<p>The same 4-step pipeline rendered as a degradation chart — one panel per axis, showing the trajectory of each component as we move from impression to most-derived idea:</p>
+<div class="cell" data-fig-width="9">
+<div class="cell-output-display">
+<div>
+<div>
+<pre class="mermaid mermaid-js">flowchart LR
+    subgraph S1["events.csv"]
+        s1_schema["schema = 1.00"]:::held
+        s1_miss["missingness = 1.00"]:::held
+        s1_drift["drift = 1.00"]:::held
+        s1_leak["leakage = 1.00"]:::held
+        s1_lin["lineage = 1.00"]:::held
+        s1_sam["sample = 1.00"]:::held
+        s1_dup["duplication = 1.00"]:::held
+        s1_con["constraint = 1.00"]:::held
+    end
+
+    subgraph S2["raw_events&lt;br/&gt;(observe)"]
+        s2_schema["1.00"]:::held
+        s2_miss["1.00"]:::held
+        s2_drift["1.00"]:::held
+        s2_leak["1.00"]:::held
+        s2_lin["0.95"]:::weakened
+        s2_sam["1.00"]:::held
+        s2_dup["1.00"]:::held
+        s2_con["1.00"]:::held
+    end
+
+    subgraph S3["active_events&lt;br/&gt;(filter)"]
+        s3_schema["1.00"]:::held
+        s3_miss["0.99"]:::weakened
+        s3_drift["1.00"]:::held
+        s3_leak["1.00"]:::held
+        s3_lin["0.95"]:::held
+        s3_sam["0.98"]:::weakened
+        s3_dup["1.00"]:::held
+        s3_con["1.00"]:::held
+    end
+
+    subgraph S4["grouped&lt;br/&gt;(group_by)"]
+        s4_schema["1.00"]:::held
+        s4_miss["0.99"]:::held
+        s4_drift["1.00"]:::held
+        s4_leak["1.00"]:::held
+        s4_lin["0.95"]:::held
+        s4_sam["0.78"]:::weakened
+        s4_dup["1.00"]:::held
+        s4_con["1.00"]:::held
+    end
+
+    subgraph S5["labeled&lt;br/&gt;(with_column)"]
+        s5_schema["1.00"]:::held
+        s5_miss["0.99"]:::held
+        s5_drift["1.00"]:::held
+        s5_leak["0.90"]:::weakened
+        s5_lin["0.95"]:::held
+        s5_sam["0.78"]:::held
+        s5_dup["1.00"]:::held
+        s5_con["1.00"]:::held
+    end
+
+    s1_schema --- s2_schema --- s3_schema --- s4_schema --- s5_schema
+    s1_miss   --- s2_miss
+    s2_miss   -.-&gt; s3_miss
+    s3_miss   --- s4_miss --- s5_miss
+    s1_drift  --- s2_drift  --- s3_drift  --- s4_drift  --- s5_drift
+    s1_leak   --- s2_leak   --- s3_leak   --- s4_leak
+    s4_leak   -.-&gt; s5_leak
+    s1_lin    -.-&gt; s2_lin
+    s2_lin    --- s3_lin    --- s4_lin    --- s5_lin
+    s1_sam    --- s2_sam
+    s2_sam    -.-&gt; s3_sam
+    s3_sam    -.-&gt; s4_sam
+    s4_sam    --- s5_sam
+    s1_dup    --- s2_dup    --- s3_dup    --- s4_dup    --- s5_dup
+    s1_con    --- s2_con    --- s3_con    --- s4_con    --- s5_con
+
+    classDef held fill:#e8f5e9,stroke:#2E7D32
+    classDef weakened fill:#ffebee,stroke:#C62828
+</pre>
+</div>
+<p>Belief degradation across the 4-step pipeline above. Each axis’s value at each stage is shown as a labelled node; the layout reads left-to-right (pipeline stages) and top-to-bottom (axes). Solid edges indicate the value held; dashed edges indicate a transform_factor weakening. Schema, drift, duplication, and constraint hold at 1.00 throughout. Missingness ticked down once. Lineage dropped at ingest and held. Sample dropped twice (filter, group_by). Leakage dropped once (with_column).</p>
+</div>
+</div>
+</div>
+<p>The chart makes one specific claim visually: <strong>the dashed edges are the only places confidence got weaker.</strong> Every other axis held flat. A reviewer can pin a downstream finding to the specific transformation that degraded the relevant axis, because the dashed edge is exactly where the audit trail records a <code>transform_factor</code> application.</p>
+<p>This is the property that makes the audit trail useful, not just reproducible. Reproducibility says “two runs of the same pipeline match.” Localisability says “when something downstream is wrong, I can point to which step weakened the belief on the affected axis.” Locke gives both.</p>
+</section>
+<section id="where-the-formal-model-lives-in-code" class="level3">
+<h3 class="anchored" data-anchor-id="where-the-formal-model-lives-in-code">Where the formal model lives in code</h3>
+<p>If you want to read the actual implementation rather than the prose:</p>
+<ul>
+<li><code>crates/cjc-locke/src/belief.rs</code> — <code>BeliefScore</code>, <code>BeliefWeights</code>, <code>BeliefPenalty</code> definitions and the <code>meet</code> operator.</li>
+<li><code>crates/cjc-locke/src/lineage.rs</code> — <code>LineageGraph</code>, <code>LockeImpression</code>, <code>LockeIdea</code>, edge representations, content-addressed IDs.</li>
+<li><code>crates/cjc-locke/src/traced.rs</code> — <code>TracedDataFrame</code> wrapper that applies <code>transform_factor</code> per operation.</li>
+<li><code>crates/cjc-locke/src/dispatch.rs</code> — the 22 <code>locke_*</code> builtins that expose the model to <code>.cjcl</code> source.</li>
+</ul>
+<p>Everything is <code>pub</code> and documented. The composition rules are unit-tested for monotonicity, idempotence, and associativity. The deterministic-update rules are property-tested by <code>proptest</code>. The “shipped vs planned” gaps above each have an issue or an <code>// TODO(v0.2):</code> marker in the source.</p>
+</section>
+</section>
 <section id="install" class="level2">
 <h2 class="anchored" data-anchor-id="install">Install</h2>
-<div class="sourceCode" id="cb17"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> add cjc-locke</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb28"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> add cjc-locke</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>The crate is at version 0.1.10 on crates.io and works with the matching version of <code>cjc-data</code>, <code>cjc-repro</code>, <code>cjc-runtime</code> from the same workspace release. If you want the CLI:</p>
-<div class="sourceCode" id="cb18"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> install cjc-lang</span>
-<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a><span class="ex">cjcl</span> locke validate your-data.csv</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb29"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb29-1"><a href="#cb29-1" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> install cjc-lang</span>
+<span id="cb29-2"><a href="#cb29-2" aria-hidden="true" tabindex="-1"></a><span class="ex">cjcl</span> locke validate your-data.csv</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <p>The benchmark code is in the repo at <code>bench/locke_vs_gx/</code>. Anyone with <code>pip install great_expectations pandas</code> can re-run the full comparison.</p>
 </section>
 <section id="where-v0.2-is-going" class="level2">
