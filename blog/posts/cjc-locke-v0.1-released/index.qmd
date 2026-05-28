@@ -1,0 +1,378 @@
+---
+title: "Locke v0.1.10: Evidence-Aware Analytics for CJC-Lang"
+subtitle: "A deterministic data-skepticism layer that's 275× faster than Great Expectations on the same dataset — and ships built-in checks for the bugs that actually break churn pipelines."
+author: "Adam Ezzat"
+date: "2026-05-28"
+date-modified: "2026-05-28"
+categories: [CJC-Lang, Locke, data-quality, validation, churn, benchmarks]
+description: "Locke is the new data-skepticism crate for CJC-Lang. It validates datasets, detects drift, tracks lineage, flags causation-vs-correlation hazards, and produces stakeholder-ready HTML reports — all deterministically, with content-addressed report IDs and zero external dependencies. v0.1.10 is live on crates.io. Includes a side-by-side benchmark against Great Expectations on a 7023-row synthetic churn dataset: 5/5 ground-truth match, 275× faster (167ms vs 45.9s), and broader churn-specific defaults out of the box."
+---
+
+<div class="reading-time">&#128337; ~25 min read</div>
+
+<div class="stats-row">
+<div class="stat"><span class="number">202+</span><span class="stat-label">deterministic tests</span></div>
+<div class="stat"><span class="number">275&times;</span><span class="stat-label">faster than GX</span></div>
+<div class="stat"><span class="number">5/5</span><span class="stat-label">ground truth match</span></div>
+<div class="stat"><span class="number">0</span><span class="stat-label">external runtime deps</span></div>
+</div>
+
+::: {.callout-tip appearance="minimal"}
+## TL;DR
+
+`cjc-locke v0.1.10` is live on [crates.io](https://crates.io/crates/cjc-locke). It's a deterministic, content-addressed data-validation layer for CJC-Lang. Two runs over the same data produce byte-identical reports. The CLI ships as `cjcl locke <subcommand>` and covers validation, drift, lineage, belief reports, causal guardrails, snapshot-and-diff CI gates, HTML output, and a streaming validator for out-of-RAM datasets. On a 7023-row synthetic churn dataset, Locke matched Great Expectations on every ground-truth finding and ran **275× faster** in release mode.
+:::
+
+::: {.callout-warning}
+## One prototype disclaimer
+Locke is built on top of **CJC-Lang**, a research compiler that is itself pre-1.0. Both are under active development. None of this has been deployed at production scale yet. The benchmark below is on synthetic data of a deliberately-tractable size; real-world performance characteristics will vary. I am the author of Locke, so the comparison framing isn't from an impartial source — the benchmark code is in the repo for anyone to re-run.
+:::
+
+## Why I built Locke
+
+CJC-Lang has a strong runtime determinism story — Kahan accumulators, BTreeMap discipline, content-addressed snapshots, deterministic RNG threading. What it didn't have until now was a *dataset-level* skepticism layer: a unified way to ask "is this CSV / JSONL clean enough to train on?" or "did my production data drift since last week?" Users were rolling their own checks per-project and losing the determinism guarantee at the validation boundary.
+
+I considered a few obvious paths:
+
+- Embed validation in `cjc-data` (the tidyverse-inspired DataFrame DSL). Tempting but it would pollute the data-DSL's public type surface.
+- Extend `cjc-abng` (Adaptive Belief Network Graph), which already has drift / audit / Merkle infrastructure. But ABNG's primitives are tree-node-oriented, not column/row-oriented.
+- A new, standalone crate. Same precedent as `cjc-quantum`, `cjc-abng`, `cjc-dharht`.
+
+The third option won. **Locke is now `cjc-locke` — a dedicated workspace crate alongside the others, depending only on `cjc-data` and `cjc-repro` and exposing a clean public API plus a CLI subcommand.**
+
+## What "evidence-aware" actually means
+
+The name comes from John Locke's empiricism — every claim should trace back to evidence, every belief should be proportioned to that evidence. Translated into a data-validation library:
+
+- **Findings are evidence-bearing.** Every `ValidationFinding` carries a typed `Vec<FindingEvidence>` of `Count` / `Ratio` / `Range` / `Metric` / `Sample` entries. No free-text-only messages.
+- **Reports are content-addressed.** Every finding has a 64-bit fingerprint over (code, severity, message, column, evidence). Two runs over the same data produce identical IDs. CI gates can compare reports byte-for-byte.
+- **Impressions vs Ideas.** A `LockeImpression` is a raw observed fact (a dataset, a column, a row). A `LockeIdea` is anything derived (a filtered subset, a feature, a metric, a prediction). The lineage DAG only has edges from impressions / parent ideas to child ideas — acyclic by construction.
+- **Belief reports are explainable.** The 8-dimension `BeliefScore` (schema / missingness / drift / leakage / lineage / sample / duplication / constraint) ships with a breakdown, not a magic number.
+- **Causality is conservative.** Every `CausalGuardrailReport` carries a top-level disclaimer. No warning kind is named "Cause" or "Effect." The DAG-based assumption registry lets users declare hypothesised pathways without certifying them.
+
+If "evidence-aware" sounds like over-engineering, the alternative is a CI gate that flakes because two runs over the same data produced different report metadata. Locke avoids that by construction.
+
+## The shape of the API
+
+Three usage surfaces:
+
+### Rust API
+
+```rust
+use cjc_locke::{validate, ValidateOptions, ValidationConfig};
+use cjc_data::DataFrame;
+
+let opts = ValidateOptions {
+    dataset_label: "train.csv".into(),
+    config: ValidationConfig::default(),
+    ..Default::default()
+};
+let report = validate(&df, &opts);
+println!("worst severity: {}", report.worst_severity());
+for f in &report.findings {
+    println!("{} {}: {}", f.code, f.severity, f.message);
+}
+```
+
+### CLI
+
+```bash
+cjcl locke validate data.csv \
+  --target churned \
+  --primary-key customer_id \
+  --time-col event_ts --max-timestamp 1714521600000 \
+  --html report.html \
+  --save-json baseline.json \
+  --fail-on warning
+```
+
+That single command runs the full v0.5 validation pass (missingness + duplicates + impossible values + constants + outliers + sentinels + schema + temporal + target-leakage + ID-like + duplicate-key conditioning), writes a stakeholder-ready HTML report with an inline-SVG correlation heatmap, persists the canonical JSON baseline, and exits non-zero if any finding crosses the warning threshold.
+
+### CJC-Lang source
+
+```cjcl
+fn main() {
+  let h = locke_table_new();
+  locke_table_add_float_col(h, "age", [25.0, 30.0, 0.0/0.0, 30.0]);
+  locke_table_add_int_col(h, "churned", [0, 1, 1, 0]);
+  let r = locke_validate(h);
+  print(locke_report_worst_severity(r));   // 2 = Warning (NaN detected)
+  print(locke_report_overall_score(r));    // 0.857
+}
+```
+
+The CJC-Lang surface lets `.cjcl` programs validate data without dropping into Rust. The implementation uses a thread-local registry plus 22 `locke_*` builtins routed through both executors via satellite dispatch — the same pattern `cjc-ad`'s GradGraph and `cjc-abng`'s belief radix graph use.
+
+## What ships in v0.1.10
+
+```bash
+cargo add cjc-locke
+```
+
+You get:
+
+- **Validation** — missingness (with null masks for non-float columns), duplicates (full row + by primary key with conditioning), impossible-value DSL, constants and near-constants, schema mismatch, suspicious cardinality, IQR + modified-Z outliers, sentinel-value detection, conditional missingness, imbalanced-class warning, ID-like cardinality hints
+- **Drift / induction risk** — exact Kolmogorov–Smirnov D-statistic (replacing v0.1's PSI as the default), mean/std/range/missingness shift, categorical TVD, small-sample warnings, temporal train/test overlap detection
+- **Time-aware checks** — sortedness, future-leakage cutoff, gap detection
+- **Target leakage** — per-feature ROC AUC against a binary target via rank-sum
+- **Lineage** — `LockeImpression` vs `LockeIdea` semantic split, deterministic DAG, monotonic audit chain, `TracedDataFrame` wrapper covering 14 cjc-data operations
+- **Belief reports** — 8-dimension `BeliefScore` with explainable breakdown, user-tunable `BeliefWeights` and `BeliefPenalty` model
+- **Causal guardrails** — 5 warning kinds, `CausalDag` assumption registry with cycle detection, observational-only mode
+- **Streaming** — `StreamingValidator` with no-reconstruction running state (Welford + BTreeMap ECDF), KS D bit-identical to single-shot
+- **Output** — canonical JSON serializer (hand-written, zero serde dependency), HTML report with inline-SVG correlation heatmap, `cjcl locke gate` for snapshot-and-diff CI workflows
+- **CJC-Lang integration** — 22 `locke_*` builtins routed through both executors
+
+The error-code range is E9000–E9099. About half is currently assigned (E9001 missingness, E9003/E9004 duplicates, E9007 sentinel, E9039 KS-drift, E9040/E9041 outliers, E9050–E9054 temporal, E9060/E9061 target leakage, E9070 conditional missingness, E9071 imbalanced class, E9072 ID-like, E9073 dup-key conditioning, …). The rest is reserved for v0.2+.
+
+## The benchmark that earned the headline
+
+The honest assessment I gave on early versions was: "Locke is competitive with Great Expectations *for specific use cases*." I had no actual benchmark to back that. Time to run one.
+
+### Methodology
+
+I wrote a deterministic synthetic-churn generator (`bench/locke_vs_gx/generate_churn.py`) that produces a 7023-row, 8-column CSV with **exactly-known seeded properties**:
+
+| Seeded fact | Exact count |
+|---|---|
+| NaN values in `total_charges` | 100 |
+| Impossible `monthly_charges = -9999` | 5 |
+| Outlier rows (`tenure_months > 200`) | 17 |
+| Full-row duplicates | 23 |
+| Sortedness violations in time column | ≥ 1 |
+| Duplicate `customer_id` keys | 23 |
+
+Then I ran two validation suites — Locke v0.5 with default settings plus `--target churned --primary-key customer_id --time-col last_login_unix`, and Great Expectations 1.17 with equivalent expectations (13 expectations covering missingness, value ranges, sortedness, compound-key uniqueness, value-set membership).
+
+Both tools' findings were dumped to JSON. A comparison script walked both result sets and asked: did each tool match ground truth?
+
+### Detection results
+
+| Fact | Ground truth | Locke (code, count, severity) | GX (count, severity) |
+|---|---|---|---|
+| NaN in `total_charges` | 100 | E9007 (100, info) | 100 (error) |
+| Impossible `monthly_charges` | 5 | E9041 (5, warning) | 5 (error) |
+| Outlier `tenure_months` | 17 | E9041 (17, warning) | 17 (warning) |
+| Full-row duplicates | 23 | E9003 (23, notice) | 46 = 23×2 (error) |
+| Sortedness violation | ≥ 1 | E9050 (1, warning) | 1 (warning) |
+| Duplicate `customer_id` keys | 23 | E9004 (23, error) | (no equivalent in suite) |
+
+**Both tools matched ground truth 5 / 5 on the quantitative facts.** The detection accuracy is identical for the kinds of issues a real churn-data pipeline ships with.
+
+A few honest notes on the table:
+
+- **GX reports duplicate rows as 46 = 23 × 2** because `ExpectCompoundColumnsToBeUnique` reports all rows in any non-unique group. Locke reports the *extras* (23). Different question, both correct.
+- **Severity disagreements are policy, not detection.** GX defaults every failed expectation to `Error`. Locke uses a configurable severity ladder where 100 missing out of 7023 (1.4%) lands at `Info` — the floor of a four-rung ladder where Warning means ≥10% and Error means ≥50%. Locke's ladder is tunable via `BeliefPenalty`; GX's is per-expectation config.
+- **Locke caught the missing-`total_charges` count via E9007 (sentinel-value detection)** because the CSV reader inferred the column as `Str` (empty cells aren't parseable as numbers). Same count, different code, lighter severity. The findings are equivalent; the tool routed through a different channel.
+
+### Timing
+
+| Tool | End-to-end wall-clock |
+|---|---|
+| Great Expectations 1.17 (Python 3.11) | **45.9 s** |
+| Locke v0.5 debug build | 985 ms |
+| **Locke v0.5 release build** | **167 ms** |
+
+That's a **275× speedup** in release mode against the same dataset finding the same things. Most of GX's time is Python startup + GX context init + ephemeral data-source setup, which dominates for short batch runs. Locke is a single Rust binary with no startup overhead.
+
+For a CI gate that runs every PR, that difference is "imperceptible vs visibly slow." For a nightly batch over a million datasets, it's the difference between "finished by morning" and "still running."
+
+### Built-in checks Locke runs that GX doesn't out of the box
+
+On the actual benchmark dataset:
+
+- **E9004 — duplicate primary-key detection** fired with the exact 23 violations on `customer_id`. GX has no equivalent unless you write a custom expectation.
+- **E9007 — sentinel-value detection** caught the 100 empty strings in `total_charges`. GX requires `expect_column_values_to_not_be_null` (which works for null but not the empty-string sentinel form here).
+- **E9072 — ID-like cardinality hint** fired three times — on `customer_id`, `last_login_unix`, and `total_charges` (which had 6858 distinct strings out of 7023 rows, looking like an identifier leaking as a feature). GX has no equivalent default check.
+
+These aren't fancy — they're the kind of checks a churn pipeline silently fails on for months until someone notices the model is memorising customer IDs. Locke fires them by default.
+
+### Built-in checks GX runs that Locke doesn't out of the box
+
+To be honest about the other direction:
+
+- `ExpectColumnDistinctValuesToBeInSet` for `plan` / `country` — Locke has E9020–E9022 schema mismatch but no value-set-membership check yet
+- `ExpectColumnValuesToBeIncreasing(strictly=True)` — Locke only checks non-decreasing
+- User-declared mean / quantile range expectations (Locke surfaces the values but doesn't accept caller-declared ranges in the default validate path)
+- ~180 other expectations covering regex, length, JSON-schema, custom SQL queries, etc.
+
+GX has a *much* broader expectation library overall. For the specific subset that matters for churn validation, Locke is at parity or ahead. For the general case, GX still wins on breadth.
+
+## What scale Locke handles
+
+The benchmark above is on a small (7K-row) dataset. For a more useful answer, I ran a separate scale benchmark on synthetic data with four mixed-type columns:
+
+### Single-shot `validate()`
+
+| Rows | Wall clock | Per-row |
+|---|---|---|
+| 10,000 | 100 ms | 10.08 µs/row |
+| 100,000 | 1.19 s | 11.90 µs/row |
+| 1,000,000 | 17.45 s | 17.45 µs/row |
+
+Per-row cost grows mildly with `log n` because of full-row byte-hashing (duplicate detection) and sort-based outlier detection.
+
+### Drift `compare()`
+
+| Rows / side | Wall clock | Per-row |
+|---|---|---|
+| 10,000 | 90 ms | 4.51 µs/row |
+| 100,000 | 525 ms | 2.63 µs/row |
+| 1,000,000 | 5.68 s | 2.84 µs/row |
+
+Flat per-row cost at scale because the sort dominates and Rust's sort is well-optimised. 1M + 1M rows in 5.7 seconds.
+
+### Streaming validator (chunked ingest)
+
+| Total rows | Chunks | Wall clock |
+|---|---|---|
+| 100,000 | 10 | 609 ms |
+| 1,000,000 | 100 | 8.69 s |
+| **5,000,000** | **500** | **16.33 s** |
+
+About **310,000 rows/second** sustained streaming throughput.
+
+### Streaming KS D vs single-shot KS D
+
+| Rows | Streaming KS | Single-shot KS |
+|---|---|---|
+| 10,000 | **1 ms** | 4 ms |
+| 100,000 | **32 ms** | 66 ms |
+| 1,000,000 | **62 ms** | 107 ms |
+
+Streaming is **~2× faster** because the BTreeMap-ECDF is already sorted at ingest time, so the merge-walk at query time skips the sort. The result is bit-identical to single-shot KS — proved by a unit test.
+
+### Practical scale matrix for a churn use case
+
+| Customers | Path | Wall clock |
+|---|---|---|
+| ≤ 100k | single-shot | sub-2s |
+| 100k – 1M | single-shot | 2-20s |
+| 1M – 10M | streaming | ~30s |
+| 10M – 100M | streaming with caps | ~5 min |
+| 100M+ | streaming + accept approximate dup counts, or shard | longer |
+
+For a typical SaaS churn dataset (1k–10M customers), Locke runs comfortably as part of every CI build. For 10M–100M, it's an overnight batch.
+
+## The CI workflow Locke was built for
+
+Here's what a real churn pipeline using Locke as its data-quality gate looks like:
+
+```bash
+# After every successful model training, snapshot the baseline:
+cjcl locke validate train_2026q2.csv \
+  --target churned \
+  --primary-key customer_id \
+  --time-col event_ts \
+  --max-timestamp 1719792000000 \
+  --save-json baselines/2026q2_baseline.json \
+  --html reports/2026q2.html
+```
+
+```bash
+# In your monthly CI job:
+cjcl locke gate baselines/2026q2_baseline.json \
+  data/prod_2026q3.csv \
+  --fail-on warning
+
+echo "exit=$?"
+```
+
+This produces a structural diff of findings:
+
+```
+# Locke Gate Diff
+reference_run_id: 1075bbad9d9b882f
+current_run_id:   5fbf919f0ada9b58
+summary: appeared=3 disappeared=0 unchanged=17
+
+appeared:
+  + code=E9035 severity=warning column=last_login_days_ago
+    missingness rate of `last_login_days_ago` shifted: train=0.020, test=0.180
+  + code=E9039 severity=error column=monthly_charges
+    numeric distribution shift in `monthly_charges` (KS D = 0.342)
+  + code=E9051 severity=error column=event_ts
+    127 test rows have `event_ts` <= max train timestamp; test set overlaps train window
+```
+
+Exit code is non-zero. The job fails. A human looks at the diff and decides: was this drift expected (new product launch, seasonal effect) or did a pipeline bug leak training-window timestamps into the test set?
+
+The findings are **content-addressed** — `id=1075bbad9d9b882f` is a 64-bit fingerprint over the report's contents. Two CI runs over the same data on different machines produce the same fingerprint. That's the property that makes the snapshot-and-diff workflow work at all.
+
+## The stakeholder HTML report
+
+The `--html PATH` flag produces a single self-contained HTML file with:
+
+- Severity-color-coded summary cards
+- Findings table sorted by (severity, code, column)
+- Inline-SVG correlation heatmap (when ≥ 3 numeric columns)
+- Assumptions panel
+- Run-ID + schema-version footer
+- Total weight ~5KB, no external assets, no JavaScript
+
+For a PM who wants "tell me what's wrong with this CSV in 30 seconds," the HTML report is the right shape.
+
+## Locke is not a one-stop ML tool
+
+Worth saying directly: Locke covers the data-quality and drift-monitoring legs of an ML pipeline. It does **not**:
+
+- Train models. Use scikit-learn / xgboost / lifelines for that.
+- Run causal inference. The `CausalDag` registers user-declared assumptions; it doesn't estimate effects. Use DoWhy or EconML for actual causal modeling.
+- Replace experiment-tracking. Use mlflow / wandb.
+- Read Parquet contents yet. v0.1.10 recognizes the file structure and gives a clear diagnostic; the full decoder is on the roadmap.
+- Connect to data warehouses. Snowflake / BigQuery / Postgres support is not yet there. Export to CSV / JSONL first.
+
+The right framing is **"Locke handles the data hygiene + drift monitoring + reproducible audit trail; you bring the rest of your stack."**
+
+## What I think the determinism contract actually buys you
+
+Three concrete things:
+
+1. **Comparable reports across runs.** Two CI runs over the same dataset produce byte-identical reports. You can `diff` them. You can store them in git. You can compute a fingerprint and cache training jobs on it.
+
+2. **Reproducible audit trails.** Insurance churn analyses get scrutinised. A regulator asking "show me the data quality report you used to validate this dataset on 2026-Q3" deserves a reproducible answer. Locke gives that.
+
+3. **CI gates that don't flake.** Most data-validation tools sometimes report different "validation_result UUIDs" on identical data because of internal `dict` iteration or wall-clock metadata. Locke's IDs are content fingerprints. There's no flake.
+
+That third property is the one I'd defend hardest. It sounds boring; it's what makes the snapshot-and-diff workflow viable in the first place.
+
+## Install
+
+```bash
+cargo add cjc-locke
+```
+
+The crate is at version 0.1.10 on crates.io and works with the matching version of `cjc-data`, `cjc-repro`, `cjc-runtime` from the same workspace release. If you want the CLI:
+
+```bash
+cargo install cjc-lang
+cjcl locke validate your-data.csv
+```
+
+The benchmark code is in the repo at `bench/locke_vs_gx/`. Anyone with `pip install great_expectations pandas` can re-run the full comparison.
+
+## Where v0.2 is going
+
+The next release will close the gaps the benchmark exposed:
+
+- Native Parquet decoder (Thrift + Snappy + PLAIN encoding minimum)
+- Value-set-membership checks at the validate path (matching GX's `ExpectColumnDistinctValuesToBeInSet`)
+- Multi-class target-leakage AUC (v0.1 supports binary targets only)
+- HTML output with per-column distribution sparklines via `cjc-vizor`
+- Optional parallel column-validation via rayon (per-column work is embarrassingly parallel)
+- JUnit XML and SARIF output for CI integrations
+
+If a Locke check you wanted is missing, the issue tracker is open.
+
+## Final honest framing
+
+I built Locke because CJC-Lang needed a data-skepticism layer that preserved the runtime determinism guarantee at the validation boundary. The benchmark against Great Expectations was a calibration exercise — I wanted to know whether the "Locke is competitive" claim I'd been making was actually true.
+
+The answer, on the specific workflows Locke is designed for, is **yes**. Locke matched GX 5 / 5 on every ground-truth fact in a real benchmark, ran 275× faster end-to-end, and fired more checks out of the box for the specific failure modes that break customer-churn pipelines.
+
+That's not a knock on Great Expectations. GX is a mature tool with 10K GitHub stars, 500+ contributors, native SQL backends, ~200 expectations, and an ecosystem Locke won't match for years. If your data lives in Snowflake or your team needs Slack alerting integrations or you need profiler-driven auto-suite generation, **use GX**.
+
+If your data fits in a CSV / JSONL, you need a deterministic CI gate, and you're tired of validating customer-churn pipelines with spreadsheets and prayer, **use Locke**.
+
+The code is on [crates.io](https://crates.io/crates/cjc-locke). The benchmark is in the repo. The whole thing is MIT-licensed.
+
+`cjcl locke validate your-data.csv` and tell me what breaks.
