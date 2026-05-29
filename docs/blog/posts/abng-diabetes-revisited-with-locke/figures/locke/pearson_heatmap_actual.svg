@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 290 305" width="580" height="610" style="font-family: 'Helvetica Neue', Arial, sans-serif; background: #ffffff;">
+  <rect x="0" y="0" width="290" height="305" fill="#ffffff"/>
+  <text x="12" y="22" font-size="13" font-weight="bold" fill="#1a1a1a">Locke audit — Pearson |r| heatmap (6 numeric cols)</text>
+  <text x="12" y="38" font-size="10" fill="#666666">Inline SVG, extracted from the actual `cjcl locke validate` HTML report. Deterministic, content-addressed.</text>
+  <g transform="translate(12, 40)">
+
+<text x="131" y="115" transform="rotate(-45, 131, 115)" text-anchor="start">encounter_id</text>
+<text x="153" y="115" transform="rotate(-45, 153, 115)" text-anchor="start">patient_nbr</text>
+<text x="175" y="115" transform="rotate(-45, 175, 115)" text-anchor="start">admission_type_id</text>
+<text x="197" y="115" transform="rotate(-45, 197, 115)" text-anchor="start">discharge_disposition_id</text>
+<text x="219" y="115" transform="rotate(-45, 219, 115)" text-anchor="start">num_lab_procedures</text>
+<text x="241" y="115" transform="rotate(-45, 241, 115)" text-anchor="start">diag_1</text>
+<text x="115" y="135" text-anchor="end">encounter_id</text>
+<text x="115" y="157" text-anchor="end">patient_nbr</text>
+<text x="115" y="179" text-anchor="end">admission_type_id</text>
+<text x="115" y="201" text-anchor="end">discharge_disposition_id</text>
+<text x="115" y="223" text-anchor="end">num_lab_procedures</text>
+<text x="115" y="245" text-anchor="end">diag_1</text>
+<rect x="120" y="120" width="22" height="22" fill="hsl(0, 100%, 50%)" stroke="#eee" stroke-width="0.5"><title>encounter_id vs encounter_id: r = 1.000</title></rect>
+<text x="131" y="134" text-anchor="middle" fill="#fff" font-size="9">1.00</text>
+<rect x="120" y="142" width="22" height="22" fill="hsl(0, 51%, 74%)" stroke="#eee" stroke-width="0.5"><title>encounter_id vs patient_nbr: r = 0.512</title></rect>
+<text x="131" y="156" text-anchor="middle" fill="#000" font-size="9">0.51</text>
+<rect x="120" y="164" width="22" height="22" fill="hsl(220, 15%, 92%)" stroke="#eee" stroke-width="0.5"><title>encounter_id vs admission_type_id: r = -0.159</title></rect>
+<rect x="120" y="186" width="22" height="22" fill="hsl(220, 13%, 93%)" stroke="#eee" stroke-width="0.5"><title>encounter_id vs discharge_disposition_id: r = -0.133</title></rect>
+<rect x="120" y="208" width="22" height="22" fill="hsl(220, 2%, 98%)" stroke="#eee" stroke-width="0.5"><title>encounter_id vs num_lab_procedures: r = -0.026</title></rect>
+<rect x="120" y="230" width="22" height="22" fill="hsl(0, 1%, 99%)" stroke="#eee" stroke-width="0.5"><title>encounter_id vs diag_1: r = 0.012</title></rect>
+<rect x="142" y="120" width="22" height="22" fill="hsl(0, 51%, 74%)" stroke="#eee" stroke-width="0.5"><title>patient_nbr vs encounter_id: r = 0.512</title></rect>
+<text x="153" y="134" text-anchor="middle" fill="#000" font-size="9">0.51</text>
+<rect x="142" y="142" width="22" height="22" fill="hsl(0, 100%, 50%)" stroke="#eee" stroke-width="0.5"><title>patient_nbr vs patient_nbr: r = 1.000</title></rect>
+<text x="153" y="156" text-anchor="middle" fill="#fff" font-size="9">1.00</text>
+<rect x="142" y="164" width="22" height="22" fill="hsl(220, 1%, 99%)" stroke="#eee" stroke-width="0.5"><title>patient_nbr vs admission_type_id: r = -0.011</title></rect>
+<rect x="142" y="186" width="22" height="22" fill="hsl(220, 13%, 93%)" stroke="#eee" stroke-width="0.5"><title>patient_nbr vs discharge_disposition_id: r = -0.137</title></rect>
+<rect x="142" y="208" width="22" height="22" fill="hsl(0, 1%, 99%)" stroke="#eee" stroke-width="0.5"><title>patient_nbr vs num_lab_procedures: r = 0.016</title></rect>
+<rect x="142" y="230" width="22" height="22" fill="hsl(0, 1%, 99%)" stroke="#eee" stroke-width="0.5"><title>patient_nbr vs diag_1: r = 0.014</title></rect>
+<rect x="164" y="120" width="22" height="22" fill="hsl(220, 15%, 92%)" stroke="#eee" stroke-width="0.5"><title>admission_type_id vs encounter_id: r = -0.159</title></rect>
+<rect x="164" y="142" width="22" height="22" fill="hsl(220, 1%, 99%)" stroke="#eee" stroke-width="0.5"><title>admission_type_id vs patient_nbr: r = -0.011</title></rect>
+<rect x="164" y="164" width="22" height="22" fill="hsl(0, 100%, 50%)" stroke="#eee" stroke-width="0.5"><title>admission_type_id vs admission_type_id: r = 1.000</title></rect>
+<text x="175" y="178" text-anchor="middle" fill="#fff" font-size="9">1.00</text>
+<rect x="164" y="186" width="22" height="22" fill="hsl(0, 8%, 95%)" stroke="#eee" stroke-width="0.5"><title>admission_type_id vs discharge_disposition_id: r = 0.083</title></rect>
+<rect x="164" y="208" width="22" height="22" fill="hsl(220, 14%, 92%)" stroke="#eee" stroke-width="0.5"><title>admission_type_id vs num_lab_procedures: r = -0.144</title></rect>
+<rect x="164" y="230" width="22" height="22" fill="hsl(220, 0%, 99%)" stroke="#eee" stroke-width="0.5"><title>admission_type_id vs diag_1: r = -0.002</title></rect>
+<rect x="186" y="120" width="22" height="22" fill="hsl(220, 13%, 93%)" stroke="#eee" stroke-width="0.5"><title>discharge_disposition_id vs encounter_id: r = -0.133</title></rect>
+<rect x="186" y="142" width="22" height="22" fill="hsl(220, 13%, 93%)" stroke="#eee" stroke-width="0.5"><title>discharge_disposition_id vs patient_nbr: r = -0.137</title></rect>
+<rect x="186" y="164" width="22" height="22" fill="hsl(0, 8%, 95%)" stroke="#eee" stroke-width="0.5"><title>discharge_disposition_id vs admission_type_id: r = 0.083</title></rect>
+<rect x="186" y="186" width="22" height="22" fill="hsl(0, 100%, 50%)" stroke="#eee" stroke-width="0.5"><title>discharge_disposition_id vs discharge_disposition_id: r = 1.000</title></rect>
+<text x="197" y="200" text-anchor="middle" fill="#fff" font-size="9">1.00</text>
+<rect x="186" y="208" width="22" height="22" fill="hsl(0, 2%, 98%)" stroke="#eee" stroke-width="0.5"><title>discharge_disposition_id vs num_lab_procedures: r = 0.023</title></rect>
+<rect x="186" y="230" width="22" height="22" fill="hsl(0, 1%, 99%)" stroke="#eee" stroke-width="0.5"><title>discharge_disposition_id vs diag_1: r = 0.012</title></rect>
+<rect x="208" y="120" width="22" height="22" fill="hsl(220, 2%, 98%)" stroke="#eee" stroke-width="0.5"><title>num_lab_procedures vs encounter_id: r = -0.026</title></rect>
+<rect x="208" y="142" width="22" height="22" fill="hsl(0, 1%, 99%)" stroke="#eee" stroke-width="0.5"><title>num_lab_procedures vs patient_nbr: r = 0.016</title></rect>
+<rect x="208" y="164" width="22" height="22" fill="hsl(220, 14%, 92%)" stroke="#eee" stroke-width="0.5"><title>num_lab_procedures vs admission_type_id: r = -0.144</title></rect>
+<rect x="208" y="186" width="22" height="22" fill="hsl(0, 2%, 98%)" stroke="#eee" stroke-width="0.5"><title>num_lab_procedures vs discharge_disposition_id: r = 0.023</title></rect>
+<rect x="208" y="208" width="22" height="22" fill="hsl(0, 100%, 50%)" stroke="#eee" stroke-width="0.5"><title>num_lab_procedures vs num_lab_procedures: r = 1.000</title></rect>
+<text x="219" y="222" text-anchor="middle" fill="#fff" font-size="9">1.00</text>
+<rect x="208" y="230" width="22" height="22" fill="hsl(220, 6%, 96%)" stroke="#eee" stroke-width="0.5"><title>num_lab_procedures vs diag_1: r = -0.063</title></rect>
+<rect x="230" y="120" width="22" height="22" fill="hsl(0, 1%, 99%)" stroke="#eee" stroke-width="0.5"><title>diag_1 vs encounter_id: r = 0.012</title></rect>
+<rect x="230" y="142" width="22" height="22" fill="hsl(0, 1%, 99%)" stroke="#eee" stroke-width="0.5"><title>diag_1 vs patient_nbr: r = 0.014</title></rect>
+<rect x="230" y="164" width="22" height="22" fill="hsl(220, 0%, 99%)" stroke="#eee" stroke-width="0.5"><title>diag_1 vs admission_type_id: r = -0.002</title></rect>
+<rect x="230" y="186" width="22" height="22" fill="hsl(0, 1%, 99%)" stroke="#eee" stroke-width="0.5"><title>diag_1 vs discharge_disposition_id: r = 0.012</title></rect>
+<rect x="230" y="208" width="22" height="22" fill="hsl(220, 6%, 96%)" stroke="#eee" stroke-width="0.5"><title>diag_1 vs num_lab_procedures: r = -0.063</title></rect>
+<rect x="230" y="230" width="22" height="22" fill="hsl(0, 100%, 50%)" stroke="#eee" stroke-width="0.5"><title>diag_1 vs diag_1: r = 1.000</title></rect>
+<text x="241" y="244" text-anchor="middle" fill="#fff" font-size="9">1.00</text>
+
+  </g>
+</svg>
