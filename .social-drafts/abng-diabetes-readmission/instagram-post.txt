@@ -1,0 +1,31 @@
+INSTAGRAM POST — ABNG on Diabetes-130
+Carousel images (1080x1080, post in this order):
+  1. figures/ig_trajectory.png
+  2. figures/ig_calibration.png
+  3. figures/ig_krouting.png
+Caption below. Put the blog URL in your bio / link sticker.
+====================================================================
+
+ABNG meets a real medical dataset 🏥
+
+I ran my experimental belief-graph model on UCI Diabetes-130 — 101,766 real hospital encounters across 130 US hospitals, predicting 30-day readmission. 50 messy columns, heavy missing data, only ~11% positive. A genuinely hard, imbalanced clinical benchmark — even strong published models reach only ~0.64–0.68 AUC.
+
+The honest result:
+
+📈 Held-out AUC: 0.55 → 0.59 → 0.61 — more data plus a validation-only tuning sweep
+
+🎯 Calibration fixed the probabilities — Brier score and log-loss now beat a do-nothing baseline; calibration error down to 0.010
+
+🌳 Surprise finding: shallower routing won. Deeper trees split the data into more leaves, and each leaf's little regression then starves for rows
+
+⚠️ The accuracy trap: at the default cutoff the model shows ~88% "accuracy" — but always guessing "no readmission" scores ~89%. On imbalanced data, accuracy lies. AUC doesn't.
+
+🔒 Two runs, 3x different wall-clock — bit-identical numbers, down to the calibration parameters. Every prediction is logged in a SHA-256 hash chain: tamper-evident and replayable, row by row.
+
+What I'm not hiding: AUC 0.611 is modest, and the model's core architecture didn't change to get here — rigorous methodology + post-hoc calibration did the work. An honest baseline, not a record.
+
+Still experimental, still iterating — nonlinear leaf heads and a full 101K-row run are next. Full writeup on the blog — link in bio.
+
+— Swipe: ① AUC trajectory  ② calibration before/after  ③ the hyperparameter sweep
+
+#MachineLearning #MedicalAI #DataScience #Rust #AIresearch #DeterministicAI #MLengineering #compsci #buildinpublic

@@ -1,0 +1,26 @@
+LINKEDIN POST — ABNG on Diabetes-130
+Suggested images (attach 1-2): figures/calibration.png and figures/auc_trajectory.png
+Replace [BLOG LINK] with the published post URL before posting.
+====================================================================
+
+I put ABNG — my experimental deterministic, auditable belief-graph model — onto a real medical dataset for the first time. Here's the honest result.
+
+The dataset: UCI Diabetes 130-US Hospitals — 101,766 real hospital encounters across 130 US hospitals, predicting whether a patient is readmitted within 30 days. Hard on purpose: 50 heterogeneous columns, heavy missing data, high-cardinality diagnosis codes, and only ~11% positive. Strong published models top out around AUC 0.64–0.68 — nobody gets 0.9 here.
+
+What happened:
+
+→ Held-out test AUC climbed 0.550 → 0.587 → 0.611 as I scaled from a 2,000-row sub-sample to 20,000 rows and ran a validation-only hyperparameter sweep.
+
+→ Post-hoc calibration moved the probability metrics from *worse* than a do-nothing baseline to *better* than it — Brier 0.100 → 0.098, log-loss 0.391 → 0.344, calibration error 0.031 → 0.010.
+
+One result I didn't expect: shallower routing won. ABNG sends each row through a small tree to a leaf, and every leaf fits its own Bayesian linear regression. A routing depth of 2 beat 3 and 4 — deeper trees carve the data into more leaves, and each leaf's regression then sees fewer rows. Classic data starvation. On a sample this size, less structure generalized better.
+
+A word on the headline accuracy, because it's a trap on imbalanced data: at the default 0.5 threshold the model scores 87.5% — but a model that blindly predicts "no readmission" every single time scores ~89%. That accuracy number is almost pure base rate. Tuning the decision threshold on a validation split trades the hollow accuracy for genuine balanced accuracy and recall. AUC — threshold-independent — is the number I actually trust here.
+
+The part I want to be honest about: ABNG's core architecture didn't change at all. The gains came from rigorous, leakage-free evaluation methodology and post-hoc calibration. Determinism and the SHA-256 hash-chained audit log held through the entire campaign — precisely because the core was left untouched. Two independent runs at 3x different wall-clock produced bit-identical results, calibration parameters included.
+
+AUC 0.611 is modest, and I'm saying so. It's an honest baseline on a hard task, not a record. ABNG is still experimental — nonlinear MLP leaf heads (the one lever that can move ranking, which calibration provably cannot), a full 101,766-row run, and a multi-seed sweep are next.
+
+Full writeup — methodology, the calibration math, what helped, where it falls short: [BLOG LINK]
+
+#MachineLearning #MedicalAI #Rust #DataScience #DeterministicComputing #AIResearch #MLEngineering

@@ -1,0 +1,29 @@
+LINKEDIN POST — Gibran (charts, per-group ranking, and a row-filter fix)
+Suggested images (reuse the Instagram carousel — attach all 3, in this order):
+  figures/ig_1_charts.png  ->  figures/ig_2_topn.png  ->  figures/ig_3_governance.png
+Replace [BLOG LINK] with: https://adamezzat1.github.io/blog/posts/gibran-windowed-ctes-and-row-filters/
+====================================================================
+
+I added charts to my governed analytics engine this week. The most useful thing I learned is that the charts weren't the point.
+
+Quick context: Gibran is a governed metric layer with a natural-language interface — but the NL is pattern templates, not an LLM. You ask a question in plain English, and it either resolves against your real schema or says "I don't know." There's no model in the SQL path, so it physically can't invent a column name. For analytics, "wrong but plausible" is the failure mode you can't afford, and removing it is the whole bet.
+
+Three things shipped:
+
+🔹 A real visualization layer — a table/chart toggle with six chart types and multi-series, lazy-loaded so the app stays tiny until you actually open a chart. The chart just renders rows the engine already governed, so it adds no new way to see data you're not allowed to.
+
+🔹 Top-N-per-group, in one English sentence. "biggest 5 customer per country by spend" is a ROW_NUMBER() OVER (PARTITION BY ...) window function you'd normally hand-write — now it's one line, compiled to a windowed CTE, and still resolved against your real catalog so it can't fabricate.
+
+🔹 ...and the fix that actually mattered. Building the first two surfaced a quiet bug: the row-level-security filter only worked on flat queries. So every advanced metric — cohort retention, funnels, the new per-group ranking — silently broke for any role with row restrictions.
+
+Here's the subtle part, and why it sat there undetected: it failed *closed*. The filter was being attached to the outer query, which reads a CTE rather than the source table, so it errored at bind time instead of leaking. And the existing tests only ran unrestricted roles — so the feature was broken for exactly the people who'd use it most, and nothing caught it.
+
+The fix makes filter injection CTE-aware: the policy filter is woven into every source-reading SELECT, before any aggregation or ranking. So a west-region analyst's "top 5 per region" can only ever rank over west-region rows — correct *and* safe, because the ranking never even sees data the role isn't allowed to.
+
+The lesson I keep relearning: a visible feature is what drags a latent bug in the boring infrastructure into the light. The charts were the demo; the governance fix was the substance. And the end-to-end test under a restricted role mattered more than any unit test — the failure only showed up in the irregular shape (a funnel reads the source across several CTEs, not one).
+
+To be clear about scope: this is a research project, not a product pitch. The bet is narrow — trade natural-language breadth for hard correctness guarantees, and weave governance into the SQL itself so privilege escalation isn't even a category of bug. This release makes that bet hold for one more class of query.
+
+Full write-up, with the before/after SQL: [BLOG LINK]
+
+#DataEngineering #Analytics #SQL #DataGovernance #DuckDB #SoftwareEngineering #ReproducibleResearch #DataVisualization

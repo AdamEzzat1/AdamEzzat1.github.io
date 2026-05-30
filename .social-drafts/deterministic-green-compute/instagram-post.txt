@@ -1,0 +1,35 @@
+INSTAGRAM POST — Green by Construction (deterministic green compute)
+Carousel images (1080x1080, post in this order):
+  1. figures/ig_1_thermal.png      (hook: pick your power budget)
+  2. figures/ig_2_adaptive.png     (the recovery: capped, still full speed)
+  3. figures/ig_3_determinism.png  (the kicker: same bits, every config)
+Caption below. Put the blog URL in your bio / link sticker:
+  https://adamezzat1.github.io/blog/posts/deterministic-green-compute/
+====================================================================
+
+Made my deterministic programming language "greener" 🌱 — and the most useful thing I learned is that the obvious version of that claim is wrong.
+
+"Determinism = lower energy" is a myth. Stable math (Kahan/binned), audit trails, and bit-exact replay all cost MORE per run, not less.
+
+So I built the honest version — three phases:
+
+🔹 Runtime Policy Layer: one flag (cool / balanced / max-perf) bounds how hard a run drives the CPU, plus a deterministic energy estimate.
+🔹 Race-to-idle scheduling: full speed for short bursts, throttle only when load is *sustained* (bursts don't overheat — sustained load does). Clawed back ~1.8× of what a fixed cap costs.
+🔹 Fused kernels: one pass, one allocation instead of two — less memory traffic.
+
+What ties it together: thread count, pool size, and the schedule provably never change the output. Same seed → same bits, across every profile and both executors. That's the only reason an adaptive thermal knob is even safe in a language built on reproducibility.
+
+And the real "green" win isn't fewer FLOPs — it's fewer WASTED runs. Unstable systems burn compute on reruns nobody wanted: drift, NaN cascades, failed reproductions. The metric I care about is trustworthy_results / joule — and determinism drives that rerun count toward 1.
+
+And it protects more than today's run: short-term you dodge the throttle cliff (overheating chips clock *down* = slower now); long-term, easing that thermal stress keeps your hardware and performance healthy over time.
+
+One nuance, because it's easy to flip: heat threatens *performance*, not the answer. Throttling changes timing, never the bits — a throttled run is byte-identical to a cool one. The thermal bound protects how fast you go; determinism protects what you get.
+
+Not "greener than everything" — way too early for that. Just exploring whether deterministic, memory-aware, thermally-bounded systems can cut *wasteful* compute where trust matters more than raw speed.
+
+🔗 Full write-up, every number measured — link in bio.
+
+.
+.
+.
+#rustlang #programming #softwareengineering #determinism #greencomputing #scientificcomputing #performance #machinelearning
