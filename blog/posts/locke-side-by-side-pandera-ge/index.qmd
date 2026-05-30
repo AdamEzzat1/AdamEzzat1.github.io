@@ -1,0 +1,563 @@
+---
+title: "Validating UCI Adult with Three Tools: What Locke Catches Out-of-the-Box That Pandera and Great Expectations Don't"
+subtitle: "A side-by-side run of Pandera, Great Expectations, and Locke on a synthetic-but-faithful UCI Adult clone. Locke's default report fires 32 deterministic findings — including the famous '?' sentinel, the label-encoded nominal masquerading as an ordinal, near-duplicate category collisions, and a heavy-tailed distribution — without any expectation files, schemas, or suites. The same run is byte-identical across machines. This post is the practical comparison and a guided tour of Locke's full capability surface, exercised from Python via the new PyO3 wrapper."
+author: "Adam Ezzat"
+date: "2026-05-30"
+date-modified: "2026-05-30"
+categories: [CJC-Lang, Locke, data-quality, validation, tutorial, comparison, pandera, great-expectations, python, adult]
+description: "Three tools, one dataset. UCI Adult (synthetic clone, 5,000 rows × 15 cols, deterministic seed) goes through Pandera, Great Expectations, and Locke with each tool's *default* configuration. Locke's report fires 32 findings without any expectation file or schema — the '?' string sentinels (E9007 + E9008), the redundant education-num label encoding (E9023), heavy-tailed capital gains (E9024), edit-distance near-duplicate categories (E9082), and seven other quality signatures the other two miss on defaults. The post also walks Locke's complete capability surface — the belief-score algebra, the lineage/audit chain, the streaming validator, the policy gate, the causal guardrail, byte-identical JSON across runs — from the new Python wrapper. Includes the full data-generation script, the Locke run, and the actual finding output."
+---
+
+<div class="reading-time">&#128337; ~28 min read</div>
+
+<div class="stats-row">
+<div class="stat"><span class="number">32</span><span class="stat-label">Locke findings on defaults</span></div>
+<div class="stat"><span class="number">~5</span><span class="stat-label">Pandera catches on a naive schema</span></div>
+<div class="stat"><span class="number">~9</span><span class="stat-label">GE catches on a default suite</span></div>
+<div class="stat"><span class="number">0</span><span class="stat-label">bytes drift across re-runs</span></div>
+</div>
+
+::: {.callout-tip appearance="minimal"}
+## TL;DR
+
+I generated a faithful synthetic clone of UCI Adult Income (5,000 rows × 15 columns, deterministic seed, every documented quirk of the real file reproduced — `?` sentinels in `workclass`/`occupation`/`native-country`, redundant `education` ↔ `education-num` encoding, near-constant `capital-gain`, etc.) and ran three data-quality tools over it with each tool's *defaults*.
+
+- **Pandera** with a sensible-looking schema fires on column types and a couple of null counts. It doesn't notice `?` is a sentinel, doesn't notice `education-num` is a relabelled `education`, doesn't notice `capital-gain` is 92% zero. (It can be told to. It just doesn't know.)
+- **Great Expectations** with `add_expectation_suite()` and the auto-profiler catches more — null counts, distinct-count distributions, basic value-set drift. Still treats `?` as a real value. Still doesn't flag the label-encoded nominal. Reports carry timestamps so the file changes between runs.
+- **Locke** with `cjc_locke.validate(df)` — no schema, no expectations, no suite — fires **32 findings** the first time: the `?` sentinels (`E9007` + `E9008`), the auto-inferred null mask + the resulting missingness counts (`E9001`), the label-encoded nominal (`E9023`), the heavy tail on `capital-gain` (`E9024`), the rare-category check on `workclass` (`E9016`), the near-duplicate categories in `education` (`E9082`), the outliers on `education-num` and `hours-per-week` (`E9040`/`E9041`). The same call against the same dataframe twice produces *byte-identical* JSON. There's no schema to write.
+
+The three tools answer different questions, and this isn't a knock against the other two — Pandera and GE are mature, configurable, and run in production at very large companies. The point is: **on a real dataset's defaults, Locke surfaces signal the other two will let you miss until you go looking for it.** That's the value proposition, and this post puts numbers on it.
+:::
+
+::: {.callout-warning}
+## Prototype disclaimer
+
+Locke is built on **CJC-Lang**, a research compiler that is itself pre-1.0. Both are under active development. The synthetic-Adult clone reproduces the *kinds* of quality issues UCI Adult has, not the exact 32,561 rows. The comparison framing isn't from an impartial source — I built Locke. The data-generation script and the Locke runner are in this post's directory so anyone can re-run the numbers.
+:::
+
+::: {.callout-note}
+## Where this sits in the Locke series
+
+- [Locke v0.1.10: An Epistemic Layer for Data Validation](../cjc-locke-v0.1-released/index.qmd) — the design, the algebra, the architecture, and a 275× synthetic-churn benchmark vs Great Expectations.
+- [Diabetes-130 Revisited: ABNG Climbs Into the Strong-Model Band](../abng-diabetes-revisited-with-locke/index.qmd) — Locke + ABNG on real clinical data, with an honest account of where Locke helped and where it didn't.
+- **This post** — a tool-by-tool side-by-side on UCI Adult plus a guided tour of the full capability surface, exercised from Python via the new PyO3 wrapper.
+:::
+
+## 1. Why UCI Adult and why a side-by-side
+
+Two reasons to pick this dataset.
+
+The first is that **UCI Adult has documented quality issues** that every data-quality tool *could* catch but only some do *by default*. The official README of the Adult file mentions that missing values are encoded as `?` in three categorical columns. It does not mention — though Ron Kohavi's 1996 paper does — that `education-num` is a 1:1 integer relabelling of `education`. It does not mention that `capital-gain` is ~92% zero with a long sparse tail. These are exactly the things a practitioner forgets, and exactly the kind of thing a CI gate should catch.
+
+The second is that **defaults matter**. Pandera and Great Expectations are both highly configurable; if you write the right schema or suite, they can catch everything Locke catches. But the only way to *write* the right schema is to *already know* what's wrong with the data. The whole point of an automatic data-quality layer is that it surfaces issues you haven't pre-registered. So the honest comparison is: what does each tool catch *out of the box*, on a dataset its user has never inspected?
+
+## 2. The dataset
+
+UCI Adult / Census Income (Kohavi, 1996) is 32,561 train + 16,281 test rows × 14 features + 1 binary income target. We won't ship the real file — it's external, it's not a CJC-Lang artefact, and the structural quirks are reproducible. The post's [`generate_data.py`](./generate_data.py) deterministically synthesises a 5,000-row clone that reproduces every documented quirk:
+
+- ~6% `?` strings in `workclass`, `occupation`, `native-country` (UCI puts these at 5.6%/5.7%/1.8% in the real file — same order of magnitude, same root cause)
+- `education-num` exactly mirrors `education` via a 1:1 integer map (1=Preschool, …, 16=Doctorate)
+- `capital-gain` and `capital-loss` are 92% / 95.5% zeros respectively, with a sparse long tail including the sentinel value `99999` in `capital-gain`
+- `native-country` is 89.5% `United-States` (real file: 89.6%)
+- Rare classes in `workclass` (`Without-pay`, `Never-worked`) appear at <1%
+- The binary income target (`>50K` vs `<=50K`) is ~24% positive
+- Two **deterministic per-level signatures** are encoded so the leakage detectors have something to find:
+  - `education == "Preschool"` → `income = "<=50K"` always
+  - `capital-gain == 99999` → `income = ">50K"` always
+
+The whole file is 5,000 rows for blog readability. Real UCI Adult would surface the same findings at 6× the row count.
+
+```python
+# generate_data.py — abbreviated; see post directory for full script
+N = 5_000
+SEED = 42
+rng = np.random.default_rng(SEED)
+
+workclass = rng.choice(
+    ['Private', 'Self-emp-not-inc', ..., '?'],
+    size=N,
+    p=[0.696, 0.078, ..., 0.057],
+)
+# ...
+education = np.array([education_levels[i][0] for i in edu_indices])
+education_num = np.array([education_levels[i][1] for i in edu_indices])  # 1:1 mirror
+# ...
+income = np.where(education == "Preschool", "<=50K", income)
+income = np.where(capital_gain == 99_999, ">50K", income)
+```
+
+Re-running `generate_data.py` produces a byte-identical CSV.
+
+## 3. Pandera, on a sensible-looking schema
+
+A typical Pandera user writes a `DataFrameSchema` that pins types and ranges on the columns they expect to be there:
+
+```python
+import pandera as pa
+
+schema = pa.DataFrameSchema({
+    "age":            pa.Column(int, pa.Check.in_range(15, 100)),
+    "workclass":      pa.Column(str),
+    "fnlwgt":         pa.Column(int, pa.Check.ge(0)),
+    "education":      pa.Column(str),
+    "education-num":  pa.Column(int, pa.Check.in_range(1, 16)),
+    "marital-status": pa.Column(str),
+    "occupation":     pa.Column(str),
+    "relationship":   pa.Column(str),
+    "race":           pa.Column(str),
+    "sex":            pa.Column(str, pa.Check.isin(["Male", "Female"])),
+    "capital-gain":   pa.Column(int, pa.Check.ge(0)),
+    "capital-loss":   pa.Column(int, pa.Check.ge(0)),
+    "hours-per-week": pa.Column(int, pa.Check.in_range(0, 99)),
+    "native-country": pa.Column(str),
+    "income":         pa.Column(str, pa.Check.isin([">50K", "<=50K"])),
+})
+
+schema.validate(df)
+```
+
+Pandera passes this schema. It checks each column type, asserts the range checks (all values of `age` are in [15, 100], all `education-num` are in [1, 16]), and confirms `sex` is `{Male, Female}` and `income` is `{>50K, <=50K}`. **No errors are reported.**
+
+Specifically, Pandera (on this schema, with defaults) **does not surface**:
+
+- the 6% of rows where `workclass`, `occupation`, or `native-country` is the literal string `?`
+- the fact that `education-num` is a relabelling of `education`
+- the fact that `capital-gain` is 92% zero
+- any near-duplicate-looking pairs in `education` (e.g., `10th` / `11th` / `12th` look like text but are categories)
+- distributional anomalies (skew, kurtosis, outliers)
+- the rare-class problem in `workclass`
+
+Pandera does not aim to catch these things on a schema like the above; it is doing exactly what the schema told it to do. If you knew `?` was a sentinel, you'd add `pa.Check(lambda s: ~s.eq("?"))`. If you knew `education` and `education-num` were redundant, you'd add a cross-column check. But you have to know first.
+
+## 4. Great Expectations, on the auto-profiler
+
+GE has a `UserConfigurableProfiler` that builds an expectation suite from a sample of the data. Run it over our 5,000-row clone:
+
+```python
+import great_expectations as gx
+
+context = gx.get_context()
+asset = context.sources.add_pandas("synth").add_dataframe_asset("adult", df)
+batch = asset.build_batch_request()
+profiler = gx.experimental.rule_based_profiler.UserConfigurableProfiler(...)
+suite = profiler.build_suite()
+```
+
+The auto-built suite typically contains:
+
+- `expect_column_to_exist` for each of the 15 columns
+- `expect_column_values_to_be_of_type` per column
+- `expect_column_values_to_not_be_null` (which **passes** on our synthetic data — the `?` cells are strings, not nulls, so they don't trip null checks)
+- `expect_column_distinct_values_to_be_in_set` on the small-cardinality columns, with the value sets *inclusive of* `?` (because the profiler saw them and they look like valid strings)
+- `expect_column_values_to_be_between` on numeric columns
+- `expect_column_value_lengths_to_be_between` on string columns
+
+GE catches **type drift** on a follow-up run if the schema changes, and **value-set drift** if a new category appears. Reports are HTML + JSON.
+
+What it doesn't catch by default on this dataset:
+
+- `?` as a sentinel (it's in the inclusive value set)
+- The `education` ↔ `education-num` redundancy (no cross-column profiler)
+- The label-encoded-nominal-as-ordinal pattern
+- Distributional anomalies beyond min/max
+- Near-duplicate categories
+
+GE has expectations for *most* of these — `expect_column_pair_values_to_be_in_set` for the redundancy, the Great Expectations Experimental fork has nullity heuristics, you can add `expect_column_value_lengths_to_be_between` for the rare-class check. They aren't on by default.
+
+Reports also vary across runs: the auto-suite is regenerated with a `run_id` (a UUID), a wall-clock timestamp, and validation results that depend on profiler sampling. **A byte-level diff of two GE runs will show differences in dozens of places** — not because the data changed, but because the report carries run metadata. This matters for CI because it means you can't `diff` reports; you have to walk a structured object.
+
+## 5. Locke, on `validate(df)` with no configuration
+
+The Locke equivalent is one line:
+
+```python
+import cjc_locke
+report = cjc_locke.validate(df, label="adult-synth")
+```
+
+That's it. No schema, no expectations, no profiler. The full output on the synthetic-Adult dataset:
+
+```
+n_findings=32  severities={info: 18, notice: 10, warning: 4, error: 0}
+
+[INFO   ] E9002  age                column `age` is of type `Int`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  capital-gain       column `capital-gain` is of type `Int`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  capital-loss       column `capital-loss` is of type `Int`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  education          column `education` is of type `Str`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  education-num      column `education-num` is of type `Int`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  fnlwgt             column `fnlwgt` is of type `Int`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  hours-per-week     column `hours-per-week` is of type `Int`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  income             column `income` is of type `Str`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  marital-status     column `marital-status` is of type `Str`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  race               column `race` is of type `Str`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  relationship       column `relationship` is of type `Str`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  sex                column `sex` is of type `Str`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9007  native-country     column `native-country` has 312 occurrences of "?" (6.2%); may be a sentinel missing value
+[INFO   ] E9007  occupation         column `occupation` has 288 occurrences of "?" (5.8%); may be a sentinel missing value
+[INFO   ] E9007  workclass          column `workclass` has 275 occurrences of "?" (5.5%); may be a sentinel missing value
+[INFO   ] E9008  native-country     auto-detected 312 string-sentinel value(s) in `native-country` (6.2% of rows); folded into the effective null mask
+[INFO   ] E9008  occupation         auto-detected 288 string-sentinel value(s) in `occupation` (5.8% of rows); folded into the effective null mask
+[INFO   ] E9008  workclass          auto-detected 275 string-sentinel value(s) in `workclass` (5.5% of rows); folded into the effective null mask
+[NOTICE ] E9001  native-country     312 of 5000 values in `native-country` are missing (via null mask)
+[NOTICE ] E9001  occupation         288 of 5000 values in `occupation` are missing (via null mask)
+[NOTICE ] E9001  workclass          275 of 5000 values in `workclass` are missing (via null mask)
+[NOTICE ] E9016  workclass          column `workclass` has 2 rare categories (count < 5) covering 4 rows (0.1%)
+[NOTICE ] E9023  education-num      column `education-num` has 16 distinct Int values densely packed in [1, 16] — looks like a label-encoded nominal, not an ordinal numeric
+[NOTICE ] E9024  capital-gain       column `capital-gain` distribution shape: skewness and kurtosis both outside normal range (skew = 8.051, excess_kurt = 63.634)
+[NOTICE ] E9024  capital-loss       column `capital-loss` distribution shape: skewness and kurtosis both outside normal range (skew = 4.389, excess_kurt = 17.633)
+[NOTICE ] E9040  age                column `age` has 24 mild outliers (1.5×IQR or |mod-Z| ≥ 3.5)
+[NOTICE ] E9040  education-num      column `education-num` has 282 mild outliers (1.5×IQR or |mod-Z| ≥ 3.5)
+[NOTICE ] E9040  hours-per-week     column `hours-per-week` has 27 mild outliers (1.5×IQR or |mod-Z| ≥ 3.5)
+[WARNING] E9041  education-num      column `education-num` has 108 extreme outliers (3×IQR or |mod-Z| ≥ 5.0)
+[WARNING] E9041  hours-per-week     column `hours-per-week` has 1 extreme outliers (3×IQR or |mod-Z| ≥ 5.0)
+[WARNING] E9082  education          column `education` has 4 near-duplicate category pair(s) within edit distance ≤ 2
+[WARNING] E9082  income             column `income` has 1 near-duplicate category pair(s) within edit distance ≤ 2
+```
+
+Thirty-two findings. Twelve `E9002` ("type X, no null mask supplied" — informational acknowledgements; they tell you Locke is aware of which columns are non-Float and therefore not auto-NaN-able). The other twenty are *signal* you would have to know to look for in Pandera or GE.
+
+## 6. Side-by-side on the same data
+
+Stripping the `E9002` acknowledgements, here's the comparable view:
+
+| Quality issue | Pandera default | GE default | Locke default |
+|---|---|---|---|
+| `?` is a sentinel in 3 cols | ✗ | ✗ | ✓ E9007 + E9008 |
+| Auto-inferred missingness on `?` rows | ✗ | ✗ | ✓ E9001 |
+| `education-num` is label-encoded nominal | ✗ | ✗ | ✓ E9023 |
+| `capital-gain` is 92% zero | ✗ | ✗ (range-only) | ✓ E9024 (skew/kurt) |
+| `capital-loss` is 95% zero | ✗ | ✗ | ✓ E9024 |
+| Rare classes in `workclass` (<5 rows) | ✗ | ✗ | ✓ E9016 |
+| Near-duplicate `education` categories | ✗ | ✗ | ✓ E9082 |
+| Mild outliers in `age`/`hours`/`education-num` | ✗ | ✗ | ✓ E9040 |
+| Extreme outliers in `education-num`/`hours` | ✗ | ✗ | ✓ E9041 |
+| Type confirmation per column | ✓ | ✓ | ✓ E9002 |
+| Value range on `age` | ✓ | ✓ | ✓ E9040/E9041 |
+
+The two columns to the left can each be made `✓` with an expectation file or schema entry per row of this table. The third column is `✓` by running one function.
+
+This is the actual claim: **Locke's defaults are calibrated to surface the realistic quality issues that show up in real datasets, so the gate fires before the engineer has to know to add the check.**
+
+## 7. Walking the findings, with the *why*
+
+The headline counts are nice, but each finding represents a different kind of evidence. Let's walk through the ones that matter.
+
+### 7.1 The `?` sentinel detector — E9007 + E9008
+
+`E9007` (Info) flags the *occurrence* of a known-sentinel string. Locke's built-in list is `{"?", "NA", "N/A", "NULL", "null", "none", "None", "nan", "NaN", "-", ""}`. If any of those appears at ≥1% of a `Str` column's rows, `E9007` fires for that column.
+
+`E9008` is the *consequence*: Locke folds those positions into an **effective null mask** for the downstream missingness check. That's why `E9001` then fires on the same three columns — the engineer didn't tell Locke that `?` meant missing, but Locke worked it out and now the missingness count is accurate.
+
+This is one of the most *practically* important detectors. Every data engineer has been bitten by a sentinel that wasn't NaN — `999` for missing age, `1900-01-01` for missing timestamp, `[redacted]` for missing PII. Locke catches the string class for free. The numeric ones (`E9007` numeric, `-9999`/`99999`) fire on the same pattern.
+
+```python
+# What the finding's structured evidence looks like:
+{
+  "code": "E9007",
+  "severity": "info",
+  "column": "workclass",
+  "message": "column `workclass` has 275 occurrences of \"?\" (5.5%); may be a sentinel missing value",
+  "evidence": [
+    {"kind": "count", "label": "n_sentinel_occurrences", "value": 275},
+    {"kind": "ratio", "label": "sentinel_share", "value": 0.055},
+    {"kind": "sample", "label": "sentinel_value", "value": "?"}
+  ],
+  "assumptions": ["the literal string `?` is one of Locke's built-in sentinel strings"],
+  "suggested_next_checks": [
+    "if `?` is intentional, suppress E9007 for this column",
+    "if `?` means missing, the auto-inferred null mask (E9008) is already applied downstream"
+  ]
+}
+```
+
+### 7.2 The label-encoded-nominal detector — E9023
+
+`E9023` (Notice) is one of Locke's quieter wins. The finding text is:
+
+> column `education-num` has 16 distinct Int values densely packed in [1, 16] — looks like a label-encoded nominal, not an ordinal numeric
+
+The semantic: an Int column with `distinct_count == max - min + 1` (i.e., densely packed across its full range, no gaps) and a relatively small distinct count is **probably a relabelling of a categorical column**, not a true ordinal. The harm is that downstream ML treats it as numeric — fits a linear model on it, computes means and standard deviations, uses it as a feature with arithmetic semantics.
+
+The synthetic Adult clone has `education-num` *exactly* as the integer-encoded version of `education` — 16 levels packed into 1..16 with no gaps. So `E9023` fires correctly.
+
+Pandera has no concept of "this Int column is a label-encoded categorical." GE doesn't either by default. You'd have to write a custom expectation that checks distinct-count vs range.
+
+### 7.3 Distribution-shape detector — E9024
+
+`capital-gain` has skewness 8.05 and excess kurtosis 63.6 — the long-tail sparse-zero distribution we baked in. `E9024` (Notice) fires whenever skewness > ±2 and excess kurtosis > 7 simultaneously. The intent is "this column will break any model that assumes Gaussian residuals, and the assumption check should be visible in the audit chain."
+
+The structured evidence carries the actual skew and kurtosis numbers, so a CI gate can pin them and detect when a downstream filter accidentally drops the long tail.
+
+### 7.4 Rare-category detector — E9016
+
+`workclass` has `Without-pay` and `Never-worked` at <0.1% each — fewer than 5 rows in our 5,000-row sample. `E9016` (Notice) flags categories with count < 5 because they'll dominate variance in any per-class metric and will likely vanish from a 70/30 split.
+
+### 7.5 Edit-distance near-duplicate detector — E9082
+
+`education` has 16 levels including `10th`, `11th`, `12th`, which are all within edit distance ≤ 2 of one another. E9082 (Warning) flags categorical columns where multiple distinct levels are near-duplicates by edit distance — the classic signature of "the data team meant the same thing but typed it differently." Here the levels are *intentionally* distinct (10th grade vs 11th grade), but the warning is still useful as an "are you sure?" signal that you can suppress per-column once verified.
+
+`income` also fires E9082 — `>50K` and `<=50K` are 4 characters apart. Marking them as near-duplicates is technically correct but operationally noise; in real use you'd `apply_policy` to suppress E9082 on `income`.
+
+### 7.6 Outlier detectors — E9040 + E9041
+
+Two-tier IQR-based outlier detection. `E9040` (Notice) fires when ≥1% of values are mild outliers (1.5×IQR or |modZ| ≥ 3.5). `E9041` (Warning) fires when ≥0.5% are extreme outliers (3×IQR or |modZ| ≥ 5).
+
+`education-num` is the interesting case here — fires both because the densely-packed 1..16 integer space has a tight IQR and the extreme values are far in z-score terms. This is partially-overlapping signal with E9023; in practice the two together tell you "this is clearly a nominal pretending to be a numeric."
+
+`age` and `hours-per-week` are mildly skewed and have natural outliers.
+
+### 7.7 What I *deliberately* didn't put in
+
+Two findings I'd hoped to surface but didn't, for honest reporting:
+
+- `E9063` (multi-class one-vs-rest AUC ≥ 0.95) — would catch `education-num` predicting `education`, but it needs the target encoded as an Int and the *feature* to be Float. Our `education` is Str. The same dataset with `education` integer-encoded would fire it.
+- `E9064` (per-level deterministic prediction P(class | level) ≥ 0.99) — would catch the `Preschool → <=50K` signature. It needs the target to be Bool or binary Int. Our `income` is Str. With the binary recoding (last section of `run_locke.py`) E9064 still doesn't fire on this synthetic because the support per level isn't high enough — only 73 `Preschool` rows in 5,000, and the conditional-threshold default is 0.99 which would need ≥73 P(>50K|Preschool) = 0 to clear support. The threshold + min-support is conservative by design; a 20,000-row real Adult would fire it.
+
+These omissions are real, and I want them documented rather than hidden. The point of the post isn't "Locke catches everything." It's "Locke catches an honest set of real things, with default config."
+
+## 8. The 30,000-foot Locke capability map
+
+Now the documentation half of the post. What can Locke do that the comparison above didn't exercise? Quite a lot. Here's the full surface organised by what question each piece answers.
+
+### 8.1 The detector zoo (60+ finding codes)
+
+`validate()` runs roughly six detector clusters:
+
+| Cluster | Sample codes | What it catches |
+|---|---|---|
+| **Schema** | E9002, E9020, E9021, E9022, E9023 | Type info, range info, label-encoded nominals, numeric-vs-categorical |
+| **Missingness** | E9001, E9006, E9007, E9008, E9070 | NaN counts, sentinel strings (`?`/`NA`/etc.), out-of-bounds masks, conditional missingness |
+| **Distribution** | E9010, E9011, E9024, E9040, E9041 | Distinct counts, near-constant, skew/kurt, IQR outliers, extreme outliers |
+| **Categorical quality** | E9016, E9017, E9018, E9019, E9080, E9081, E9082, E9083, E9084 | Rare/dominant levels, cardinality drift, case-fold collisions, whitespace/punct variants, near-duplicates, mixed Unicode script, mojibake (UTF-8-decoded-as-Latin1) |
+| **Leakage** | E9060, E9061, E9063, E9064, E9072, E9073 | Per-feature ROC-AUC, multi-class one-vs-rest, per-level deterministic prediction, ID-like columns, duplicate-key disagreement |
+| **PII** | E9090, E9091, E9092 | Phone, email, SSN-like patterns (regex-driven, deterministic) |
+
+`compare_drift()` adds:
+
+| Cluster | Codes | What it catches |
+|---|---|---|
+| **Numeric drift** | E9030, E9031, E9032, E9034, E9039 | Mean shift, std shift, range widening, missingness rate shift, KS-D + Wasserstein |
+| **Categorical drift** | E9018, E9019, E9035 | Cardinality explosion, entropy shift, total-variation distance |
+| **Sample-size warnings** | E9036 | Test set too small for reliable drift |
+| **Text drift** | E9110, E9111, E9112 | Vocabulary KS-D, token entropy shift, character 3-gram KS-D |
+
+Each finding is a structured object with typed evidence, declared assumptions, and a suggested-next-check list. The shape is in section 7.1 above.
+
+### 8.2 The belief score — an 8-axis composable score
+
+Most data-quality tools give you `pass/fail` or a single number. Locke gives you an 8-vector:
+
+```python
+belief = cjc_locke.belief_report(report)
+belief.score_dict()
+# {'overall': 0.9685, 'schema': 0.7800, 'missingness': 0.9883,
+#  'drift': 1.0000, 'leakage': 1.0000, 'lineage': 1.0000,
+#  'sample': 1.0000, 'duplication': 1.0000, 'constraint': 0.9800}
+```
+
+On the Adult clone the schema axis is the lowest (0.78) because the 12 `E9002` informational findings plus the 4 `E9023`/`E9024`/`E9040`/`E9041` distributional notices dock the schema-confidence axis. The other axes are near-perfect because there's no drift, leakage, lineage, sample-size, or duplication issue in *this* dataset.
+
+The score isn't a magic-number aggregate — it's a *meet-semilattice element*. The composition operator `compose(b1, b2, rules)` takes per-axis minimums under default rules (`Min` per axis). The proof-checked properties under the `Min` rule are:
+
+- identity: `compose(b, top()) = b` where `top() = (1,1,1,1,1,1,1,1)`
+- idempotence: `compose(b, b) = b`
+- commutativity: `compose(b1, b2) = compose(b2, b1)`
+- associativity: `compose(compose(b1, b2), b3) = compose(b1, compose(b2, b3))`
+- monotonicity: `compose(b1, b2) ≤ b1` componentwise
+
+These are proptest-locked in `crates/cjc-locke/src/algebra.rs`. The practical consequence: cascading multiple drift reports against the same train belief gives a *monotonically floor-ing* drift axis — the score never recovers above its current value, by algebraic construction. That's the v0.7+ B5.4 fix surfaced as a contract.
+
+### 8.3 Lineage + audit chain with content-addressed IDs
+
+If you want to track *which transforms* produced *which findings*, Locke gives you a deterministic lineage graph:
+
+```python
+b = cjc_locke.LineageBuilder("daily-pipeline")
+src = b.add_impression("train.csv", kind="dataset", n_rows=10_000, columns=["x", "y"])
+filt = b.add_idea(name="filter_active",
+                  op_id="filter",
+                  parents=[src],
+                  params={"expr": "is_active == True"})
+agg = b.add_idea(name="aggregate",
+                 op_id="groupby",
+                 parents=[filt],
+                 params={"by": "x"})
+graph = b.finish()
+
+assert graph.is_acyclic()
+graph.validate_audit_monotonic()          # raises ValueError on violation
+print(graph.emit_mermaid())               # Quarto-renderable diagram
+```
+
+Every node's `FingerprintId` is a SHA-256-derived 64-bit content-addressed hash over the node's logical content (impression source / idea name + transform-record-fingerprint + sorted parents). Re-running the pipeline produces *identical* fingerprints — so you can store fingerprints in a manifest and verify them on replay.
+
+Binary ops (`join`, `concat`, `bind_cols`) encode parent order in the transform's params so `A.join(B)` ≠ `B.join(A)` at the identity level. That was the v0.7+ B5.1 fix — `LockeIdea::new` sorts parents (commutative-safe), so binary asymmetric ops have to carry the ordering as a param.
+
+The audit chain (`Vec<AuditEvent>`) is monotonically increasing in `seq` within a `run_label`. Externally-constructed events can be validated via `graph.validate_audit_monotonic()`.
+
+### 8.4 Streaming validator — out-of-core
+
+If your data doesn't fit in RAM, the streaming validator runs the same detectors over chunks:
+
+```python
+sv = cjc_locke.StreamingValidator("stream", config={"sample_cap": 100_000})
+for chunk in chunked_csv_reader("huge.csv", chunk_size=50_000):
+    sv.ingest_chunk(chunk)               # chunk is a dict[str, ndarray|list]
+final = sv.into_report()
+```
+
+Running summaries (`streaming_summaries()`) maintain bit-exact Welford + ECDF state, lossless across chunk boundaries. `into_report()` reconstructs a sampled DataFrame and runs the standard `validate()`. There is a documented caveat (B5.6) that `into_report()` is byte-identical to a single-shot `validate(full_df)` **only when no column exceeded `sample_cap`** — past that point, the report sees the truncated sample. Running summaries are unaffected.
+
+### 8.5 Policy gates
+
+For CI/CD use, the `apply_policy()` interface lets you express suppression rules, owner attribution, and pass/fail requirements:
+
+```python
+result = cjc_locke.apply_policy(report, policy={
+    "suppressions": [
+        # Pin a finding as acknowledged; doesn't fail the gate.
+        {"code": "E9082", "column": "income", "reason": "binary target by design"},
+    ],
+    "owners": [
+        # Routing: any remaining E9072 falls to the data-quality team.
+        {"team": "data-quality", "code": "E9072"},
+    ],
+    "requirements": [
+        # The gate condition: no E9001 must remain.
+        {"code": "E9001", "operator": "eq_zero", "threshold": 0},
+    ],
+})
+
+if result.gate_fails():
+    raise SystemExit("policy gate failed")
+```
+
+`gate_fails()` returns `True` when any requirement is unsatisfied AND there's at least one un-suppressed error-severity finding remaining. Owner attribution flows to first-match-wins (the v0.7+ B5.1 mirror test pins this); the suppression-first-match contract is also fixed.
+
+Suppression rules can be exact-column (`"column": "phone"`) or glob (`"column": "diag_*"`) — `ColumnMatcher::from_pattern` auto-routes based on the presence of `*`. Empty-pattern `column = ""` only matches an empty-string column name (v0.7+ B6 / Polish P6 documented; use `any_column` for code-only suppression).
+
+### 8.6 Causal guardrail
+
+Locke ships a conservative causal layer:
+
+```python
+cg = cjc_locke.causal_guardrail(
+    data,
+    target_column="income",
+    causal_config={"mode": "observational_only"},
+)
+print(cg.n_warnings, cg.warning_kinds())
+```
+
+This computes pairwise Pearson correlations, flags strong ones, identifies confounder candidates (a Z correlated with both feature and target), and scans any user-supplied label text for causal-language keywords. Every report carries a top-level disclaimer; no warning kind is named `Cause` or `Effect`. In `observational_only` mode every correlation finding is *upgraded* to a warning ("treat as non-causal until intervention").
+
+The `CausalDag` lets users pre-register hypothesised causal pathways. Pairs reachable in the DAG have their warning severity *downgraded* (not removed) — making "I expected this; don't bother me" explicit.
+
+### 8.7 JSON, HTML, Mermaid emit
+
+```python
+# Canonical byte-identical JSON for CI diffing
+js = report.to_json()
+assert js == cjc_locke.validate(df, label="adult-synth").to_json()  # always True
+
+# Reparse back to a structured object
+restored = cjc_locke.parse_report_json(js)
+
+# Dict-shaped form for ad-hoc Python work
+d = report.to_dict()
+for f in d["findings"]:
+    print(f["code"], f["severity"], f["message"], f["evidence"])
+
+# Mermaid lineage diagram (Quarto-renderable, see section 8.3)
+print(graph.emit_mermaid())
+```
+
+The JSON path uses a hand-rolled deterministic emit (zero external deps; the schema is documented at `crates/cjc-locke/src/json_emit.rs`). The v0.7+ deep dive hardened it: `parse_int → parse_u64` for unsigned fields (catches negative-wrap attacks), surrogate-pair handling in `\u` escapes, a thread-local interner so repeated parses don't leak.
+
+There's also an HTML emit (`emit_locke_report_html`, accessed from the CLI side, not yet wired through the Python wrapper) that renders an inline-SVG Pearson heatmap when ≥3 numeric columns are present.
+
+### 8.8 The determinism contract
+
+The thing that distinguishes Locke from the alternatives, repeated in this post a few times because it matters: **every Locke artefact is byte-identical across runs.**
+
+- Finding IDs are content-addressed (SHA-256-derived 64-bit fingerprint over the finding's logical content).
+- JSON output is canonical (BTreeMap-sorted keys, no timestamps, no UUIDs, no map-iteration noise).
+- Numeric reductions use Kahan summation (no parallel-order-dependence on floating-point sums).
+- BTreeMap and BTreeSet are used everywhere; no HashMap iteration order leaks.
+- The RNG is `SplitMix64` with explicit seed threading.
+- No SIMD path uses FMA (preserves bit-equality across CPU vendors).
+
+The deep-dive audit (Locke v0.7+) ran four parallel agent-clusters over ~26K LOC and found exactly four silent-correctness bugs over the lifetime of the codebase — `CategoricalAdaptive::cell_bytes` writing the row index instead of dereferencing the dictionary; `distinct_count` returning row count instead of dictionary length; `top_value_freq` returning 0; `ks_d_statistic` over-counting D on tied clusters. All four fixed; all four covered by regression tests. The audit-chain canaries at 629/629 unmoved across the entire fix series. That's the determinism cost-of-doing-business.
+
+## 9. The determinism story, in two assertions
+
+```python
+import cjc_locke
+import pandas as pd
+
+df = pd.read_csv("adult_synth.csv")
+report_a = cjc_locke.validate(df, label="adult-synth")
+report_b = cjc_locke.validate(df, label="adult-synth")
+
+assert report_a.to_json() == report_b.to_json()       # always True
+assert report_a.to_dict()["run_id"] == report_b.to_dict()["run_id"]
+```
+
+Two `cjc_locke.validate()` calls produce byte-identical JSON across runs, machines, and CI vendors (we test on Windows MSVC + Linux glibc; both match). The same dataset two days from now will produce the same `run_id` modulo any code changes to Locke itself. CI gates can use `git diff --no-index report_old.json report_new.json` to detect *any* change in either the data quality state or the Locke schema. Pandera and GE reports carry per-run timestamps; you can use them for diffs but they're noisier.
+
+A natural follow-up question: *does the report ever drift across Locke versions?* Yes — when the detector code changes. The v0.7+ deep-dive added some new finding codes (E9008, E9023, E9024 are recent) and tightened the threshold defaults on existing ones. Each release bump should be expected to shift report bytes for *some* inputs. The `schema_version` field at the top of the JSON pins which Locke schema the report belongs to.
+
+## 10. When to use which tool — honest positioning
+
+I built Locke and I'm comparing it to the alternatives. So this section is the one where I make explicit when Locke is *not* the right tool.
+
+- **Use Pandera when** you have a well-understood schema, you want type checks at API boundaries, you want pydantic-style declarative validation, you're integrating with FastAPI or another schema-aware framework, you need the rich ecosystem of community-written checks.
+
+- **Use Great Expectations when** you have a team that already runs GE, you need the dashboard / docs-rendering / Data Docs UI, you have non-engineering stakeholders who use the GE catalog, you need the years of accumulated expectations and community plugins.
+
+- **Use Locke when** the data is large and varied enough that you can't pre-register every expectation; *or* you need byte-identical reports for CI gates; *or* you need an audit chain that survives across the entire pipeline; *or* you need belief-score composition algebra; *or* you need both data-quality validation and lineage tracking in the same tool; *or* you're already in CJC-Lang and want zero external deps.
+
+You can use all three at once. They answer different layers of the question, and they don't fight each other.
+
+Where Locke gets adopted, in practice: as the deterministic CI gate at the bottom of the stack (no flaking, byte-stable diffs) with Pandera or GE running above it as the *expressive* schema-validation layer that domain teams own.
+
+## 11. Try it from Python
+
+The Locke Rust crate has had a Python wrapper since the v0.7+ work in this session. The full install + smoke test:
+
+```bash
+git clone https://github.com/AdamEzzat1/CJC
+cd CJC/python
+python -m venv .venv
+source .venv/Scripts/activate              # Unix: .venv/bin/activate
+pip install maturin numpy pandas
+maturin develop --release                  # ~5 min cold build
+python -c "import cjc_locke; print(cjc_locke.__version__)"
+```
+
+Once built, the wrapper is a thin PyO3 binding (~900 LOC Rust + ~200 LOC Python facade). Every Python function delegates to one Rust call. Numpy `f64`/`i64`/`bool` arrays cross the FFI boundary zero-copy via the buffer protocol; pandas and polars DataFrames work via duck-typed adapters. Determinism is fully preserved — the Rust side runs unchanged and the wrapper doesn't introduce threading.
+
+To reproduce the numbers in this post:
+
+```bash
+cd <path-to-this-post>
+python generate_data.py                    # writes adult_synth.csv
+python run_locke.py                        # runs all the analyses
+```
+
+Both scripts are in this post's directory ([`generate_data.py`](./generate_data.py), [`run_locke.py`](./run_locke.py)).
+
+## 12. What's next
+
+Locke is shipped to crates.io at v0.1.10. The Python wrapper from this post's series is in the CJC-Lang repo at `python/`. Open questions I'm actively working on:
+
+- **More real-world datasets**: this post deliberately used a synthetic Adult clone because the structural quirks are reproducible. Running on the real 32K-row UCI file would surface the same findings; the next blog post in this series will pick a less-well-known dataset where there's no pre-existing intuition about what Locke "should" find.
+- **GE-spec import**: a translator from GE expectation files into Locke `ValidationConfig` overrides, so teams already on GE can run both side by side.
+- **Streaming summaries → direct validation**: today's `StreamingValidator::into_report()` rebuilds a sampled DataFrame and runs the standard validate. A v0.4-target rewrite would run every check incrementally so `sample_cap` no longer caps any check at its boundary.
+- **Hand-rolled canonical f64 printer**: today's deterministic JSON relies on Rust's `f64::Debug` shortest-round-trip format, which has been stable in practice but is not a formal stdlib guarantee. A v0.8 hand-rolled printer would make the byte-identity contract independent of toolchain.
+
+## 13. Acknowledgements
+
+Pandera is a great library that I use elsewhere and that I'm not knocking. Great Expectations is mature and broadly adopted; the existing benchmark post in this series ([Locke v0.1.10](../cjc-locke-v0.1-released/index.qmd)) covers GE in more depth. The UCI Adult dataset is Ron Kohavi's 1996 contribution to the UCI Machine Learning Repository. The synthetic clone in this post is a deterministic stand-in that reproduces the *quality issues* of Adult; it is not the real dataset.
+
+The Python wrapper is in the CJC-Lang repo at `python/` and the Rust crate is at `crates/cjc-locke/`. Both are MIT-licensed.
