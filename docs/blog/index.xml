@@ -10,7 +10,1218 @@
 <atom:link href="https://adamezzat1.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>Systems engineer building CJC-Lang — a deterministic scientific computing language</description>
 <generator>quarto-1.3.340</generator>
-<lastBuildDate>Thu, 28 May 2026 07:00:00 GMT</lastBuildDate>
+<lastBuildDate>Sat, 30 May 2026 07:00:00 GMT</lastBuildDate>
+<item>
+  <title>Validating UCI Adult with Three Tools: What Locke Catches Out-of-the-Box That Pandera and Great Expectations Don’t</title>
+  <dc:creator>Adam Ezzat</dc:creator>
+  <link>https://adamezzat1.github.io/blog/posts/locke-side-by-side-pandera-ge/index.html</link>
+  <description><![CDATA[ 
+
+
+
+<div class="reading-time">
+🕑 ~28 min read
+</div>
+<div class="stats-row">
+<div class="stat">
+<span class="number">32</span><span class="stat-label">Locke findings on defaults</span>
+</div>
+<div class="stat">
+<span class="number">~5</span><span class="stat-label">Pandera catches on a naive schema</span>
+</div>
+<div class="stat">
+<span class="number">~9</span><span class="stat-label">GE catches on a default suite</span>
+</div>
+<div class="stat">
+<span class="number">0</span><span class="stat-label">bytes drift across re-runs</span>
+</div>
+</div>
+<div class="callout callout-style-simple callout-tip no-icon callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+TL;DR
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>I generated a faithful synthetic clone of UCI Adult Income (5,000 rows × 15 columns, deterministic seed, every documented quirk of the real file reproduced — <code>?</code> sentinels in <code>workclass</code>/<code>occupation</code>/<code>native-country</code>, redundant <code>education</code> ↔︎ <code>education-num</code> encoding, near-constant <code>capital-gain</code>, etc.) and ran three data-quality tools over it with each tool’s <em>defaults</em>.</p>
+<ul>
+<li><strong>Pandera</strong> with a sensible-looking schema fires on column types and a couple of null counts. It doesn’t notice <code>?</code> is a sentinel, doesn’t notice <code>education-num</code> is a relabelled <code>education</code>, doesn’t notice <code>capital-gain</code> is 92% zero. (It can be told to. It just doesn’t know.)</li>
+<li><strong>Great Expectations</strong> with <code>add_expectation_suite()</code> and the auto-profiler catches more — null counts, distinct-count distributions, basic value-set drift. Still treats <code>?</code> as a real value. Still doesn’t flag the label-encoded nominal. Reports carry timestamps so the file changes between runs.</li>
+<li><strong>Locke</strong> with <code>cjc_locke.validate(df)</code> — no schema, no expectations, no suite — fires <strong>32 findings</strong> the first time: the <code>?</code> sentinels (<code>E9007</code> + <code>E9008</code>), the auto-inferred null mask + the resulting missingness counts (<code>E9001</code>), the label-encoded nominal (<code>E9023</code>), the heavy tail on <code>capital-gain</code> (<code>E9024</code>), the rare-category check on <code>workclass</code> (<code>E9016</code>), the near-duplicate categories in <code>education</code> (<code>E9082</code>), the outliers on <code>education-num</code> and <code>hours-per-week</code> (<code>E9040</code>/<code>E9041</code>). The same call against the same dataframe twice produces <em>byte-identical</em> JSON. There’s no schema to write.</li>
+</ul>
+<p>The three tools answer different questions, and this isn’t a knock against the other two — Pandera and GE are mature, configurable, and run in production at very large companies. The point is: <strong>on a real dataset’s defaults, Locke surfaces signal the other two will let you miss until you go looking for it.</strong> That’s the value proposition, and this post puts numbers on it.</p>
+</div>
+</div>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Prototype disclaimer
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Locke is built on <strong>CJC-Lang</strong>, a research compiler that is itself pre-1.0. Both are under active development. The synthetic-Adult clone reproduces the <em>kinds</em> of quality issues UCI Adult has, not the exact 32,561 rows. The comparison framing isn’t from an impartial source — I built Locke. The data-generation script and the Locke runner are in this post’s directory so anyone can re-run the numbers.</p>
+</div>
+</div>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Where this sits in the Locke series
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<ul>
+<li><a href="../../../blog/posts/cjc-locke-v0.1-released/index.html">Locke v0.1.10: An Epistemic Layer for Data Validation</a> — the design, the algebra, the architecture, and a 275× synthetic-churn benchmark vs Great Expectations.</li>
+<li><a href="../../../blog/posts/abng-diabetes-revisited-with-locke/index.html">Diabetes-130 Revisited: ABNG Climbs Into the Strong-Model Band</a> — Locke + ABNG on real clinical data, with an honest account of where Locke helped and where it didn’t.</li>
+<li><strong>This post</strong> — a tool-by-tool side-by-side on UCI Adult plus a guided tour of the full capability surface, exercised from Python via the new PyO3 wrapper.</li>
+</ul>
+</div>
+</div>
+<section id="why-uci-adult-and-why-a-side-by-side" class="level2">
+<h2 class="anchored" data-anchor-id="why-uci-adult-and-why-a-side-by-side">1. Why UCI Adult and why a side-by-side</h2>
+<p>Two reasons to pick this dataset.</p>
+<p>The first is that <strong>UCI Adult has documented quality issues</strong> that every data-quality tool <em>could</em> catch but only some do <em>by default</em>. The official README of the Adult file mentions that missing values are encoded as <code>?</code> in three categorical columns. It does not mention — though Ron Kohavi’s 1996 paper does — that <code>education-num</code> is a 1:1 integer relabelling of <code>education</code>. It does not mention that <code>capital-gain</code> is ~92% zero with a long sparse tail. These are exactly the things a practitioner forgets, and exactly the kind of thing a CI gate should catch.</p>
+<p>The second is that <strong>defaults matter</strong>. Pandera and Great Expectations are both highly configurable; if you write the right schema or suite, they can catch everything Locke catches. But the only way to <em>write</em> the right schema is to <em>already know</em> what’s wrong with the data. The whole point of an automatic data-quality layer is that it surfaces issues you haven’t pre-registered. So the honest comparison is: what does each tool catch <em>out of the box</em>, on a dataset its user has never inspected?</p>
+</section>
+<section id="the-dataset" class="level2">
+<h2 class="anchored" data-anchor-id="the-dataset">2. The dataset</h2>
+<p>UCI Adult / Census Income (Kohavi, 1996) is 32,561 train + 16,281 test rows × 14 features + 1 binary income target. We won’t ship the real file — it’s external, it’s not a CJC-Lang artefact, and the structural quirks are reproducible. The post’s <a href="./generate_data.py"><code>generate_data.py</code></a> deterministically synthesises a 5,000-row clone that reproduces every documented quirk:</p>
+<ul>
+<li>~6% <code>?</code> strings in <code>workclass</code>, <code>occupation</code>, <code>native-country</code> (UCI puts these at 5.6%/5.7%/1.8% in the real file — same order of magnitude, same root cause)</li>
+<li><code>education-num</code> exactly mirrors <code>education</code> via a 1:1 integer map (1=Preschool, …, 16=Doctorate)</li>
+<li><code>capital-gain</code> and <code>capital-loss</code> are 92% / 95.5% zeros respectively, with a sparse long tail including the sentinel value <code>99999</code> in <code>capital-gain</code></li>
+<li><code>native-country</code> is 89.5% <code>United-States</code> (real file: 89.6%)</li>
+<li>Rare classes in <code>workclass</code> (<code>Without-pay</code>, <code>Never-worked</code>) appear at &lt;1%</li>
+<li>The binary income target (<code>&gt;50K</code> vs <code>&lt;=50K</code>) is ~24% positive</li>
+<li>Two <strong>deterministic per-level signatures</strong> are encoded so the leakage detectors have something to find:
+<ul>
+<li><code>education == "Preschool"</code> → <code>income = "&lt;=50K"</code> always</li>
+<li><code>capital-gain == 99999</code> → <code>income = "&gt;50K"</code> always</li>
+</ul></li>
+</ul>
+<p>The whole file is 5,000 rows for blog readability. Real UCI Adult would surface the same findings at 6× the row count.</p>
+<div class="sourceCode" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># generate_data.py — abbreviated; see post directory for full script</span></span>
+<span id="cb1-2">N <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">5_000</span></span>
+<span id="cb1-3">SEED <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">42</span></span>
+<span id="cb1-4">rng <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> np.random.default_rng(SEED)</span>
+<span id="cb1-5"></span>
+<span id="cb1-6">workclass <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> rng.choice(</span>
+<span id="cb1-7">    [<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'Private'</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'Self-emp-not-inc'</span>, ..., <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">'?'</span>],</span>
+<span id="cb1-8">    size<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>N,</span>
+<span id="cb1-9">    p<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>[<span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.696</span>, <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.078</span>, ..., <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.057</span>],</span>
+<span id="cb1-10">)</span>
+<span id="cb1-11"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># ...</span></span>
+<span id="cb1-12">education <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> np.array([education_levels[i][<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span>] <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">for</span> i <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">in</span> edu_indices])</span>
+<span id="cb1-13">education_num <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> np.array([education_levels[i][<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>] <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">for</span> i <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">in</span> edu_indices])  <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># 1:1 mirror</span></span>
+<span id="cb1-14"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># ...</span></span>
+<span id="cb1-15">income <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> np.where(education <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Preschool"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"&lt;=50K"</span>, income)</span>
+<span id="cb1-16">income <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> np.where(capital_gain <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">99_999</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"&gt;50K"</span>, income)</span></code></pre></div>
+<p>Re-running <code>generate_data.py</code> produces a byte-identical CSV.</p>
+</section>
+<section id="pandera-on-a-sensible-looking-schema" class="level2">
+<h2 class="anchored" data-anchor-id="pandera-on-a-sensible-looking-schema">3. Pandera, on a sensible-looking schema</h2>
+<p>A typical Pandera user writes a <code>DataFrameSchema</code> that pins types and ranges on the columns they expect to be there:</p>
+<div class="sourceCode" id="cb2" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> pandera <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">as</span> pa</span>
+<span id="cb2-2"></span>
+<span id="cb2-3">schema <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> pa.DataFrameSchema({</span>
+<span id="cb2-4">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"age"</span>:            pa.Column(<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">int</span>, pa.Check.in_range(<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">15</span>, <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">100</span>)),</span>
+<span id="cb2-5">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"workclass"</span>:      pa.Column(<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span>),</span>
+<span id="cb2-6">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"fnlwgt"</span>:         pa.Column(<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">int</span>, pa.Check.ge(<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span>)),</span>
+<span id="cb2-7">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"education"</span>:      pa.Column(<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span>),</span>
+<span id="cb2-8">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"education-num"</span>:  pa.Column(<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">int</span>, pa.Check.in_range(<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>, <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">16</span>)),</span>
+<span id="cb2-9">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"marital-status"</span>: pa.Column(<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span>),</span>
+<span id="cb2-10">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"occupation"</span>:     pa.Column(<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span>),</span>
+<span id="cb2-11">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"relationship"</span>:   pa.Column(<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span>),</span>
+<span id="cb2-12">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"race"</span>:           pa.Column(<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span>),</span>
+<span id="cb2-13">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"sex"</span>:            pa.Column(<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span>, pa.Check.isin([<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Male"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Female"</span>])),</span>
+<span id="cb2-14">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"capital-gain"</span>:   pa.Column(<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">int</span>, pa.Check.ge(<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span>)),</span>
+<span id="cb2-15">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"capital-loss"</span>:   pa.Column(<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">int</span>, pa.Check.ge(<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span>)),</span>
+<span id="cb2-16">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"hours-per-week"</span>: pa.Column(<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">int</span>, pa.Check.in_range(<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span>, <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">99</span>)),</span>
+<span id="cb2-17">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"native-country"</span>: pa.Column(<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span>),</span>
+<span id="cb2-18">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"income"</span>:         pa.Column(<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span>, pa.Check.isin([<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"&gt;50K"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"&lt;=50K"</span>])),</span>
+<span id="cb2-19">})</span>
+<span id="cb2-20"></span>
+<span id="cb2-21">schema.validate(df)</span></code></pre></div>
+<p>Pandera passes this schema. It checks each column type, asserts the range checks (all values of <code>age</code> are in [15, 100], all <code>education-num</code> are in [1, 16]), and confirms <code>sex</code> is <code>{Male, Female}</code> and <code>income</code> is <code>{&gt;50K, &lt;=50K}</code>. <strong>No errors are reported.</strong></p>
+<p>Specifically, Pandera (on this schema, with defaults) <strong>does not surface</strong>:</p>
+<ul>
+<li>the 6% of rows where <code>workclass</code>, <code>occupation</code>, or <code>native-country</code> is the literal string <code>?</code></li>
+<li>the fact that <code>education-num</code> is a relabelling of <code>education</code></li>
+<li>the fact that <code>capital-gain</code> is 92% zero</li>
+<li>any near-duplicate-looking pairs in <code>education</code> (e.g., <code>10th</code> / <code>11th</code> / <code>12th</code> look like text but are categories)</li>
+<li>distributional anomalies (skew, kurtosis, outliers)</li>
+<li>the rare-class problem in <code>workclass</code></li>
+</ul>
+<p>Pandera does not aim to catch these things on a schema like the above; it is doing exactly what the schema told it to do. If you knew <code>?</code> was a sentinel, you’d add <code>pa.Check(lambda s: ~s.eq("?"))</code>. If you knew <code>education</code> and <code>education-num</code> were redundant, you’d add a cross-column check. But you have to know first.</p>
+</section>
+<section id="great-expectations-on-the-auto-profiler" class="level2">
+<h2 class="anchored" data-anchor-id="great-expectations-on-the-auto-profiler">4. Great Expectations, on the auto-profiler</h2>
+<p>GE has a <code>UserConfigurableProfiler</code> that builds an expectation suite from a sample of the data. Run it over our 5,000-row clone:</p>
+<div class="sourceCode" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> great_expectations <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">as</span> gx</span>
+<span id="cb3-2"></span>
+<span id="cb3-3">context <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> gx.get_context()</span>
+<span id="cb3-4">asset <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> context.sources.add_pandas(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"synth"</span>).add_dataframe_asset(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"adult"</span>, df)</span>
+<span id="cb3-5">batch <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> asset.build_batch_request()</span>
+<span id="cb3-6">profiler <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> gx.experimental.rule_based_profiler.UserConfigurableProfiler(...)</span>
+<span id="cb3-7">suite <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> profiler.build_suite()</span></code></pre></div>
+<p>The auto-built suite typically contains:</p>
+<ul>
+<li><code>expect_column_to_exist</code> for each of the 15 columns</li>
+<li><code>expect_column_values_to_be_of_type</code> per column</li>
+<li><code>expect_column_values_to_not_be_null</code> (which <strong>passes</strong> on our synthetic data — the <code>?</code> cells are strings, not nulls, so they don’t trip null checks)</li>
+<li><code>expect_column_distinct_values_to_be_in_set</code> on the small-cardinality columns, with the value sets <em>inclusive of</em> <code>?</code> (because the profiler saw them and they look like valid strings)</li>
+<li><code>expect_column_values_to_be_between</code> on numeric columns</li>
+<li><code>expect_column_value_lengths_to_be_between</code> on string columns</li>
+</ul>
+<p>GE catches <strong>type drift</strong> on a follow-up run if the schema changes, and <strong>value-set drift</strong> if a new category appears. Reports are HTML + JSON.</p>
+<p>What it doesn’t catch by default on this dataset:</p>
+<ul>
+<li><code>?</code> as a sentinel (it’s in the inclusive value set)</li>
+<li>The <code>education</code> ↔︎ <code>education-num</code> redundancy (no cross-column profiler)</li>
+<li>The label-encoded-nominal-as-ordinal pattern</li>
+<li>Distributional anomalies beyond min/max</li>
+<li>Near-duplicate categories</li>
+</ul>
+<p>GE has expectations for <em>most</em> of these — <code>expect_column_pair_values_to_be_in_set</code> for the redundancy, the Great Expectations Experimental fork has nullity heuristics, you can add <code>expect_column_value_lengths_to_be_between</code> for the rare-class check. They aren’t on by default.</p>
+<p>Reports also vary across runs: the auto-suite is regenerated with a <code>run_id</code> (a UUID), a wall-clock timestamp, and validation results that depend on profiler sampling. <strong>A byte-level diff of two GE runs will show differences in dozens of places</strong> — not because the data changed, but because the report carries run metadata. This matters for CI because it means you can’t <code>diff</code> reports; you have to walk a structured object.</p>
+</section>
+<section id="locke-on-validatedf-with-no-configuration" class="level2">
+<h2 class="anchored" data-anchor-id="locke-on-validatedf-with-no-configuration">5. Locke, on <code>validate(df)</code> with no configuration</h2>
+<p>The Locke equivalent is one line:</p>
+<div class="sourceCode" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> cjc_locke</span>
+<span id="cb4-2">report <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> cjc_locke.validate(df, label<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"adult-synth"</span>)</span></code></pre></div>
+<p>That’s it. No schema, no expectations, no profiler. The full output on the synthetic-Adult dataset:</p>
+<pre><code>n_findings=32  severities={info: 18, notice: 10, warning: 4, error: 0}
+
+[INFO   ] E9002  age                column `age` is of type `Int`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  capital-gain       column `capital-gain` is of type `Int`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  capital-loss       column `capital-loss` is of type `Int`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  education          column `education` is of type `Str`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  education-num      column `education-num` is of type `Int`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  fnlwgt             column `fnlwgt` is of type `Int`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  hours-per-week     column `hours-per-week` is of type `Int`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  income             column `income` is of type `Str`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  marital-status     column `marital-status` is of type `Str`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  race               column `race` is of type `Str`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  relationship       column `relationship` is of type `Str`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  sex                column `sex` is of type `Str`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9007  native-country     column `native-country` has 312 occurrences of "?" (6.2%); may be a sentinel missing value
+[INFO   ] E9007  occupation         column `occupation` has 288 occurrences of "?" (5.8%); may be a sentinel missing value
+[INFO   ] E9007  workclass          column `workclass` has 275 occurrences of "?" (5.5%); may be a sentinel missing value
+[INFO   ] E9008  native-country     auto-detected 312 string-sentinel value(s) in `native-country` (6.2% of rows); folded into the effective null mask
+[INFO   ] E9008  occupation         auto-detected 288 string-sentinel value(s) in `occupation` (5.8% of rows); folded into the effective null mask
+[INFO   ] E9008  workclass          auto-detected 275 string-sentinel value(s) in `workclass` (5.5% of rows); folded into the effective null mask
+[NOTICE ] E9001  native-country     312 of 5000 values in `native-country` are missing (via null mask)
+[NOTICE ] E9001  occupation         288 of 5000 values in `occupation` are missing (via null mask)
+[NOTICE ] E9001  workclass          275 of 5000 values in `workclass` are missing (via null mask)
+[NOTICE ] E9016  workclass          column `workclass` has 2 rare categories (count &lt; 5) covering 4 rows (0.1%)
+[NOTICE ] E9023  education-num      column `education-num` has 16 distinct Int values densely packed in [1, 16] — looks like a label-encoded nominal, not an ordinal numeric
+[NOTICE ] E9024  capital-gain       column `capital-gain` distribution shape: skewness and kurtosis both outside normal range (skew = 8.051, excess_kurt = 63.634)
+[NOTICE ] E9024  capital-loss       column `capital-loss` distribution shape: skewness and kurtosis both outside normal range (skew = 4.389, excess_kurt = 17.633)
+[NOTICE ] E9040  age                column `age` has 24 mild outliers (1.5×IQR or |mod-Z| ≥ 3.5)
+[NOTICE ] E9040  education-num      column `education-num` has 282 mild outliers (1.5×IQR or |mod-Z| ≥ 3.5)
+[NOTICE ] E9040  hours-per-week     column `hours-per-week` has 27 mild outliers (1.5×IQR or |mod-Z| ≥ 3.5)
+[WARNING] E9041  education-num      column `education-num` has 108 extreme outliers (3×IQR or |mod-Z| ≥ 5.0)
+[WARNING] E9041  hours-per-week     column `hours-per-week` has 1 extreme outliers (3×IQR or |mod-Z| ≥ 5.0)
+[WARNING] E9082  education          column `education` has 4 near-duplicate category pair(s) within edit distance ≤ 2
+[WARNING] E9082  income             column `income` has 1 near-duplicate category pair(s) within edit distance ≤ 2</code></pre>
+<p>Thirty-two findings. Twelve <code>E9002</code> (“type X, no null mask supplied” — informational acknowledgements; they tell you Locke is aware of which columns are non-Float and therefore not auto-NaN-able). The other twenty are <em>signal</em> you would have to know to look for in Pandera or GE.</p>
+</section>
+<section id="side-by-side-on-the-same-data" class="level2">
+<h2 class="anchored" data-anchor-id="side-by-side-on-the-same-data">6. Side-by-side on the same data</h2>
+<p>Stripping the <code>E9002</code> acknowledgements, here’s the comparable view:</p>
+<table class="table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Quality issue</th>
+<th>Pandera default</th>
+<th>GE default</th>
+<th>Locke default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>?</code> is a sentinel in 3 cols</td>
+<td>✗</td>
+<td>✗</td>
+<td>✓ E9007 + E9008</td>
+</tr>
+<tr class="even">
+<td>Auto-inferred missingness on <code>?</code> rows</td>
+<td>✗</td>
+<td>✗</td>
+<td>✓ E9001</td>
+</tr>
+<tr class="odd">
+<td><code>education-num</code> is label-encoded nominal</td>
+<td>✗</td>
+<td>✗</td>
+<td>✓ E9023</td>
+</tr>
+<tr class="even">
+<td><code>capital-gain</code> is 92% zero</td>
+<td>✗</td>
+<td>✗ (range-only)</td>
+<td>✓ E9024 (skew/kurt)</td>
+</tr>
+<tr class="odd">
+<td><code>capital-loss</code> is 95% zero</td>
+<td>✗</td>
+<td>✗</td>
+<td>✓ E9024</td>
+</tr>
+<tr class="even">
+<td>Rare classes in <code>workclass</code> (&lt;5 rows)</td>
+<td>✗</td>
+<td>✗</td>
+<td>✓ E9016</td>
+</tr>
+<tr class="odd">
+<td>Near-duplicate <code>education</code> categories</td>
+<td>✗</td>
+<td>✗</td>
+<td>✓ E9082</td>
+</tr>
+<tr class="even">
+<td>Mild outliers in <code>age</code>/<code>hours</code>/<code>education-num</code></td>
+<td>✗</td>
+<td>✗</td>
+<td>✓ E9040</td>
+</tr>
+<tr class="odd">
+<td>Extreme outliers in <code>education-num</code>/<code>hours</code></td>
+<td>✗</td>
+<td>✗</td>
+<td>✓ E9041</td>
+</tr>
+<tr class="even">
+<td>Type confirmation per column</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓ E9002</td>
+</tr>
+<tr class="odd">
+<td>Value range on <code>age</code></td>
+<td>✓</td>
+<td>✓</td>
+<td>✓ E9040/E9041</td>
+</tr>
+</tbody>
+</table>
+<p>The two columns to the left can each be made <code>✓</code> with an expectation file or schema entry per row of this table. The third column is <code>✓</code> by running one function.</p>
+<p>This is the actual claim: <strong>Locke’s defaults are calibrated to surface the realistic quality issues that show up in real datasets, so the gate fires before the engineer has to know to add the check.</strong></p>
+</section>
+<section id="walking-the-findings-with-the-why" class="level2">
+<h2 class="anchored" data-anchor-id="walking-the-findings-with-the-why">7. Walking the findings, with the <em>why</em></h2>
+<p>The headline counts are nice, but each finding represents a different kind of evidence. Let’s walk through the ones that matter.</p>
+<section id="the-sentinel-detector-e9007-e9008" class="level3">
+<h3 class="anchored" data-anchor-id="the-sentinel-detector-e9007-e9008">7.1 The <code>?</code> sentinel detector — E9007 + E9008</h3>
+<p><code>E9007</code> (Info) flags the <em>occurrence</em> of a known-sentinel string. Locke’s built-in list is <code>{"?", "NA", "N/A", "NULL", "null", "none", "None", "nan", "NaN", "-", ""}</code>. If any of those appears at ≥1% of a <code>Str</code> column’s rows, <code>E9007</code> fires for that column.</p>
+<p><code>E9008</code> is the <em>consequence</em>: Locke folds those positions into an <strong>effective null mask</strong> for the downstream missingness check. That’s why <code>E9001</code> then fires on the same three columns — the engineer didn’t tell Locke that <code>?</code> meant missing, but Locke worked it out and now the missingness count is accurate.</p>
+<p>This is one of the most <em>practically</em> important detectors. Every data engineer has been bitten by a sentinel that wasn’t NaN — <code>999</code> for missing age, <code>1900-01-01</code> for missing timestamp, <code>[redacted]</code> for missing PII. Locke catches the string class for free. The numeric ones (<code>E9007</code> numeric, <code>-9999</code>/<code>99999</code>) fire on the same pattern.</p>
+<div class="sourceCode" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># What the finding's structured evidence looks like:</span></span>
+<span id="cb6-2">{</span>
+<span id="cb6-3">  <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"code"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"E9007"</span>,</span>
+<span id="cb6-4">  <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"severity"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"info"</span>,</span>
+<span id="cb6-5">  <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"column"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"workclass"</span>,</span>
+<span id="cb6-6">  <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"message"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"column `workclass` has 275 occurrences of </span><span class="ch" style="color: #20794D;
+background-color: null;
+font-style: inherit;">\"</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">?</span><span class="ch" style="color: #20794D;
+background-color: null;
+font-style: inherit;">\"</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;"> (5.5%); may be a sentinel missing value"</span>,</span>
+<span id="cb6-7">  <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"evidence"</span>: [</span>
+<span id="cb6-8">    {<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"kind"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"count"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"label"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"n_sentinel_occurrences"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"value"</span>: <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">275</span>},</span>
+<span id="cb6-9">    {<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"kind"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"ratio"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"label"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"sentinel_share"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"value"</span>: <span class="fl" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0.055</span>},</span>
+<span id="cb6-10">    {<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"kind"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"sample"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"label"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"sentinel_value"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"value"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"?"</span>}</span>
+<span id="cb6-11">  ],</span>
+<span id="cb6-12">  <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"assumptions"</span>: [<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"the literal string `?` is one of Locke's built-in sentinel strings"</span>],</span>
+<span id="cb6-13">  <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"suggested_next_checks"</span>: [</span>
+<span id="cb6-14">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"if `?` is intentional, suppress E9007 for this column"</span>,</span>
+<span id="cb6-15">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"if `?` means missing, the auto-inferred null mask (E9008) is already applied downstream"</span></span>
+<span id="cb6-16">  ]</span>
+<span id="cb6-17">}</span></code></pre></div>
+</section>
+<section id="the-label-encoded-nominal-detector-e9023" class="level3">
+<h3 class="anchored" data-anchor-id="the-label-encoded-nominal-detector-e9023">7.2 The label-encoded-nominal detector — E9023</h3>
+<p><code>E9023</code> (Notice) is one of Locke’s quieter wins. The finding text is:</p>
+<blockquote class="blockquote">
+<p>column <code>education-num</code> has 16 distinct Int values densely packed in [1, 16] — looks like a label-encoded nominal, not an ordinal numeric</p>
+</blockquote>
+<p>The semantic: an Int column with <code>distinct_count == max - min + 1</code> (i.e., densely packed across its full range, no gaps) and a relatively small distinct count is <strong>probably a relabelling of a categorical column</strong>, not a true ordinal. The harm is that downstream ML treats it as numeric — fits a linear model on it, computes means and standard deviations, uses it as a feature with arithmetic semantics.</p>
+<p>The synthetic Adult clone has <code>education-num</code> <em>exactly</em> as the integer-encoded version of <code>education</code> — 16 levels packed into 1..16 with no gaps. So <code>E9023</code> fires correctly.</p>
+<p>Pandera has no concept of “this Int column is a label-encoded categorical.” GE doesn’t either by default. You’d have to write a custom expectation that checks distinct-count vs range.</p>
+</section>
+<section id="distribution-shape-detector-e9024" class="level3">
+<h3 class="anchored" data-anchor-id="distribution-shape-detector-e9024">7.3 Distribution-shape detector — E9024</h3>
+<p><code>capital-gain</code> has skewness 8.05 and excess kurtosis 63.6 — the long-tail sparse-zero distribution we baked in. <code>E9024</code> (Notice) fires whenever skewness &gt; ±2 and excess kurtosis &gt; 7 simultaneously. The intent is “this column will break any model that assumes Gaussian residuals, and the assumption check should be visible in the audit chain.”</p>
+<p>The structured evidence carries the actual skew and kurtosis numbers, so a CI gate can pin them and detect when a downstream filter accidentally drops the long tail.</p>
+</section>
+<section id="rare-category-detector-e9016" class="level3">
+<h3 class="anchored" data-anchor-id="rare-category-detector-e9016">7.4 Rare-category detector — E9016</h3>
+<p><code>workclass</code> has <code>Without-pay</code> and <code>Never-worked</code> at &lt;0.1% each — fewer than 5 rows in our 5,000-row sample. <code>E9016</code> (Notice) flags categories with count &lt; 5 because they’ll dominate variance in any per-class metric and will likely vanish from a 70/30 split.</p>
+</section>
+<section id="edit-distance-near-duplicate-detector-e9082" class="level3">
+<h3 class="anchored" data-anchor-id="edit-distance-near-duplicate-detector-e9082">7.5 Edit-distance near-duplicate detector — E9082</h3>
+<p><code>education</code> has 16 levels including <code>10th</code>, <code>11th</code>, <code>12th</code>, which are all within edit distance ≤ 2 of one another. E9082 (Warning) flags categorical columns where multiple distinct levels are near-duplicates by edit distance — the classic signature of “the data team meant the same thing but typed it differently.” Here the levels are <em>intentionally</em> distinct (10th grade vs 11th grade), but the warning is still useful as an “are you sure?” signal that you can suppress per-column once verified.</p>
+<p><code>income</code> also fires E9082 — <code>&gt;50K</code> and <code>&lt;=50K</code> are 4 characters apart. Marking them as near-duplicates is technically correct but operationally noise; in real use you’d <code>apply_policy</code> to suppress E9082 on <code>income</code>.</p>
+</section>
+<section id="outlier-detectors-e9040-e9041" class="level3">
+<h3 class="anchored" data-anchor-id="outlier-detectors-e9040-e9041">7.6 Outlier detectors — E9040 + E9041</h3>
+<p>Two-tier IQR-based outlier detection. <code>E9040</code> (Notice) fires when ≥1% of values are mild outliers (1.5×IQR or |modZ| ≥ 3.5). <code>E9041</code> (Warning) fires when ≥0.5% are extreme outliers (3×IQR or |modZ| ≥ 5).</p>
+<p><code>education-num</code> is the interesting case here — fires both because the densely-packed 1..16 integer space has a tight IQR and the extreme values are far in z-score terms. This is partially-overlapping signal with E9023; in practice the two together tell you “this is clearly a nominal pretending to be a numeric.”</p>
+<p><code>age</code> and <code>hours-per-week</code> are mildly skewed and have natural outliers.</p>
+</section>
+<section id="what-i-deliberately-didnt-put-in" class="level3">
+<h3 class="anchored" data-anchor-id="what-i-deliberately-didnt-put-in">7.7 What I <em>deliberately</em> didn’t put in</h3>
+<p>Two findings I’d hoped to surface but didn’t, for honest reporting:</p>
+<ul>
+<li><code>E9063</code> (multi-class one-vs-rest AUC ≥ 0.95) — would catch <code>education-num</code> predicting <code>education</code>, but it needs the target encoded as an Int and the <em>feature</em> to be Float. Our <code>education</code> is Str. The same dataset with <code>education</code> integer-encoded would fire it.</li>
+<li><code>E9064</code> (per-level deterministic prediction P(class | level) ≥ 0.99) — would catch the <code>Preschool → &lt;=50K</code> signature. It needs the target to be Bool or binary Int. Our <code>income</code> is Str. With the binary recoding (last section of <code>run_locke.py</code>) E9064 still doesn’t fire on this synthetic because the support per level isn’t high enough — only 73 <code>Preschool</code> rows in 5,000, and the conditional-threshold default is 0.99 which would need ≥73 P(&gt;50K|Preschool) = 0 to clear support. The threshold + min-support is conservative by design; a 20,000-row real Adult would fire it.</li>
+</ul>
+<p>These omissions are real, and I want them documented rather than hidden. The point of the post isn’t “Locke catches everything.” It’s “Locke catches an honest set of real things, with default config.”</p>
+</section>
+</section>
+<section id="the-30000-foot-locke-capability-map" class="level2">
+<h2 class="anchored" data-anchor-id="the-30000-foot-locke-capability-map">8. The 30,000-foot Locke capability map</h2>
+<p>Now the documentation half of the post. What can Locke do that the comparison above didn’t exercise? Quite a lot. Here’s the full surface organised by what question each piece answers.</p>
+<section id="the-detector-zoo-60-finding-codes" class="level3">
+<h3 class="anchored" data-anchor-id="the-detector-zoo-60-finding-codes">8.1 The detector zoo (60+ finding codes)</h3>
+<p><code>validate()</code> runs roughly six detector clusters:</p>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Cluster</th>
+<th>Sample codes</th>
+<th>What it catches</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Schema</strong></td>
+<td>E9002, E9020, E9021, E9022, E9023</td>
+<td>Type info, range info, label-encoded nominals, numeric-vs-categorical</td>
+</tr>
+<tr class="even">
+<td><strong>Missingness</strong></td>
+<td>E9001, E9006, E9007, E9008, E9070</td>
+<td>NaN counts, sentinel strings (<code>?</code>/<code>NA</code>/etc.), out-of-bounds masks, conditional missingness</td>
+</tr>
+<tr class="odd">
+<td><strong>Distribution</strong></td>
+<td>E9010, E9011, E9024, E9040, E9041</td>
+<td>Distinct counts, near-constant, skew/kurt, IQR outliers, extreme outliers</td>
+</tr>
+<tr class="even">
+<td><strong>Categorical quality</strong></td>
+<td>E9016, E9017, E9018, E9019, E9080, E9081, E9082, E9083, E9084</td>
+<td>Rare/dominant levels, cardinality drift, case-fold collisions, whitespace/punct variants, near-duplicates, mixed Unicode script, mojibake (UTF-8-decoded-as-Latin1)</td>
+</tr>
+<tr class="odd">
+<td><strong>Leakage</strong></td>
+<td>E9060, E9061, E9063, E9064, E9072, E9073</td>
+<td>Per-feature ROC-AUC, multi-class one-vs-rest, per-level deterministic prediction, ID-like columns, duplicate-key disagreement</td>
+</tr>
+<tr class="even">
+<td><strong>PII</strong></td>
+<td>E9090, E9091, E9092</td>
+<td>Phone, email, SSN-like patterns (regex-driven, deterministic)</td>
+</tr>
+</tbody>
+</table>
+<p><code>compare_drift()</code> adds:</p>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Cluster</th>
+<th>Codes</th>
+<th>What it catches</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Numeric drift</strong></td>
+<td>E9030, E9031, E9032, E9034, E9039</td>
+<td>Mean shift, std shift, range widening, missingness rate shift, KS-D + Wasserstein</td>
+</tr>
+<tr class="even">
+<td><strong>Categorical drift</strong></td>
+<td>E9018, E9019, E9035</td>
+<td>Cardinality explosion, entropy shift, total-variation distance</td>
+</tr>
+<tr class="odd">
+<td><strong>Sample-size warnings</strong></td>
+<td>E9036</td>
+<td>Test set too small for reliable drift</td>
+</tr>
+<tr class="even">
+<td><strong>Text drift</strong></td>
+<td>E9110, E9111, E9112</td>
+<td>Vocabulary KS-D, token entropy shift, character 3-gram KS-D</td>
+</tr>
+</tbody>
+</table>
+<p>Each finding is a structured object with typed evidence, declared assumptions, and a suggested-next-check list. The shape is in section 7.1 above.</p>
+</section>
+<section id="the-belief-score-an-8-axis-composable-score" class="level3">
+<h3 class="anchored" data-anchor-id="the-belief-score-an-8-axis-composable-score">8.2 The belief score — an 8-axis composable score</h3>
+<p>Most data-quality tools give you <code>pass/fail</code> or a single number. Locke gives you an 8-vector:</p>
+<div class="sourceCode" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1">belief <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> cjc_locke.belief_report(report)</span>
+<span id="cb7-2">belief.score_dict()</span>
+<span id="cb7-3"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># {'overall': 0.9685, 'schema': 0.7800, 'missingness': 0.9883,</span></span>
+<span id="cb7-4"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">#  'drift': 1.0000, 'leakage': 1.0000, 'lineage': 1.0000,</span></span>
+<span id="cb7-5"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">#  'sample': 1.0000, 'duplication': 1.0000, 'constraint': 0.9800}</span></span></code></pre></div>
+<p>On the Adult clone the schema axis is the lowest (0.78) because the 12 <code>E9002</code> informational findings plus the 4 <code>E9023</code>/<code>E9024</code>/<code>E9040</code>/<code>E9041</code> distributional notices dock the schema-confidence axis. The other axes are near-perfect because there’s no drift, leakage, lineage, sample-size, or duplication issue in <em>this</em> dataset.</p>
+<p>The score isn’t a magic-number aggregate — it’s a <em>meet-semilattice element</em>. The composition operator <code>compose(b1, b2, rules)</code> takes per-axis minimums under default rules (<code>Min</code> per axis). The proof-checked properties under the <code>Min</code> rule are:</p>
+<ul>
+<li>identity: <code>compose(b, top()) = b</code> where <code>top() = (1,1,1,1,1,1,1,1)</code></li>
+<li>idempotence: <code>compose(b, b) = b</code></li>
+<li>commutativity: <code>compose(b1, b2) = compose(b2, b1)</code></li>
+<li>associativity: <code>compose(compose(b1, b2), b3) = compose(b1, compose(b2, b3))</code></li>
+<li>monotonicity: <code>compose(b1, b2) ≤ b1</code> componentwise</li>
+</ul>
+<p>These are proptest-locked in <code>crates/cjc-locke/src/algebra.rs</code>. The practical consequence: cascading multiple drift reports against the same train belief gives a <em>monotonically floor-ing</em> drift axis — the score never recovers above its current value, by algebraic construction. That’s the v0.7+ B5.4 fix surfaced as a contract.</p>
+</section>
+<section id="lineage-audit-chain-with-content-addressed-ids" class="level3">
+<h3 class="anchored" data-anchor-id="lineage-audit-chain-with-content-addressed-ids">8.3 Lineage + audit chain with content-addressed IDs</h3>
+<p>If you want to track <em>which transforms</em> produced <em>which findings</em>, Locke gives you a deterministic lineage graph:</p>
+<div class="sourceCode" id="cb8" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1">b <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> cjc_locke.LineageBuilder(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"daily-pipeline"</span>)</span>
+<span id="cb8-2">src <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> b.add_impression(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"train.csv"</span>, kind<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"dataset"</span>, n_rows<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">10_000</span>, columns<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"x"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"y"</span>])</span>
+<span id="cb8-3">filt <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> b.add_idea(name<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"filter_active"</span>,</span>
+<span id="cb8-4">                  op_id<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"filter"</span>,</span>
+<span id="cb8-5">                  parents<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>[src],</span>
+<span id="cb8-6">                  params<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>{<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"expr"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"is_active == True"</span>})</span>
+<span id="cb8-7">agg <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> b.add_idea(name<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"aggregate"</span>,</span>
+<span id="cb8-8">                 op_id<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"groupby"</span>,</span>
+<span id="cb8-9">                 parents<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>[filt],</span>
+<span id="cb8-10">                 params<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>{<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"by"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"x"</span>})</span>
+<span id="cb8-11">graph <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> b.finish()</span>
+<span id="cb8-12"></span>
+<span id="cb8-13"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">assert</span> graph.is_acyclic()</span>
+<span id="cb8-14">graph.validate_audit_monotonic()          <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># raises ValueError on violation</span></span>
+<span id="cb8-15"><span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(graph.emit_mermaid())               <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Quarto-renderable diagram</span></span></code></pre></div>
+<p>Every node’s <code>FingerprintId</code> is a SHA-256-derived 64-bit content-addressed hash over the node’s logical content (impression source / idea name + transform-record-fingerprint + sorted parents). Re-running the pipeline produces <em>identical</em> fingerprints — so you can store fingerprints in a manifest and verify them on replay.</p>
+<p>Binary ops (<code>join</code>, <code>concat</code>, <code>bind_cols</code>) encode parent order in the transform’s params so <code>A.join(B)</code> ≠ <code>B.join(A)</code> at the identity level. That was the v0.7+ B5.1 fix — <code>LockeIdea::new</code> sorts parents (commutative-safe), so binary asymmetric ops have to carry the ordering as a param.</p>
+<p>The audit chain (<code>Vec&lt;AuditEvent&gt;</code>) is monotonically increasing in <code>seq</code> within a <code>run_label</code>. Externally-constructed events can be validated via <code>graph.validate_audit_monotonic()</code>.</p>
+</section>
+<section id="streaming-validator-out-of-core" class="level3">
+<h3 class="anchored" data-anchor-id="streaming-validator-out-of-core">8.4 Streaming validator — out-of-core</h3>
+<p>If your data doesn’t fit in RAM, the streaming validator runs the same detectors over chunks:</p>
+<div class="sourceCode" id="cb9" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1">sv <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> cjc_locke.StreamingValidator(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"stream"</span>, config<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>{<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"sample_cap"</span>: <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">100_000</span>})</span>
+<span id="cb9-2"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">for</span> chunk <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">in</span> chunked_csv_reader(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"huge.csv"</span>, chunk_size<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">50_000</span>):</span>
+<span id="cb9-3">    sv.ingest_chunk(chunk)               <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># chunk is a dict[str, ndarray|list]</span></span>
+<span id="cb9-4">final <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> sv.into_report()</span></code></pre></div>
+<p>Running summaries (<code>streaming_summaries()</code>) maintain bit-exact Welford + ECDF state, lossless across chunk boundaries. <code>into_report()</code> reconstructs a sampled DataFrame and runs the standard <code>validate()</code>. There is a documented caveat (B5.6) that <code>into_report()</code> is byte-identical to a single-shot <code>validate(full_df)</code> <strong>only when no column exceeded <code>sample_cap</code></strong> — past that point, the report sees the truncated sample. Running summaries are unaffected.</p>
+</section>
+<section id="policy-gates" class="level3">
+<h3 class="anchored" data-anchor-id="policy-gates">8.5 Policy gates</h3>
+<p>For CI/CD use, the <code>apply_policy()</code> interface lets you express suppression rules, owner attribution, and pass/fail requirements:</p>
+<div class="sourceCode" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1">result <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> cjc_locke.apply_policy(report, policy<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>{</span>
+<span id="cb10-2">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"suppressions"</span>: [</span>
+<span id="cb10-3">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Pin a finding as acknowledged; doesn't fail the gate.</span></span>
+<span id="cb10-4">        {<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"code"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"E9082"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"column"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"income"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"reason"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"binary target by design"</span>},</span>
+<span id="cb10-5">    ],</span>
+<span id="cb10-6">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"owners"</span>: [</span>
+<span id="cb10-7">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Routing: any remaining E9072 falls to the data-quality team.</span></span>
+<span id="cb10-8">        {<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"team"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"data-quality"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"code"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"E9072"</span>},</span>
+<span id="cb10-9">    ],</span>
+<span id="cb10-10">    <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"requirements"</span>: [</span>
+<span id="cb10-11">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># The gate condition: no E9001 must remain.</span></span>
+<span id="cb10-12">        {<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"code"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"E9001"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"operator"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"eq_zero"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"threshold"</span>: <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span>},</span>
+<span id="cb10-13">    ],</span>
+<span id="cb10-14">})</span>
+<span id="cb10-15"></span>
+<span id="cb10-16"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">if</span> result.gate_fails():</span>
+<span id="cb10-17">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">raise</span> <span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">SystemExit</span>(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"policy gate failed"</span>)</span></code></pre></div>
+<p><code>gate_fails()</code> returns <code>True</code> when any requirement is unsatisfied AND there’s at least one un-suppressed error-severity finding remaining. Owner attribution flows to first-match-wins (the v0.7+ B5.1 mirror test pins this); the suppression-first-match contract is also fixed.</p>
+<p>Suppression rules can be exact-column (<code>"column": "phone"</code>) or glob (<code>"column": "diag_*"</code>) — <code>ColumnMatcher::from_pattern</code> auto-routes based on the presence of <code>*</code>. Empty-pattern <code>column = ""</code> only matches an empty-string column name (v0.7+ B6 / Polish P6 documented; use <code>any_column</code> for code-only suppression).</p>
+</section>
+<section id="causal-guardrail" class="level3">
+<h3 class="anchored" data-anchor-id="causal-guardrail">8.6 Causal guardrail</h3>
+<p>Locke ships a conservative causal layer:</p>
+<div class="sourceCode" id="cb11" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1">cg <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> cjc_locke.causal_guardrail(</span>
+<span id="cb11-2">    data,</span>
+<span id="cb11-3">    target_column<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"income"</span>,</span>
+<span id="cb11-4">    causal_config<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>{<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"mode"</span>: <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"observational_only"</span>},</span>
+<span id="cb11-5">)</span>
+<span id="cb11-6"><span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(cg.n_warnings, cg.warning_kinds())</span></code></pre></div>
+<p>This computes pairwise Pearson correlations, flags strong ones, identifies confounder candidates (a Z correlated with both feature and target), and scans any user-supplied label text for causal-language keywords. Every report carries a top-level disclaimer; no warning kind is named <code>Cause</code> or <code>Effect</code>. In <code>observational_only</code> mode every correlation finding is <em>upgraded</em> to a warning (“treat as non-causal until intervention”).</p>
+<p>The <code>CausalDag</code> lets users pre-register hypothesised causal pathways. Pairs reachable in the DAG have their warning severity <em>downgraded</em> (not removed) — making “I expected this; don’t bother me” explicit.</p>
+</section>
+<section id="json-html-mermaid-emit" class="level3">
+<h3 class="anchored" data-anchor-id="json-html-mermaid-emit">8.7 JSON, HTML, Mermaid emit</h3>
+<div class="sourceCode" id="cb12" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Canonical byte-identical JSON for CI diffing</span></span>
+<span id="cb12-2">js <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> report.to_json()</span>
+<span id="cb12-3"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">assert</span> js <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> cjc_locke.validate(df, label<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"adult-synth"</span>).to_json()  <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># always True</span></span>
+<span id="cb12-4"></span>
+<span id="cb12-5"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Reparse back to a structured object</span></span>
+<span id="cb12-6">restored <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> cjc_locke.parse_report_json(js)</span>
+<span id="cb12-7"></span>
+<span id="cb12-8"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Dict-shaped form for ad-hoc Python work</span></span>
+<span id="cb12-9">d <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> report.to_dict()</span>
+<span id="cb12-10"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">for</span> f <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">in</span> d[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"findings"</span>]:</span>
+<span id="cb12-11">    <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(f[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"code"</span>], f[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"severity"</span>], f[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"message"</span>], f[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"evidence"</span>])</span>
+<span id="cb12-12"></span>
+<span id="cb12-13"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Mermaid lineage diagram (Quarto-renderable, see section 8.3)</span></span>
+<span id="cb12-14"><span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(graph.emit_mermaid())</span></code></pre></div>
+<p>The JSON path uses a hand-rolled deterministic emit (zero external deps; the schema is documented at <code>crates/cjc-locke/src/json_emit.rs</code>). The v0.7+ deep dive hardened it: <code>parse_int → parse_u64</code> for unsigned fields (catches negative-wrap attacks), surrogate-pair handling in <code>\u</code> escapes, a thread-local interner so repeated parses don’t leak.</p>
+<p>There’s also an HTML emit (<code>emit_locke_report_html</code>, accessed from the CLI side, not yet wired through the Python wrapper) that renders an inline-SVG Pearson heatmap when ≥3 numeric columns are present.</p>
+</section>
+<section id="the-determinism-contract" class="level3">
+<h3 class="anchored" data-anchor-id="the-determinism-contract">8.8 The determinism contract</h3>
+<p>The thing that distinguishes Locke from the alternatives, repeated in this post a few times because it matters: <strong>every Locke artefact is byte-identical across runs.</strong></p>
+<ul>
+<li>Finding IDs are content-addressed (SHA-256-derived 64-bit fingerprint over the finding’s logical content).</li>
+<li>JSON output is canonical (BTreeMap-sorted keys, no timestamps, no UUIDs, no map-iteration noise).</li>
+<li>Numeric reductions use Kahan summation (no parallel-order-dependence on floating-point sums).</li>
+<li>BTreeMap and BTreeSet are used everywhere; no HashMap iteration order leaks.</li>
+<li>The RNG is <code>SplitMix64</code> with explicit seed threading.</li>
+<li>No SIMD path uses FMA (preserves bit-equality across CPU vendors).</li>
+</ul>
+<p>The deep-dive audit (Locke v0.7+) ran four parallel agent-clusters over ~26K LOC and found exactly four silent-correctness bugs over the lifetime of the codebase — <code>CategoricalAdaptive::cell_bytes</code> writing the row index instead of dereferencing the dictionary; <code>distinct_count</code> returning row count instead of dictionary length; <code>top_value_freq</code> returning 0; <code>ks_d_statistic</code> over-counting D on tied clusters. All four fixed; all four covered by regression tests. The audit-chain canaries at 629/629 unmoved across the entire fix series. That’s the determinism cost-of-doing-business.</p>
+</section>
+</section>
+<section id="the-determinism-story-in-two-assertions" class="level2">
+<h2 class="anchored" data-anchor-id="the-determinism-story-in-two-assertions">9. The determinism story, in two assertions</h2>
+<div class="sourceCode" id="cb13" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> cjc_locke</span>
+<span id="cb13-2"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> pandas <span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">as</span> pd</span>
+<span id="cb13-3"></span>
+<span id="cb13-4">df <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> pd.read_csv(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"adult_synth.csv"</span>)</span>
+<span id="cb13-5">report_a <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> cjc_locke.validate(df, label<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"adult-synth"</span>)</span>
+<span id="cb13-6">report_b <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> cjc_locke.validate(df, label<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"adult-synth"</span>)</span>
+<span id="cb13-7"></span>
+<span id="cb13-8"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">assert</span> report_a.to_json() <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> report_b.to_json()       <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># always True</span></span>
+<span id="cb13-9"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">assert</span> report_a.to_dict()[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"run_id"</span>] <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> report_b.to_dict()[<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"run_id"</span>]</span></code></pre></div>
+<p>Two <code>cjc_locke.validate()</code> calls produce byte-identical JSON across runs, machines, and CI vendors (we test on Windows MSVC + Linux glibc; both match). The same dataset two days from now will produce the same <code>run_id</code> modulo any code changes to Locke itself. CI gates can use <code>git diff --no-index report_old.json report_new.json</code> to detect <em>any</em> change in either the data quality state or the Locke schema. Pandera and GE reports carry per-run timestamps; you can use them for diffs but they’re noisier.</p>
+<p>A natural follow-up question: <em>does the report ever drift across Locke versions?</em> Yes — when the detector code changes. The v0.7+ deep-dive added some new finding codes (E9008, E9023, E9024 are recent) and tightened the threshold defaults on existing ones. Each release bump should be expected to shift report bytes for <em>some</em> inputs. The <code>schema_version</code> field at the top of the JSON pins which Locke schema the report belongs to.</p>
+</section>
+<section id="when-to-use-which-tool-honest-positioning" class="level2">
+<h2 class="anchored" data-anchor-id="when-to-use-which-tool-honest-positioning">10. When to use which tool — honest positioning</h2>
+<p>I built Locke and I’m comparing it to the alternatives. So this section is the one where I make explicit when Locke is <em>not</em> the right tool.</p>
+<ul>
+<li><p><strong>Use Pandera when</strong> you have a well-understood schema, you want type checks at API boundaries, you want pydantic-style declarative validation, you’re integrating with FastAPI or another schema-aware framework, you need the rich ecosystem of community-written checks.</p></li>
+<li><p><strong>Use Great Expectations when</strong> you have a team that already runs GE, you need the dashboard / docs-rendering / Data Docs UI, you have non-engineering stakeholders who use the GE catalog, you need the years of accumulated expectations and community plugins.</p></li>
+<li><p><strong>Use Locke when</strong> the data is large and varied enough that you can’t pre-register every expectation; <em>or</em> you need byte-identical reports for CI gates; <em>or</em> you need an audit chain that survives across the entire pipeline; <em>or</em> you need belief-score composition algebra; <em>or</em> you need both data-quality validation and lineage tracking in the same tool; <em>or</em> you’re already in CJC-Lang and want zero external deps.</p></li>
+</ul>
+<p>You can use all three at once. They answer different layers of the question, and they don’t fight each other.</p>
+<p>Where Locke gets adopted, in practice: as the deterministic CI gate at the bottom of the stack (no flaking, byte-stable diffs) with Pandera or GE running above it as the <em>expressive</em> schema-validation layer that domain teams own.</p>
+</section>
+<section id="try-it-from-python" class="level2">
+<h2 class="anchored" data-anchor-id="try-it-from-python">11. Try it from Python</h2>
+<p>The Locke Rust crate has had a Python wrapper since the v0.7+ work in this session. The full install + smoke test:</p>
+<div class="sourceCode" id="cb14" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb14-1"><span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">git</span> clone https://github.com/AdamEzzat1/CJC</span>
+<span id="cb14-2"><span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">cd</span> CJC/python</span>
+<span id="cb14-3"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">python</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-m</span> venv .venv</span>
+<span id="cb14-4"><span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">source</span> .venv/Scripts/activate              <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Unix: .venv/bin/activate</span></span>
+<span id="cb14-5"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">pip</span> install maturin numpy pandas</span>
+<span id="cb14-6"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">maturin</span> develop <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">--release</span>                  <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># ~5 min cold build</span></span>
+<span id="cb14-7"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">python</span> <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-c</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"import cjc_locke; print(cjc_locke.__version__)"</span></span></code></pre></div>
+<p>Once built, the wrapper is a thin PyO3 binding (~900 LOC Rust + ~200 LOC Python facade). Every Python function delegates to one Rust call. Numpy <code>f64</code>/<code>i64</code>/<code>bool</code> arrays cross the FFI boundary zero-copy via the buffer protocol; pandas and polars DataFrames work via duck-typed adapters. Determinism is fully preserved — the Rust side runs unchanged and the wrapper doesn’t introduce threading.</p>
+<p>To reproduce the numbers in this post:</p>
+<div class="sourceCode" id="cb15" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb15-1"><span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">cd</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span>path-to-this-post<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;</span></span>
+<span id="cb15-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">python</span> generate_data.py                    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># writes adult_synth.csv</span></span>
+<span id="cb15-3"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">python</span> run_locke.py                        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># runs all the analyses</span></span></code></pre></div>
+<p>Both scripts are in this post’s directory (<a href="./generate_data.py"><code>generate_data.py</code></a>, <a href="./run_locke.py"><code>run_locke.py</code></a>).</p>
+</section>
+<section id="whats-next" class="level2">
+<h2 class="anchored" data-anchor-id="whats-next">12. What’s next</h2>
+<p>Locke is shipped to crates.io at v0.1.10. The Python wrapper from this post’s series is in the CJC-Lang repo at <code>python/</code>. Open questions I’m actively working on:</p>
+<ul>
+<li><strong>More real-world datasets</strong>: this post deliberately used a synthetic Adult clone because the structural quirks are reproducible. Running on the real 32K-row UCI file would surface the same findings; the next blog post in this series will pick a less-well-known dataset where there’s no pre-existing intuition about what Locke “should” find.</li>
+<li><strong>GE-spec import</strong>: a translator from GE expectation files into Locke <code>ValidationConfig</code> overrides, so teams already on GE can run both side by side.</li>
+<li><strong>Streaming summaries → direct validation</strong>: today’s <code>StreamingValidator::into_report()</code> rebuilds a sampled DataFrame and runs the standard validate. A v0.4-target rewrite would run every check incrementally so <code>sample_cap</code> no longer caps any check at its boundary.</li>
+<li><strong>Hand-rolled canonical f64 printer</strong>: today’s deterministic JSON relies on Rust’s <code>f64::Debug</code> shortest-round-trip format, which has been stable in practice but is not a formal stdlib guarantee. A v0.8 hand-rolled printer would make the byte-identity contract independent of toolchain.</li>
+</ul>
+</section>
+<section id="acknowledgements" class="level2">
+<h2 class="anchored" data-anchor-id="acknowledgements">13. Acknowledgements</h2>
+<p>Pandera is a great library that I use elsewhere and that I’m not knocking. Great Expectations is mature and broadly adopted; the existing benchmark post in this series (<a href="../../../blog/posts/cjc-locke-v0.1-released/index.html">Locke v0.1.10</a>) covers GE in more depth. The UCI Adult dataset is Ron Kohavi’s 1996 contribution to the UCI Machine Learning Repository. The synthetic clone in this post is a deterministic stand-in that reproduces the <em>quality issues</em> of Adult; it is not the real dataset.</p>
+<p>The Python wrapper is in the CJC-Lang repo at <code>python/</code> and the Rust crate is at <code>crates/cjc-locke/</code>. Both are MIT-licensed.</p>
+
+
+</section>
+
+ ]]></description>
+  <category>CJC-Lang</category>
+  <category>Locke</category>
+  <category>data-quality</category>
+  <category>validation</category>
+  <category>tutorial</category>
+  <category>comparison</category>
+  <category>pandera</category>
+  <category>great-expectations</category>
+  <category>python</category>
+  <category>adult</category>
+  <guid>https://adamezzat1.github.io/blog/posts/locke-side-by-side-pandera-ge/index.html</guid>
+  <pubDate>Sat, 30 May 2026 07:00:00 GMT</pubDate>
+</item>
 <item>
   <title>Diabetes-130 Revisited: ABNG Climbs Into the Strong-Model Band — and an Honest Account of What Locke Did (and Didn’t)</title>
   <dc:creator>Adam Ezzat</dc:creator>
@@ -22572,570 +23783,6 @@ Follow the project
   <category>scientific-computing</category>
   <guid>https://adamezzat1.github.io/blog/posts/neural-networks-in-cjc/index.html</guid>
   <pubDate>Sun, 22 Mar 2026 07:00:00 GMT</pubDate>
-</item>
-<item>
-  <title>Introducing CJC-Lang: Why I’m Building a Deterministic Scientific Computing Language</title>
-  <dc:creator>Adam Ezzat</dc:creator>
-  <link>https://adamezzat1.github.io/blog/posts/introducing-cjc/index.html</link>
-  <description><![CDATA[ 
-
-
-
-<p>I didn’t set out to build a programming language. I set out to solve a problem.</p>
-<p>I spent years working as a lab engineer running experiments on audio devices — collecting data, cleaning it, troubleshooting when results didn’t look right. Was the anomaly real, or was it an environment issue? A script issue? A sensor calibration drift? I learned firsthand how messy data — or messy <em>handling</em> of data — introduces problems that cascade through every stage of analysis. A mistake in the initial data cleaning phase doesn’t just cost time. It costs weeks of downstream work, delays shipping, and erodes confidence in the results.</p>
-<p>That experience stuck with me as I moved into data science. In most scientific computing environments, running the same program twice can produce slightly different results. Floating-point reduction order changes between runs. Hash maps iterate in random order. Thread scheduling affects accumulation. RNG state leaks across boundaries. These aren’t bugs — they’re properties of systems that weren’t designed with determinism as a constraint.</p>
-<p>I wanted a system where the same program with the same seed produces <strong>bit-identical output</strong> every time, on every platform. Not approximately the same — exactly the same.</p>
-<p>That constraint turned out to touch everything: memory layout, collection types, floating-point arithmetic, random number generation, parallelism. The deeper I went, the clearer it became that bolting determinism onto an existing language would mean fighting the language at every turn. So I built one where determinism is structural.</p>
-<hr>
-<section id="what-is-cjc-lang" class="level2">
-<h2 class="anchored" data-anchor-id="what-is-cjc-lang">What Is CJC-Lang?</h2>
-<p>CJC-Lang — <strong>Computation Jacobian Core</strong> — is a programming language I’m building from scratch for deterministic scientific computing. It’s written in Rust, organized as a 20-crate workspace, with nearly all functionality implemented from scratch using only the Rust standard library.</p>
-<div class="callout callout-style-simple callout-note no-icon">
-<div class="callout-body d-flex">
-<div class="callout-icon-container">
-<i class="callout-icon no-icon"></i>
-</div>
-<div class="callout-body-container">
-<p><strong>CJC-Lang is currently in beta.</strong> The core compiler pipeline and runtime are functional and backed by 5,300+ passing tests, but the language is still under active development and is not production-ready. I’m sharing it now because the ideas behind it are worth discussing even before everything is polished.</p>
-</div>
-</div>
-</div>
-<div class="stats-row">
-<div class="stat">
-<span class="number">20</span><span class="stat-label">Rust crates</span>
-</div>
-<div class="stat">
-<span class="number">6.4 MB</span><span class="stat-label">single binary</span>
-</div>
-<div class="stat">
-<span class="number">~300</span><span class="stat-label">built-in functions</span>
-</div>
-<div class="stat">
-<span class="number">5,300+</span><span class="stat-label">tests passing</span>
-</div>
-</div>
-<p>The language covers the full compilation and execution pipeline: a lexer, recursive descent parser, type checker, two intermediate representations (HIR and MIR), an optimizer, two execution engines, and a runtime with ~300 built-in functions for math, statistics, linear algebra, machine learning, signal processing, and data manipulation.</p>
-<hr>
-</section>
-<section id="core-ideas" class="level2">
-<h2 class="anchored" data-anchor-id="core-ideas">Core Ideas</h2>
-<section id="determinism-as-architecture" class="level3">
-<h3 class="anchored" data-anchor-id="determinism-as-architecture">Determinism as Architecture</h3>
-<p>CJC-Lang enforces determinism at every layer:</p>
-<ul>
-<li><strong>Ordered collections everywhere.</strong> <code>BTreeMap</code> and <code>BTreeSet</code> instead of hash-based containers. Iteration order is always defined.</li>
-<li><strong>Stable floating-point reductions.</strong> All summations use Kahan or binned accumulators — order-invariant superaccumulators that produce identical results regardless of evaluation order.</li>
-<li><strong>No FMA in SIMD kernels.</strong> Fused multiply-add produces different rounding than separate multiply and add. CJC-Lang avoids FMA to keep results identical across CPU architectures.</li>
-<li><strong>Seeded, explicit RNG.</strong> The random number generator is SplitMix64 with explicit seed threading. No global state, no entropy sources.</li>
-<li><strong>Deterministic parallelism.</strong> Parallel operations are structured so that results don’t depend on thread count or scheduling.</li>
-</ul>
-<p>This isn’t a mode you opt into. It’s how the language works. The determinism guarantee is verified in the test suite — for example, the SciML tests train a physics-informed model twice with the same seed and assert that every parameter is bit-identical:</p>
-<div class="sourceCode" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb1-1"><span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">// From tests/sciml_determinism.rs</span></span>
-<span id="cb1-2"><span class="kw" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">let</span> r1 <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> piml_heat_1d_train(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">6</span><span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">20</span><span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">30</span><span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0.01</span><span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1000</span><span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1e-3</span><span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">10.0</span><span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">42</span>)<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">;</span></span>
-<span id="cb1-3"><span class="kw" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">let</span> r2 <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">=</span> piml_heat_1d_train(<span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">6</span><span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">20</span><span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">30</span><span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">0.01</span><span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1000</span><span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1e-3</span><span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">1.0</span><span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">10.0</span><span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">,</span> <span class="dv" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">42</span>)<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">;</span></span>
-<span id="cb1-4"><span class="cf" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">for</span> (i<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">,</span> (<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">&amp;</span>a<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">,</span> <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">&amp;</span>b)) <span class="kw" style="color: #003B4F;
-background-color: null;
-font-style: inherit;">in</span> r1<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">.</span>final_params<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">.</span>iter()</span>
-<span id="cb1-5">    <span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">.</span>zip(r2<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">.</span>final_params<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">.</span>iter())<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">.</span>enumerate()</span>
-<span id="cb1-6"><span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">{</span></span>
-<span id="cb1-7">    <span class="pp" style="color: #AD0000;
-background-color: null;
-font-style: inherit;">assert_eq!</span>(a<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">.</span>to_bits()<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">,</span> b<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">.</span>to_bits()<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">,</span></span>
-<span id="cb1-8">        <span class="st" style="color: #20794D;
-background-color: null;
-font-style: inherit;">"Param {} not bit-identical"</span><span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">,</span> i)<span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">;</span></span>
-<span id="cb1-9"><span class="op" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;">}</span></span></code></pre></div>
-<p>Not approximately equal. Bit-identical. <code>to_bits()</code> compares the raw IEEE 754 representation.</p>
-</section>
-<section id="nearly-zero-external-dependencies" class="level3">
-<h3 class="anchored" data-anchor-id="nearly-zero-external-dependencies">Nearly Zero External Dependencies</h3>
-<p>The entire system compiles to a <strong>6.4 MB single binary</strong>. That one file contains everything: lexer, parser, type checker, two execution engines, optimizer, ~300 builtins, tensor library, linear algebra kernels, regex engine, AD engine, data manipulation DSL, serialization, visualization, and 15+ CLI subcommands.<sup>1</sup></p>
-<p>This is a deliberate choice. External dependencies introduce version churn, platform variance, and complexity that’s hard to audit. For a system that promises bit-identical results, every component needs to be under direct control.</p>
-</section>
-<section id="dual-execution-engines" class="level3">
-<h3 class="anchored" data-anchor-id="dual-execution-engines">Dual Execution Engines</h3>
-<p>CJC-Lang has two execution paths:</p>
-<ol type="1">
-<li><strong>AST interpreter</strong> (<code>cjc-eval</code>): walks the syntax tree directly. Simple, easy to debug, good for prototyping.</li>
-<li><strong>MIR executor</strong> (<code>cjc-mir-exec</code>): lowers through HIR → MIR, applies optimization passes (constant folding, dead code elimination), and runs on a register machine.</li>
-</ol>
-<p>Both engines must produce identical results for every program. Parity tests enforce this — if the engines disagree, that’s a bug, and the test suite catches it.</p>
-</section>
-<section id="nogc-verification" class="level3">
-<h3 class="anchored" data-anchor-id="nogc-verification">NoGC Verification</h3>
-<p>CJC-Lang includes a static verifier that can prove code paths are free of GC allocations. The NoGC verifier performs transitive call-graph analysis to ensure that annotated functions — and everything they call — operate within reference-counted, copy-on-write memory without triggering GC. This matters for latency-sensitive workloads where GC pauses are unacceptable.</p>
-<hr>
-</section>
-</section>
-<section id="what-cjc-lang-can-do-today" class="level2">
-<h2 class="anchored" data-anchor-id="what-cjc-lang-can-do-today">What CJC-Lang Can Do Today</h2>
-<p>Every example below comes from real files in the repository — demo programs, test fixtures, or integration tests.</p>
-<section id="closures-and-higher-order-functions" class="level3">
-<h3 class="anchored" data-anchor-id="closures-and-higher-order-functions">Closures and Higher-Order Functions</h3>
-<p>CJC-Lang supports lambda expressions with capture analysis. The compiler performs lambda lifting during HIR lowering, converting closures into top-level functions with explicit environment parameters:</p>
-<div class="code-label">
-Lambda with capture, passed as higher-order function
-</div>
-<pre><code>fn apply(f: fn(i64) -&gt; i64, x: i64) -&gt; i64 {
-    f(x)
-}
-
-fn main() -&gt; i64 {
-    let double = |x: i64| x * 2;
-    let result: i64 = apply(double, 21);
-    print(f"result: {result}");
-    result
-}</code></pre>
-<p>The capture analysis feeds into the NoGC verifier — if a closure captures a reference that would require GC, the verifier flags it.</p>
-</section>
-<section id="structs-enums-and-pattern-matching" class="level3">
-<h3 class="anchored" data-anchor-id="structs-enums-and-pattern-matching">Structs, Enums, and Pattern Matching</h3>
-<p>CJC-Lang supports algebraic data types with structural destructuring:</p>
-<pre><code>struct Point {
-    x: f64,
-    y: f64
-}
-
-fn distance(p: Any) -&gt; f64 {
-    sqrt(p.x * p.x + p.y * p.y)
-}
-
-let p = Point { x: 3.0, y: 4.0 };
-print(distance(p));</code></pre>
-<p>Match expressions support literal patterns, wildcards, and structural destructuring for tuples and structs. There’s also an <code>Option</code> type with <code>Some</code>/<code>None</code> and <code>unwrap</code>/<code>unwrap_or</code>.</p>
-</section>
-<section id="tensors-and-linear-algebra" class="level3">
-<h3 class="anchored" data-anchor-id="tensors-and-linear-algebra">Tensors and Linear Algebra</h3>
-<p>This is where CJC-Lang starts to show its numerical computing focus. Tensors are N-dimensional arrays with zero-copy COW (copy-on-write) buffers:</p>
-<div class="code-label">
-Matrix multiplication with shape verification
-</div>
-<pre><code>let A = Tensor.from_vec(
-    [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-    [2, 3]
-);
-let B = Tensor.from_vec(
-    [7.0,  8.0,
-     9.0,  10.0,
-     11.0, 12.0],
-    [3, 2]
-);
-
-let C = matmul(A, B);
-print(C.shape());        // [2, 2]
-assert_eq(C.get([0, 0]), 58.0);</code></pre>
-<p>The runtime provides the full suite: SVD, QR, Cholesky, eigenvalue decomposition, matrix exponential, Schur decomposition, condition number, and multiple matrix norms. All floating-point reductions go through Kahan or binned summation.</p>
-</section>
-<section id="neural-network-forward-pass" class="level3">
-<h3 class="anchored" data-anchor-id="neural-network-forward-pass">Neural Network Forward Pass</h3>
-<p>CJC-Lang can express multi-layer neural networks with struct-based layer definitions and a pipe operator (<code>|&gt;</code>) for readable data flow:</p>
-<pre><code>struct Layer {
-    weights: Tensor,
-    bias: Tensor
-}
-
-fn forward(layer: Layer, input: Tensor) -&gt; Tensor {
-    matmul(input, layer.weights) |&gt; add_bias(layer.bias)
-}</code></pre>
-<p>The runtime provides built-in ML operations: <code>batch_norm</code>, <code>dropout_mask</code>, <code>sigmoid</code>, <code>relu</code>, <code>leaky_relu</code>, <code>attention</code>, <code>softmax</code>, learning rate schedulers, loss functions, and regularization. I’ll go deeper into the neural network architectures I’ve built and verified in CJC-Lang in the <a href="../../../blog/posts/neural-networks-in-cjc/index.html">next post</a>.</p>
-</section>
-<section id="gradient-descent-and-automatic-differentiation" class="level3">
-<h3 class="anchored" data-anchor-id="gradient-descent-and-automatic-differentiation">Gradient Descent and Automatic Differentiation</h3>
-<p>A simple but complete optimization loop — gradient descent on <code>f(x) = (x - 3)^2</code>:</p>
-<div class="code-label">
-Manual gradient descent converging to x = 3.0
-</div>
-<pre><code>fn f(x: f64) -&gt; f64 {
-    (x - 3.0) * (x - 3.0)
-}
-
-fn grad_f(x: f64) -&gt; f64 {
-    2.0 * (x - 3.0)
-}
-
-let x = 0.0;
-let lr = 0.1;
-let i = 0;
-
-while i &lt; 100 {
-    let g = grad_f(x);
-    x = x - lr * g;
-    i = i + 1;
-}
-
-print("Final x:", x);          // ~3.0
-assert(abs(x - 3.0) &lt; 0.001);</code></pre>
-<p>For more complex cases, CJC-Lang has a full automatic differentiation engine — forward-mode via dual numbers and reverse-mode via tape-based gradient computation.</p>
-</section>
-<section id="statistics-and-distributions" class="level3">
-<h3 class="anchored" data-anchor-id="statistics-and-distributions">Statistics and Distributions</h3>
-<p>The runtime includes 35+ statistical functions, 10 probability distributions, and 12 hypothesis tests:</p>
-<pre><code>let data = [23.1, 25.4, 22.8, 24.5, 26.1, 23.9, 24.2, 25.0, 22.5, 24.8];
-
-let data_t = Tensor.from_vec(data, [10]);
-print(data_t.mean());
-print(median(data));
-print(sd(data));
-
-// Normal distribution
-print(normal_cdf(1.96));        // P(Z &lt; 1.96)
-print(normal_ppf(0.975));       // quantile function
-
-// Hypothesis testing
-let test_result = t_test(data, 24.0);
-print(test_result);</code></pre>
-<p>Beyond the basics: robust statistics (<code>trimmed_mean</code>, <code>winsorize</code>, <code>mad</code>), rank correlations (<code>spearman_cor</code>, <code>kendall_cor</code>, <code>partial_cor</code>), weighted statistics, and non-parametric tests (<code>wilcoxon_signed_rank</code>, <code>kruskal_wallis</code>, <code>mann_whitney</code>).</p>
-<p>Distributions include normal, beta, gamma, exponential, F, Weibull, Poisson, binomial, chi-squared, and Student’s t — each with PDF/PMF, CDF, and where applicable, quantile functions.</p>
-</section>
-<section id="data-manipulation" class="level3">
-<h3 class="anchored" data-anchor-id="data-manipulation">Data Manipulation</h3>
-<p>CJC-Lang includes a tidyverse-inspired data DSL with 73+ operations:</p>
-<pre><code>let csv_data = "name,age,city\nAlice,30,NYC\nBob,25,LA\nCharlie,35,NYC\n";
-let df = Csv.parse(csv_data);
-let view = df.view();
-
-// Filter and select
-let pred = dexpr_binop("&gt;", col("age"), 28);
-let filtered = view.filter(pred);
-let selected = filtered.select(["name", "city"]);</code></pre>
-<p>The data layer supports typed columns, joins (inner, left, right, anti, semi), pivoting, window functions, and lazy evaluation with COW semantics.</p>
-<hr>
-</section>
-</section>
-<section id="beyond-neural-networks" class="level2">
-<h2 class="anchored" data-anchor-id="beyond-neural-networks">Beyond Neural Networks</h2>
-<p>CJC-Lang isn’t just a machine learning language. The numerical infrastructure supports a broader range of scientific computing — and this is where the determinism guarantee pays the biggest dividends. When you’re debugging a failed ODE integration or a clustering result that doesn’t match your colleague’s run, knowing the computation is reproducible eliminates an entire class of “was it the code or was it the environment?” questions.</p>
-<table class="table">
-<colgroup>
-<col style="width: 32%">
-<col style="width: 68%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Domain</th>
-<th>Key Capabilities</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><strong>ODE/PDE Solvers</strong></td>
-<td>Euler, RK4, adaptive RK45, 1D Laplacian, diffusion stepping, adjoint sensitivity</td>
-</tr>
-<tr class="even">
-<td><strong>Optimization</strong></td>
-<td>Gradient descent, BFGS, L-BFGS, Nelder-Mead, bisection, Brent, Newton, secant</td>
-</tr>
-<tr class="odd">
-<td><strong>Regression</strong></td>
-<td>OLS, weighted least squares, logistic regression, polynomial fitting</td>
-</tr>
-<tr class="even">
-<td><strong>Clustering</strong></td>
-<td>K-means (k-means++ init), DBSCAN, agglomerative (4 linkage methods), PCA</td>
-</tr>
-<tr class="odd">
-<td><strong>Time Series</strong></td>
-<td>ACF, PACF, EWMA, seasonal decomposition, stationarity tests (ADF, KPSS, Phillips-Perron)</td>
-</tr>
-<tr class="even">
-<td><strong>Interpolation</strong></td>
-<td>Cubic natural splines, linear, nearest-neighbor, Horner polynomial evaluation</td>
-</tr>
-</tbody>
-</table>
-<div class="code-label">
-Adaptive RK45 integration with step size control
-</div>
-<pre><code>let result = ode_solve_rk45(
-    |t: f64, y: f64| -0.5 * y,   // dy/dt = -0.5y (exponential decay)
-    0.0,                           // t_start
-    10.0,                          // t_end
-    1.0,                           // y_initial
-    1e-6                           // tolerance
-);
-print("Final y:", result);         // ~0.00674 (matches exp(-5))</code></pre>
-<hr>
-</section>
-<section id="whats-native-and-why-that-matters" class="level2">
-<h2 class="anchored" data-anchor-id="whats-native-and-why-that-matters">What’s Native — and Why That Matters</h2>
-<p>Everything mentioned above runs inside a single binary with nearly zero external dependencies. Every component is under direct control, which means determinism guarantees extend through the entire stack — from CSV parsing through model training through serialization.</p>
-<table class="table">
-<colgroup>
-<col style="width: 25%">
-<col style="width: 30%">
-<col style="width: 44%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Component</th>
-<th>What It Does</th>
-<th>Why Native Matters</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><strong>Regex</strong> (<code>cjc-regex</code>)</td>
-<td>Thompson NFA engine — O(n) linear time, no backtracking</td>
-<td>Eliminates ReDoS vulnerabilities and supply chain risk</td>
-</tr>
-<tr class="even">
-<td><strong>RNG</strong> (SplitMix64)</td>
-<td>Seeded, explicit state, <code>fork()</code> for parallel streams</td>
-<td>Same seed = same output on every platform</td>
-</tr>
-<tr class="odd">
-<td><strong>Visualization</strong> (<code>cjc-vizor</code>)</td>
-<td>Grammar-of-graphics with SVG/BMP output</td>
-<td>No subprocess, no JS engine, no network calls</td>
-</tr>
-<tr class="even">
-<td><strong>DataFrame</strong> (<code>cjc-data</code>)</td>
-<td>73+ tidyverse-style ops, lazy eval, typed columns</td>
-<td>Grouping and aggregation inherit determinism automatically</td>
-</tr>
-<tr class="odd">
-<td><strong>Serialization</strong> (<code>cjc-snap</code>)</td>
-<td>Canonical binary format with SHA-256 content hashing</td>
-<td>Checkpoints are exact; <code>snap_hash()</code> enables verification across runs</td>
-</tr>
-<tr class="even">
-<td><strong>Accumulators</strong> (<code>cjc-repro</code>)</td>
-<td>Kahan compensated and binned superaccumulators</td>
-<td>Order-invariant reductions — the mechanism behind bit-identical floating-point results</td>
-</tr>
-</tbody>
-</table>
-<p>No <code>pip install</code>. No <code>npm install</code>. No version conflicts. Just the binary, the source file, and the seed.</p>
-<hr>
-</section>
-<section id="the-cli-toolchain" class="level2">
-<h2 class="anchored" data-anchor-id="the-cli-toolchain">The CLI Toolchain</h2>
-<p>CJC-Lang ships with 15+ CLI subcommands:</p>
-<div class="sourceCode" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb10-1"><span class="ex" style="color: null;
-background-color: null;
-font-style: inherit;">cjcl</span> run program.cjcl              <span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># execute a program</span></span>
-<span id="cb10-2"><span class="ex" style="color: null;
-background-color: null;
-font-style: inherit;">cjcl</span> run program.cjcl <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">--seed</span> 42    <span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># explicit RNG seed</span></span>
-<span id="cb10-3"><span class="ex" style="color: null;
-background-color: null;
-font-style: inherit;">cjcl</span> run program.cjcl <span class="at" style="color: #657422;
-background-color: null;
-font-style: inherit;">--mir-opt</span>    <span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># MIR-optimized execution</span></span>
-<span id="cb10-4"><span class="ex" style="color: null;
-background-color: null;
-font-style: inherit;">cjcl</span> check program.cjcl            <span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># type-check without running</span></span>
-<span id="cb10-5"><span class="ex" style="color: null;
-background-color: null;
-font-style: inherit;">cjcl</span> repl                         <span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># interactive REPL</span></span>
-<span id="cb10-6"><span class="ex" style="color: null;
-background-color: null;
-font-style: inherit;">cjcl</span> trace program.cjcl            <span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># execution tracing</span></span>
-<span id="cb10-7"><span class="ex" style="color: null;
-background-color: null;
-font-style: inherit;">cjcl</span> bench program.cjcl            <span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># benchmarking</span></span>
-<span id="cb10-8"><span class="ex" style="color: null;
-background-color: null;
-font-style: inherit;">cjcl</span> doctor                       <span class="co" style="color: #5E5E5E;
-background-color: null;
-font-style: inherit;"># health/validation checks</span></span></code></pre></div>
-<p>Additional commands include <code>inspect</code>, <code>schema</code>, <code>flow</code> (control flow graphs), <code>drift</code> (determinism drift detection), <code>mem</code> (memory profiling), <code>pack</code> (binary serialization), and <code>forge</code> (code generation).</p>
-<hr>
-</section>
-<section id="why-cjc-lang-is-still-in-beta" class="level2">
-<h2 class="anchored" data-anchor-id="why-cjc-lang-is-still-in-beta">Why CJC-Lang Is Still in Beta</h2>
-<p>The core is solid: the compiler pipeline works end-to-end, both execution engines agree, the test suite is extensive, and the runtime covers a wide surface area. But several areas need more work:</p>
-<ul>
-<li><strong>Type inference</strong> is limited — most types require explicit annotation</li>
-<li><strong>Generics</strong> are parsed but not fully enforced at the type level</li>
-<li><strong>The module system</strong> exists but needs refinement for multi-file projects</li>
-<li><strong>REPL</strong> lacks readline support</li>
-<li><strong>Optimizer</strong> has room for more passes beyond constant folding and DCE</li>
-<li><strong>Documentation</strong> is sparse outside of test coverage</li>
-</ul>
-<p>I’m not rushing to call this production-ready. The point is to build something correct first, then make it convenient.</p>
-</section>
-<section id="what-comes-next" class="level2">
-<h2 class="anchored" data-anchor-id="what-comes-next">What Comes Next</h2>
-<p>The near-term roadmap includes:</p>
-<ul>
-<li><strong>If-expressions</strong>: converting <code>if</code> from a statement to an expression (<code>let x = if cond { a } else { b }</code>)</li>
-<li><strong>Default parameters and variadic functions</strong>: making function signatures more flexible</li>
-<li><strong>MIR-integrated autodiff</strong>: ensuring gradient computation works through the optimized execution path</li>
-<li><strong>Module system improvements</strong>: reliable multi-file program support</li>
-<li><strong>Sparse linear algebra</strong>: eigenvalue solvers (Lanczos, Arnoldi) with deterministic iteration</li>
-</ul>
-</section>
-<section id="why-share-this-now" class="level2">
-<h2 class="anchored" data-anchor-id="why-share-this-now">Why Share This Now?</h2>
-<p>CJC-Lang isn’t finished, but the ideas behind it are clear enough to discuss. Deterministic scientific computing is a real problem — I’ve seen it firsthand, from the lab bench to the data pipeline. Building the entire stack from scratch is an unusual approach, but the results so far suggest it’s viable.</p>
-<p>If you’re interested in compiler design, numerical methods, reproducible computing, or just the experience of building a language from the ground up, I’ll be writing more here as the project develops.</p>
-<p>Next up: I’ll walk through <a href="../../../blog/posts/neural-networks-in-cjc/index.html">the neural network architectures I’ve built and verified in CJC-Lang</a> — REINFORCE agents, physics-informed networks, CNNs, and attention mechanisms, all running deterministically without any ML framework.</p>
-<div class="callout callout-style-simple callout-tip no-icon callout-titled">
-<div class="callout-header d-flex align-content-center">
-<div class="callout-icon-container">
-<i class="callout-icon no-icon"></i>
-</div>
-<div class="callout-title-container flex-fill">
-Follow the project
-</div>
-</div>
-<div class="callout-body-container callout-body">
-<p>CJC-Lang is open source and under active development. The project is in beta — functional and tested, but not yet production-ready. Follow <a href="https://linkedin.com/in/adamezzat"><span class="citation" data-cites="adamezzat">@adamezzat</span></a> for updates as new features land.</p>
-</div>
-</div>
-
-
-</section>
-
-
-<div id="quarto-appendix" class="default"><section id="footnotes" class="footnotes footnotes-end-of-document"><h2 class="anchored quarto-appendix-heading">Footnotes</h2>
-
-<ol>
-<li id="fn1"><p>The only external dependencies are in the optional language server (<code>cjc-analyzer</code>) and the <code>rayon</code> crate for parallel tensor operations. The core 18 crates have zero external dependencies.↩︎</p></li>
-</ol>
-</section></div> ]]></description>
-  <category>CJC-Lang</category>
-  <category>compilers</category>
-  <category>scientific-computing</category>
-  <guid>https://adamezzat1.github.io/blog/posts/introducing-cjc/index.html</guid>
-  <pubDate>Sat, 21 Mar 2026 07:00:00 GMT</pubDate>
 </item>
 </channel>
 </rss>

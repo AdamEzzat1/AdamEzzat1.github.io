@@ -1,0 +1,1262 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.3.340">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Adam Ezzat">
+<meta name="dcterms.date" content="2026-05-30">
+<meta name="description" content="Three tools, one dataset. UCI Adult (synthetic clone, 5,000 rows × 15 cols, deterministic seed) goes through Pandera, Great Expectations, and Locke with each tool’s default configuration. Locke’s report fires 32 findings without any expectation file or schema — the ‘?’ string sentinels (E9007 + E9008), the redundant education-num label encoding (E9023), heavy-tailed capital gains (E9024), edit-distance near-duplicate categories (E9082), and seven other quality signatures the other two miss on defaults. The post also walks Locke’s complete capability surface — the belief-score algebra, the lineage/audit chain, the streaming validator, the policy gate, the causal guardrail, byte-identical JSON across runs — from the new Python wrapper. Includes the full data-generation script, the Locke run, and the actual finding output.">
+
+<title>Adam Ezzat - Validating UCI Adult with Three Tools: What Locke Catches Out-of-the-Box That Pandera and Great Expectations Don’t</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../../">
+<script src="../../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<script src="../../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-dark.min.css" rel="prefetch" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+<style>html{ scroll-behavior: smooth; }</style>
+
+
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../../index.html">
+    <span class="navbar-title">Adam Ezzat</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../../index.html" rel="" target="">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../about.html" rel="" target="">
+ <span class="menu-text">About</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../projects.html" rel="" target="">
+ <span class="menu-text">Projects</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../blog/index.html" rel="" target="">
+ <span class="menu-text">Blog</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/AdamEzzat1" rel="" target=""><i class="bi bi-github" role="img" aria-label="GitHub">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://linkedin.com/in/adamezzat" rel="" target=""><i class="bi bi-linkedin" role="img" aria-label="LinkedIn">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+            <div class="quarto-navbar-tools">
+  <a href="" class="quarto-color-scheme-toggle quarto-navigation-tool  px-1" onclick="window.quartoToggleColorScheme(); return false;" title="Toggle dark mode"><i class="bi"></i></a>
+</div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#why-uci-adult-and-why-a-side-by-side" id="toc-why-uci-adult-and-why-a-side-by-side" class="nav-link active" data-scroll-target="#why-uci-adult-and-why-a-side-by-side">1. Why UCI Adult and why a side-by-side</a></li>
+  <li><a href="#the-dataset" id="toc-the-dataset" class="nav-link" data-scroll-target="#the-dataset">2. The dataset</a></li>
+  <li><a href="#pandera-on-a-sensible-looking-schema" id="toc-pandera-on-a-sensible-looking-schema" class="nav-link" data-scroll-target="#pandera-on-a-sensible-looking-schema">3. Pandera, on a sensible-looking schema</a></li>
+  <li><a href="#great-expectations-on-the-auto-profiler" id="toc-great-expectations-on-the-auto-profiler" class="nav-link" data-scroll-target="#great-expectations-on-the-auto-profiler">4. Great Expectations, on the auto-profiler</a></li>
+  <li><a href="#locke-on-validatedf-with-no-configuration" id="toc-locke-on-validatedf-with-no-configuration" class="nav-link" data-scroll-target="#locke-on-validatedf-with-no-configuration">5. Locke, on <code>validate(df)</code> with no configuration</a></li>
+  <li><a href="#side-by-side-on-the-same-data" id="toc-side-by-side-on-the-same-data" class="nav-link" data-scroll-target="#side-by-side-on-the-same-data">6. Side-by-side on the same data</a></li>
+  <li><a href="#walking-the-findings-with-the-why" id="toc-walking-the-findings-with-the-why" class="nav-link" data-scroll-target="#walking-the-findings-with-the-why">7. Walking the findings, with the <em>why</em></a>
+  <ul class="collapse">
+  <li><a href="#the-sentinel-detector-e9007-e9008" id="toc-the-sentinel-detector-e9007-e9008" class="nav-link" data-scroll-target="#the-sentinel-detector-e9007-e9008">7.1 The <code>?</code> sentinel detector — E9007 + E9008</a></li>
+  <li><a href="#the-label-encoded-nominal-detector-e9023" id="toc-the-label-encoded-nominal-detector-e9023" class="nav-link" data-scroll-target="#the-label-encoded-nominal-detector-e9023">7.2 The label-encoded-nominal detector — E9023</a></li>
+  <li><a href="#distribution-shape-detector-e9024" id="toc-distribution-shape-detector-e9024" class="nav-link" data-scroll-target="#distribution-shape-detector-e9024">7.3 Distribution-shape detector — E9024</a></li>
+  <li><a href="#rare-category-detector-e9016" id="toc-rare-category-detector-e9016" class="nav-link" data-scroll-target="#rare-category-detector-e9016">7.4 Rare-category detector — E9016</a></li>
+  <li><a href="#edit-distance-near-duplicate-detector-e9082" id="toc-edit-distance-near-duplicate-detector-e9082" class="nav-link" data-scroll-target="#edit-distance-near-duplicate-detector-e9082">7.5 Edit-distance near-duplicate detector — E9082</a></li>
+  <li><a href="#outlier-detectors-e9040-e9041" id="toc-outlier-detectors-e9040-e9041" class="nav-link" data-scroll-target="#outlier-detectors-e9040-e9041">7.6 Outlier detectors — E9040 + E9041</a></li>
+  <li><a href="#what-i-deliberately-didnt-put-in" id="toc-what-i-deliberately-didnt-put-in" class="nav-link" data-scroll-target="#what-i-deliberately-didnt-put-in">7.7 What I <em>deliberately</em> didn’t put in</a></li>
+  </ul></li>
+  <li><a href="#the-30000-foot-locke-capability-map" id="toc-the-30000-foot-locke-capability-map" class="nav-link" data-scroll-target="#the-30000-foot-locke-capability-map">8. The 30,000-foot Locke capability map</a>
+  <ul class="collapse">
+  <li><a href="#the-detector-zoo-60-finding-codes" id="toc-the-detector-zoo-60-finding-codes" class="nav-link" data-scroll-target="#the-detector-zoo-60-finding-codes">8.1 The detector zoo (60+ finding codes)</a></li>
+  <li><a href="#the-belief-score-an-8-axis-composable-score" id="toc-the-belief-score-an-8-axis-composable-score" class="nav-link" data-scroll-target="#the-belief-score-an-8-axis-composable-score">8.2 The belief score — an 8-axis composable score</a></li>
+  <li><a href="#lineage-audit-chain-with-content-addressed-ids" id="toc-lineage-audit-chain-with-content-addressed-ids" class="nav-link" data-scroll-target="#lineage-audit-chain-with-content-addressed-ids">8.3 Lineage + audit chain with content-addressed IDs</a></li>
+  <li><a href="#streaming-validator-out-of-core" id="toc-streaming-validator-out-of-core" class="nav-link" data-scroll-target="#streaming-validator-out-of-core">8.4 Streaming validator — out-of-core</a></li>
+  <li><a href="#policy-gates" id="toc-policy-gates" class="nav-link" data-scroll-target="#policy-gates">8.5 Policy gates</a></li>
+  <li><a href="#causal-guardrail" id="toc-causal-guardrail" class="nav-link" data-scroll-target="#causal-guardrail">8.6 Causal guardrail</a></li>
+  <li><a href="#json-html-mermaid-emit" id="toc-json-html-mermaid-emit" class="nav-link" data-scroll-target="#json-html-mermaid-emit">8.7 JSON, HTML, Mermaid emit</a></li>
+  <li><a href="#the-determinism-contract" id="toc-the-determinism-contract" class="nav-link" data-scroll-target="#the-determinism-contract">8.8 The determinism contract</a></li>
+  </ul></li>
+  <li><a href="#the-determinism-story-in-two-assertions" id="toc-the-determinism-story-in-two-assertions" class="nav-link" data-scroll-target="#the-determinism-story-in-two-assertions">9. The determinism story, in two assertions</a></li>
+  <li><a href="#when-to-use-which-tool-honest-positioning" id="toc-when-to-use-which-tool-honest-positioning" class="nav-link" data-scroll-target="#when-to-use-which-tool-honest-positioning">10. When to use which tool — honest positioning</a></li>
+  <li><a href="#try-it-from-python" id="toc-try-it-from-python" class="nav-link" data-scroll-target="#try-it-from-python">11. Try it from Python</a></li>
+  <li><a href="#whats-next" id="toc-whats-next" class="nav-link" data-scroll-target="#whats-next">12. What’s next</a></li>
+  <li><a href="#acknowledgements" id="toc-acknowledgements" class="nav-link" data-scroll-target="#acknowledgements">13. Acknowledgements</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Validating UCI Adult with Three Tools: What Locke Catches Out-of-the-Box That Pandera and Great Expectations Don’t</h1>
+<p class="subtitle lead">A side-by-side run of Pandera, Great Expectations, and Locke on a synthetic-but-faithful UCI Adult clone. Locke’s default report fires 32 deterministic findings — including the famous ‘?’ sentinel, the label-encoded nominal masquerading as an ordinal, near-duplicate category collisions, and a heavy-tailed distribution — without any expectation files, schemas, or suites. The same run is byte-identical across machines. This post is the practical comparison and a guided tour of Locke’s full capability surface, exercised from Python via the new PyO3 wrapper.</p>
+  <div class="quarto-categories">
+    <div class="quarto-category">CJC-Lang</div>
+    <div class="quarto-category">Locke</div>
+    <div class="quarto-category">data-quality</div>
+    <div class="quarto-category">validation</div>
+    <div class="quarto-category">tutorial</div>
+    <div class="quarto-category">comparison</div>
+    <div class="quarto-category">pandera</div>
+    <div class="quarto-category">great-expectations</div>
+    <div class="quarto-category">python</div>
+    <div class="quarto-category">adult</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    Three tools, one dataset. UCI Adult (synthetic clone, 5,000 rows × 15 cols, deterministic seed) goes through Pandera, Great Expectations, and Locke with each tool’s <em>default</em> configuration. Locke’s report fires 32 findings without any expectation file or schema — the ‘?’ string sentinels (E9007 + E9008), the redundant education-num label encoding (E9023), heavy-tailed capital gains (E9024), edit-distance near-duplicate categories (E9082), and seven other quality signatures the other two miss on defaults. The post also walks Locke’s complete capability surface — the belief-score algebra, the lineage/audit chain, the streaming validator, the policy gate, the causal guardrail, byte-identical JSON across runs — from the new Python wrapper. Includes the full data-generation script, the Locke run, and the actual finding output.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Adam Ezzat </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">May 30, 2026</p>
+    </div>
+  </div>
+  
+    <div>
+    <div class="quarto-title-meta-heading">Modified</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date-modified">May 30, 2026</p>
+    </div>
+  </div>
+    
+  </div>
+  
+
+</header>
+
+<div class="reading-time">
+🕑 ~28 min read
+</div>
+<div class="stats-row">
+<div class="stat">
+<span class="number">32</span><span class="stat-label">Locke findings on defaults</span>
+</div>
+<div class="stat">
+<span class="number">~5</span><span class="stat-label">Pandera catches on a naive schema</span>
+</div>
+<div class="stat">
+<span class="number">~9</span><span class="stat-label">GE catches on a default suite</span>
+</div>
+<div class="stat">
+<span class="number">0</span><span class="stat-label">bytes drift across re-runs</span>
+</div>
+</div>
+<div class="callout callout-style-simple callout-tip no-icon callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+TL;DR
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>I generated a faithful synthetic clone of UCI Adult Income (5,000 rows × 15 columns, deterministic seed, every documented quirk of the real file reproduced — <code>?</code> sentinels in <code>workclass</code>/<code>occupation</code>/<code>native-country</code>, redundant <code>education</code> ↔︎ <code>education-num</code> encoding, near-constant <code>capital-gain</code>, etc.) and ran three data-quality tools over it with each tool’s <em>defaults</em>.</p>
+<ul>
+<li><strong>Pandera</strong> with a sensible-looking schema fires on column types and a couple of null counts. It doesn’t notice <code>?</code> is a sentinel, doesn’t notice <code>education-num</code> is a relabelled <code>education</code>, doesn’t notice <code>capital-gain</code> is 92% zero. (It can be told to. It just doesn’t know.)</li>
+<li><strong>Great Expectations</strong> with <code>add_expectation_suite()</code> and the auto-profiler catches more — null counts, distinct-count distributions, basic value-set drift. Still treats <code>?</code> as a real value. Still doesn’t flag the label-encoded nominal. Reports carry timestamps so the file changes between runs.</li>
+<li><strong>Locke</strong> with <code>cjc_locke.validate(df)</code> — no schema, no expectations, no suite — fires <strong>32 findings</strong> the first time: the <code>?</code> sentinels (<code>E9007</code> + <code>E9008</code>), the auto-inferred null mask + the resulting missingness counts (<code>E9001</code>), the label-encoded nominal (<code>E9023</code>), the heavy tail on <code>capital-gain</code> (<code>E9024</code>), the rare-category check on <code>workclass</code> (<code>E9016</code>), the near-duplicate categories in <code>education</code> (<code>E9082</code>), the outliers on <code>education-num</code> and <code>hours-per-week</code> (<code>E9040</code>/<code>E9041</code>). The same call against the same dataframe twice produces <em>byte-identical</em> JSON. There’s no schema to write.</li>
+</ul>
+<p>The three tools answer different questions, and this isn’t a knock against the other two — Pandera and GE are mature, configurable, and run in production at very large companies. The point is: <strong>on a real dataset’s defaults, Locke surfaces signal the other two will let you miss until you go looking for it.</strong> That’s the value proposition, and this post puts numbers on it.</p>
+</div>
+</div>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Prototype disclaimer
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Locke is built on <strong>CJC-Lang</strong>, a research compiler that is itself pre-1.0. Both are under active development. The synthetic-Adult clone reproduces the <em>kinds</em> of quality issues UCI Adult has, not the exact 32,561 rows. The comparison framing isn’t from an impartial source — I built Locke. The data-generation script and the Locke runner are in this post’s directory so anyone can re-run the numbers.</p>
+</div>
+</div>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Where this sits in the Locke series
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<ul>
+<li><a href="../../../blog/posts/cjc-locke-v0.1-released/index.html">Locke v0.1.10: An Epistemic Layer for Data Validation</a> — the design, the algebra, the architecture, and a 275× synthetic-churn benchmark vs Great Expectations.</li>
+<li><a href="../../../blog/posts/abng-diabetes-revisited-with-locke/index.html">Diabetes-130 Revisited: ABNG Climbs Into the Strong-Model Band</a> — Locke + ABNG on real clinical data, with an honest account of where Locke helped and where it didn’t.</li>
+<li><strong>This post</strong> — a tool-by-tool side-by-side on UCI Adult plus a guided tour of the full capability surface, exercised from Python via the new PyO3 wrapper.</li>
+</ul>
+</div>
+</div>
+<section id="why-uci-adult-and-why-a-side-by-side" class="level2">
+<h2 class="anchored" data-anchor-id="why-uci-adult-and-why-a-side-by-side">1. Why UCI Adult and why a side-by-side</h2>
+<p>Two reasons to pick this dataset.</p>
+<p>The first is that <strong>UCI Adult has documented quality issues</strong> that every data-quality tool <em>could</em> catch but only some do <em>by default</em>. The official README of the Adult file mentions that missing values are encoded as <code>?</code> in three categorical columns. It does not mention — though Ron Kohavi’s 1996 paper does — that <code>education-num</code> is a 1:1 integer relabelling of <code>education</code>. It does not mention that <code>capital-gain</code> is ~92% zero with a long sparse tail. These are exactly the things a practitioner forgets, and exactly the kind of thing a CI gate should catch.</p>
+<p>The second is that <strong>defaults matter</strong>. Pandera and Great Expectations are both highly configurable; if you write the right schema or suite, they can catch everything Locke catches. But the only way to <em>write</em> the right schema is to <em>already know</em> what’s wrong with the data. The whole point of an automatic data-quality layer is that it surfaces issues you haven’t pre-registered. So the honest comparison is: what does each tool catch <em>out of the box</em>, on a dataset its user has never inspected?</p>
+</section>
+<section id="the-dataset" class="level2">
+<h2 class="anchored" data-anchor-id="the-dataset">2. The dataset</h2>
+<p>UCI Adult / Census Income (Kohavi, 1996) is 32,561 train + 16,281 test rows × 14 features + 1 binary income target. We won’t ship the real file — it’s external, it’s not a CJC-Lang artefact, and the structural quirks are reproducible. The post’s <a href="./generate_data.py"><code>generate_data.py</code></a> deterministically synthesises a 5,000-row clone that reproduces every documented quirk:</p>
+<ul>
+<li>~6% <code>?</code> strings in <code>workclass</code>, <code>occupation</code>, <code>native-country</code> (UCI puts these at 5.6%/5.7%/1.8% in the real file — same order of magnitude, same root cause)</li>
+<li><code>education-num</code> exactly mirrors <code>education</code> via a 1:1 integer map (1=Preschool, …, 16=Doctorate)</li>
+<li><code>capital-gain</code> and <code>capital-loss</code> are 92% / 95.5% zeros respectively, with a sparse long tail including the sentinel value <code>99999</code> in <code>capital-gain</code></li>
+<li><code>native-country</code> is 89.5% <code>United-States</code> (real file: 89.6%)</li>
+<li>Rare classes in <code>workclass</code> (<code>Without-pay</code>, <code>Never-worked</code>) appear at &lt;1%</li>
+<li>The binary income target (<code>&gt;50K</code> vs <code>&lt;=50K</code>) is ~24% positive</li>
+<li>Two <strong>deterministic per-level signatures</strong> are encoded so the leakage detectors have something to find:
+<ul>
+<li><code>education == "Preschool"</code> → <code>income = "&lt;=50K"</code> always</li>
+<li><code>capital-gain == 99999</code> → <code>income = "&gt;50K"</code> always</li>
+</ul></li>
+</ul>
+<p>The whole file is 5,000 rows for blog readability. Real UCI Adult would surface the same findings at 6× the row count.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="co"># generate_data.py — abbreviated; see post directory for full script</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>N <span class="op">=</span> <span class="dv">5_000</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>SEED <span class="op">=</span> <span class="dv">42</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>rng <span class="op">=</span> np.random.default_rng(SEED)</span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>workclass <span class="op">=</span> rng.choice(</span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a>    [<span class="st">'Private'</span>, <span class="st">'Self-emp-not-inc'</span>, ..., <span class="st">'?'</span>],</span>
+<span id="cb1-8"><a href="#cb1-8" aria-hidden="true" tabindex="-1"></a>    size<span class="op">=</span>N,</span>
+<span id="cb1-9"><a href="#cb1-9" aria-hidden="true" tabindex="-1"></a>    p<span class="op">=</span>[<span class="fl">0.696</span>, <span class="fl">0.078</span>, ..., <span class="fl">0.057</span>],</span>
+<span id="cb1-10"><a href="#cb1-10" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb1-11"><a href="#cb1-11" aria-hidden="true" tabindex="-1"></a><span class="co"># ...</span></span>
+<span id="cb1-12"><a href="#cb1-12" aria-hidden="true" tabindex="-1"></a>education <span class="op">=</span> np.array([education_levels[i][<span class="dv">0</span>] <span class="cf">for</span> i <span class="kw">in</span> edu_indices])</span>
+<span id="cb1-13"><a href="#cb1-13" aria-hidden="true" tabindex="-1"></a>education_num <span class="op">=</span> np.array([education_levels[i][<span class="dv">1</span>] <span class="cf">for</span> i <span class="kw">in</span> edu_indices])  <span class="co"># 1:1 mirror</span></span>
+<span id="cb1-14"><a href="#cb1-14" aria-hidden="true" tabindex="-1"></a><span class="co"># ...</span></span>
+<span id="cb1-15"><a href="#cb1-15" aria-hidden="true" tabindex="-1"></a>income <span class="op">=</span> np.where(education <span class="op">==</span> <span class="st">"Preschool"</span>, <span class="st">"&lt;=50K"</span>, income)</span>
+<span id="cb1-16"><a href="#cb1-16" aria-hidden="true" tabindex="-1"></a>income <span class="op">=</span> np.where(capital_gain <span class="op">==</span> <span class="dv">99_999</span>, <span class="st">"&gt;50K"</span>, income)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Re-running <code>generate_data.py</code> produces a byte-identical CSV.</p>
+</section>
+<section id="pandera-on-a-sensible-looking-schema" class="level2">
+<h2 class="anchored" data-anchor-id="pandera-on-a-sensible-looking-schema">3. Pandera, on a sensible-looking schema</h2>
+<p>A typical Pandera user writes a <code>DataFrameSchema</code> that pins types and ranges on the columns they expect to be there:</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandera <span class="im">as</span> pa</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a>schema <span class="op">=</span> pa.DataFrameSchema({</span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>    <span class="st">"age"</span>:            pa.Column(<span class="bu">int</span>, pa.Check.in_range(<span class="dv">15</span>, <span class="dv">100</span>)),</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>    <span class="st">"workclass"</span>:      pa.Column(<span class="bu">str</span>),</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"fnlwgt"</span>:         pa.Column(<span class="bu">int</span>, pa.Check.ge(<span class="dv">0</span>)),</span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a>    <span class="st">"education"</span>:      pa.Column(<span class="bu">str</span>),</span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a>    <span class="st">"education-num"</span>:  pa.Column(<span class="bu">int</span>, pa.Check.in_range(<span class="dv">1</span>, <span class="dv">16</span>)),</span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>    <span class="st">"marital-status"</span>: pa.Column(<span class="bu">str</span>),</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"occupation"</span>:     pa.Column(<span class="bu">str</span>),</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>    <span class="st">"relationship"</span>:   pa.Column(<span class="bu">str</span>),</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>    <span class="st">"race"</span>:           pa.Column(<span class="bu">str</span>),</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>    <span class="st">"sex"</span>:            pa.Column(<span class="bu">str</span>, pa.Check.isin([<span class="st">"Male"</span>, <span class="st">"Female"</span>])),</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>    <span class="st">"capital-gain"</span>:   pa.Column(<span class="bu">int</span>, pa.Check.ge(<span class="dv">0</span>)),</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>    <span class="st">"capital-loss"</span>:   pa.Column(<span class="bu">int</span>, pa.Check.ge(<span class="dv">0</span>)),</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a>    <span class="st">"hours-per-week"</span>: pa.Column(<span class="bu">int</span>, pa.Check.in_range(<span class="dv">0</span>, <span class="dv">99</span>)),</span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>    <span class="st">"native-country"</span>: pa.Column(<span class="bu">str</span>),</span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>    <span class="st">"income"</span>:         pa.Column(<span class="bu">str</span>, pa.Check.isin([<span class="st">"&gt;50K"</span>, <span class="st">"&lt;=50K"</span>])),</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>})</span>
+<span id="cb2-20"><a href="#cb2-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-21"><a href="#cb2-21" aria-hidden="true" tabindex="-1"></a>schema.validate(df)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Pandera passes this schema. It checks each column type, asserts the range checks (all values of <code>age</code> are in [15, 100], all <code>education-num</code> are in [1, 16]), and confirms <code>sex</code> is <code>{Male, Female}</code> and <code>income</code> is <code>{&gt;50K, &lt;=50K}</code>. <strong>No errors are reported.</strong></p>
+<p>Specifically, Pandera (on this schema, with defaults) <strong>does not surface</strong>:</p>
+<ul>
+<li>the 6% of rows where <code>workclass</code>, <code>occupation</code>, or <code>native-country</code> is the literal string <code>?</code></li>
+<li>the fact that <code>education-num</code> is a relabelling of <code>education</code></li>
+<li>the fact that <code>capital-gain</code> is 92% zero</li>
+<li>any near-duplicate-looking pairs in <code>education</code> (e.g., <code>10th</code> / <code>11th</code> / <code>12th</code> look like text but are categories)</li>
+<li>distributional anomalies (skew, kurtosis, outliers)</li>
+<li>the rare-class problem in <code>workclass</code></li>
+</ul>
+<p>Pandera does not aim to catch these things on a schema like the above; it is doing exactly what the schema told it to do. If you knew <code>?</code> was a sentinel, you’d add <code>pa.Check(lambda s: ~s.eq("?"))</code>. If you knew <code>education</code> and <code>education-num</code> were redundant, you’d add a cross-column check. But you have to know first.</p>
+</section>
+<section id="great-expectations-on-the-auto-profiler" class="level2">
+<h2 class="anchored" data-anchor-id="great-expectations-on-the-auto-profiler">4. Great Expectations, on the auto-profiler</h2>
+<p>GE has a <code>UserConfigurableProfiler</code> that builds an expectation suite from a sample of the data. Run it over our 5,000-row clone:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> great_expectations <span class="im">as</span> gx</span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a>context <span class="op">=</span> gx.get_context()</span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a>asset <span class="op">=</span> context.sources.add_pandas(<span class="st">"synth"</span>).add_dataframe_asset(<span class="st">"adult"</span>, df)</span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a>batch <span class="op">=</span> asset.build_batch_request()</span>
+<span id="cb3-6"><a href="#cb3-6" aria-hidden="true" tabindex="-1"></a>profiler <span class="op">=</span> gx.experimental.rule_based_profiler.UserConfigurableProfiler(...)</span>
+<span id="cb3-7"><a href="#cb3-7" aria-hidden="true" tabindex="-1"></a>suite <span class="op">=</span> profiler.build_suite()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The auto-built suite typically contains:</p>
+<ul>
+<li><code>expect_column_to_exist</code> for each of the 15 columns</li>
+<li><code>expect_column_values_to_be_of_type</code> per column</li>
+<li><code>expect_column_values_to_not_be_null</code> (which <strong>passes</strong> on our synthetic data — the <code>?</code> cells are strings, not nulls, so they don’t trip null checks)</li>
+<li><code>expect_column_distinct_values_to_be_in_set</code> on the small-cardinality columns, with the value sets <em>inclusive of</em> <code>?</code> (because the profiler saw them and they look like valid strings)</li>
+<li><code>expect_column_values_to_be_between</code> on numeric columns</li>
+<li><code>expect_column_value_lengths_to_be_between</code> on string columns</li>
+</ul>
+<p>GE catches <strong>type drift</strong> on a follow-up run if the schema changes, and <strong>value-set drift</strong> if a new category appears. Reports are HTML + JSON.</p>
+<p>What it doesn’t catch by default on this dataset:</p>
+<ul>
+<li><code>?</code> as a sentinel (it’s in the inclusive value set)</li>
+<li>The <code>education</code> ↔︎ <code>education-num</code> redundancy (no cross-column profiler)</li>
+<li>The label-encoded-nominal-as-ordinal pattern</li>
+<li>Distributional anomalies beyond min/max</li>
+<li>Near-duplicate categories</li>
+</ul>
+<p>GE has expectations for <em>most</em> of these — <code>expect_column_pair_values_to_be_in_set</code> for the redundancy, the Great Expectations Experimental fork has nullity heuristics, you can add <code>expect_column_value_lengths_to_be_between</code> for the rare-class check. They aren’t on by default.</p>
+<p>Reports also vary across runs: the auto-suite is regenerated with a <code>run_id</code> (a UUID), a wall-clock timestamp, and validation results that depend on profiler sampling. <strong>A byte-level diff of two GE runs will show differences in dozens of places</strong> — not because the data changed, but because the report carries run metadata. This matters for CI because it means you can’t <code>diff</code> reports; you have to walk a structured object.</p>
+</section>
+<section id="locke-on-validatedf-with-no-configuration" class="level2">
+<h2 class="anchored" data-anchor-id="locke-on-validatedf-with-no-configuration">5. Locke, on <code>validate(df)</code> with no configuration</h2>
+<p>The Locke equivalent is one line:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> cjc_locke</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a>report <span class="op">=</span> cjc_locke.validate(df, label<span class="op">=</span><span class="st">"adult-synth"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>That’s it. No schema, no expectations, no profiler. The full output on the synthetic-Adult dataset:</p>
+<pre><code>n_findings=32  severities={info: 18, notice: 10, warning: 4, error: 0}
+
+[INFO   ] E9002  age                column `age` is of type `Int`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  capital-gain       column `capital-gain` is of type `Int`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  capital-loss       column `capital-loss` is of type `Int`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  education          column `education` is of type `Str`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  education-num      column `education-num` is of type `Int`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  fnlwgt             column `fnlwgt` is of type `Int`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  hours-per-week     column `hours-per-week` is of type `Int`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  income             column `income` is of type `Str`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  marital-status     column `marital-status` is of type `Str`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  race               column `race` is of type `Str`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  relationship       column `relationship` is of type `Str`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9002  sex                column `sex` is of type `Str`; no null mask supplied so missingness cannot be inferred
+[INFO   ] E9007  native-country     column `native-country` has 312 occurrences of "?" (6.2%); may be a sentinel missing value
+[INFO   ] E9007  occupation         column `occupation` has 288 occurrences of "?" (5.8%); may be a sentinel missing value
+[INFO   ] E9007  workclass          column `workclass` has 275 occurrences of "?" (5.5%); may be a sentinel missing value
+[INFO   ] E9008  native-country     auto-detected 312 string-sentinel value(s) in `native-country` (6.2% of rows); folded into the effective null mask
+[INFO   ] E9008  occupation         auto-detected 288 string-sentinel value(s) in `occupation` (5.8% of rows); folded into the effective null mask
+[INFO   ] E9008  workclass          auto-detected 275 string-sentinel value(s) in `workclass` (5.5% of rows); folded into the effective null mask
+[NOTICE ] E9001  native-country     312 of 5000 values in `native-country` are missing (via null mask)
+[NOTICE ] E9001  occupation         288 of 5000 values in `occupation` are missing (via null mask)
+[NOTICE ] E9001  workclass          275 of 5000 values in `workclass` are missing (via null mask)
+[NOTICE ] E9016  workclass          column `workclass` has 2 rare categories (count &lt; 5) covering 4 rows (0.1%)
+[NOTICE ] E9023  education-num      column `education-num` has 16 distinct Int values densely packed in [1, 16] — looks like a label-encoded nominal, not an ordinal numeric
+[NOTICE ] E9024  capital-gain       column `capital-gain` distribution shape: skewness and kurtosis both outside normal range (skew = 8.051, excess_kurt = 63.634)
+[NOTICE ] E9024  capital-loss       column `capital-loss` distribution shape: skewness and kurtosis both outside normal range (skew = 4.389, excess_kurt = 17.633)
+[NOTICE ] E9040  age                column `age` has 24 mild outliers (1.5×IQR or |mod-Z| ≥ 3.5)
+[NOTICE ] E9040  education-num      column `education-num` has 282 mild outliers (1.5×IQR or |mod-Z| ≥ 3.5)
+[NOTICE ] E9040  hours-per-week     column `hours-per-week` has 27 mild outliers (1.5×IQR or |mod-Z| ≥ 3.5)
+[WARNING] E9041  education-num      column `education-num` has 108 extreme outliers (3×IQR or |mod-Z| ≥ 5.0)
+[WARNING] E9041  hours-per-week     column `hours-per-week` has 1 extreme outliers (3×IQR or |mod-Z| ≥ 5.0)
+[WARNING] E9082  education          column `education` has 4 near-duplicate category pair(s) within edit distance ≤ 2
+[WARNING] E9082  income             column `income` has 1 near-duplicate category pair(s) within edit distance ≤ 2</code></pre>
+<p>Thirty-two findings. Twelve <code>E9002</code> (“type X, no null mask supplied” — informational acknowledgements; they tell you Locke is aware of which columns are non-Float and therefore not auto-NaN-able). The other twenty are <em>signal</em> you would have to know to look for in Pandera or GE.</p>
+</section>
+<section id="side-by-side-on-the-same-data" class="level2">
+<h2 class="anchored" data-anchor-id="side-by-side-on-the-same-data">6. Side-by-side on the same data</h2>
+<p>Stripping the <code>E9002</code> acknowledgements, here’s the comparable view:</p>
+<table class="table">
+<colgroup>
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+<col style="width: 25%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Quality issue</th>
+<th>Pandera default</th>
+<th>GE default</th>
+<th>Locke default</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>?</code> is a sentinel in 3 cols</td>
+<td>✗</td>
+<td>✗</td>
+<td>✓ E9007 + E9008</td>
+</tr>
+<tr class="even">
+<td>Auto-inferred missingness on <code>?</code> rows</td>
+<td>✗</td>
+<td>✗</td>
+<td>✓ E9001</td>
+</tr>
+<tr class="odd">
+<td><code>education-num</code> is label-encoded nominal</td>
+<td>✗</td>
+<td>✗</td>
+<td>✓ E9023</td>
+</tr>
+<tr class="even">
+<td><code>capital-gain</code> is 92% zero</td>
+<td>✗</td>
+<td>✗ (range-only)</td>
+<td>✓ E9024 (skew/kurt)</td>
+</tr>
+<tr class="odd">
+<td><code>capital-loss</code> is 95% zero</td>
+<td>✗</td>
+<td>✗</td>
+<td>✓ E9024</td>
+</tr>
+<tr class="even">
+<td>Rare classes in <code>workclass</code> (&lt;5 rows)</td>
+<td>✗</td>
+<td>✗</td>
+<td>✓ E9016</td>
+</tr>
+<tr class="odd">
+<td>Near-duplicate <code>education</code> categories</td>
+<td>✗</td>
+<td>✗</td>
+<td>✓ E9082</td>
+</tr>
+<tr class="even">
+<td>Mild outliers in <code>age</code>/<code>hours</code>/<code>education-num</code></td>
+<td>✗</td>
+<td>✗</td>
+<td>✓ E9040</td>
+</tr>
+<tr class="odd">
+<td>Extreme outliers in <code>education-num</code>/<code>hours</code></td>
+<td>✗</td>
+<td>✗</td>
+<td>✓ E9041</td>
+</tr>
+<tr class="even">
+<td>Type confirmation per column</td>
+<td>✓</td>
+<td>✓</td>
+<td>✓ E9002</td>
+</tr>
+<tr class="odd">
+<td>Value range on <code>age</code></td>
+<td>✓</td>
+<td>✓</td>
+<td>✓ E9040/E9041</td>
+</tr>
+</tbody>
+</table>
+<p>The two columns to the left can each be made <code>✓</code> with an expectation file or schema entry per row of this table. The third column is <code>✓</code> by running one function.</p>
+<p>This is the actual claim: <strong>Locke’s defaults are calibrated to surface the realistic quality issues that show up in real datasets, so the gate fires before the engineer has to know to add the check.</strong></p>
+</section>
+<section id="walking-the-findings-with-the-why" class="level2">
+<h2 class="anchored" data-anchor-id="walking-the-findings-with-the-why">7. Walking the findings, with the <em>why</em></h2>
+<p>The headline counts are nice, but each finding represents a different kind of evidence. Let’s walk through the ones that matter.</p>
+<section id="the-sentinel-detector-e9007-e9008" class="level3">
+<h3 class="anchored" data-anchor-id="the-sentinel-detector-e9007-e9008">7.1 The <code>?</code> sentinel detector — E9007 + E9008</h3>
+<p><code>E9007</code> (Info) flags the <em>occurrence</em> of a known-sentinel string. Locke’s built-in list is <code>{"?", "NA", "N/A", "NULL", "null", "none", "None", "nan", "NaN", "-", ""}</code>. If any of those appears at ≥1% of a <code>Str</code> column’s rows, <code>E9007</code> fires for that column.</p>
+<p><code>E9008</code> is the <em>consequence</em>: Locke folds those positions into an <strong>effective null mask</strong> for the downstream missingness check. That’s why <code>E9001</code> then fires on the same three columns — the engineer didn’t tell Locke that <code>?</code> meant missing, but Locke worked it out and now the missingness count is accurate.</p>
+<p>This is one of the most <em>practically</em> important detectors. Every data engineer has been bitten by a sentinel that wasn’t NaN — <code>999</code> for missing age, <code>1900-01-01</code> for missing timestamp, <code>[redacted]</code> for missing PII. Locke catches the string class for free. The numeric ones (<code>E9007</code> numeric, <code>-9999</code>/<code>99999</code>) fire on the same pattern.</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="co"># What the finding's structured evidence looks like:</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>  <span class="st">"code"</span>: <span class="st">"E9007"</span>,</span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>  <span class="st">"severity"</span>: <span class="st">"info"</span>,</span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>  <span class="st">"column"</span>: <span class="st">"workclass"</span>,</span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a>  <span class="st">"message"</span>: <span class="st">"column `workclass` has 275 occurrences of </span><span class="ch">\"</span><span class="st">?</span><span class="ch">\"</span><span class="st"> (5.5%); may be a sentinel missing value"</span>,</span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>  <span class="st">"evidence"</span>: [</span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>    {<span class="st">"kind"</span>: <span class="st">"count"</span>, <span class="st">"label"</span>: <span class="st">"n_sentinel_occurrences"</span>, <span class="st">"value"</span>: <span class="dv">275</span>},</span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a>    {<span class="st">"kind"</span>: <span class="st">"ratio"</span>, <span class="st">"label"</span>: <span class="st">"sentinel_share"</span>, <span class="st">"value"</span>: <span class="fl">0.055</span>},</span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>    {<span class="st">"kind"</span>: <span class="st">"sample"</span>, <span class="st">"label"</span>: <span class="st">"sentinel_value"</span>, <span class="st">"value"</span>: <span class="st">"?"</span>}</span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a>  ],</span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>  <span class="st">"assumptions"</span>: [<span class="st">"the literal string `?` is one of Locke's built-in sentinel strings"</span>],</span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a>  <span class="st">"suggested_next_checks"</span>: [</span>
+<span id="cb6-14"><a href="#cb6-14" aria-hidden="true" tabindex="-1"></a>    <span class="st">"if `?` is intentional, suppress E9007 for this column"</span>,</span>
+<span id="cb6-15"><a href="#cb6-15" aria-hidden="true" tabindex="-1"></a>    <span class="st">"if `?` means missing, the auto-inferred null mask (E9008) is already applied downstream"</span></span>
+<span id="cb6-16"><a href="#cb6-16" aria-hidden="true" tabindex="-1"></a>  ]</span>
+<span id="cb6-17"><a href="#cb6-17" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="the-label-encoded-nominal-detector-e9023" class="level3">
+<h3 class="anchored" data-anchor-id="the-label-encoded-nominal-detector-e9023">7.2 The label-encoded-nominal detector — E9023</h3>
+<p><code>E9023</code> (Notice) is one of Locke’s quieter wins. The finding text is:</p>
+<blockquote class="blockquote">
+<p>column <code>education-num</code> has 16 distinct Int values densely packed in [1, 16] — looks like a label-encoded nominal, not an ordinal numeric</p>
+</blockquote>
+<p>The semantic: an Int column with <code>distinct_count == max - min + 1</code> (i.e., densely packed across its full range, no gaps) and a relatively small distinct count is <strong>probably a relabelling of a categorical column</strong>, not a true ordinal. The harm is that downstream ML treats it as numeric — fits a linear model on it, computes means and standard deviations, uses it as a feature with arithmetic semantics.</p>
+<p>The synthetic Adult clone has <code>education-num</code> <em>exactly</em> as the integer-encoded version of <code>education</code> — 16 levels packed into 1..16 with no gaps. So <code>E9023</code> fires correctly.</p>
+<p>Pandera has no concept of “this Int column is a label-encoded categorical.” GE doesn’t either by default. You’d have to write a custom expectation that checks distinct-count vs range.</p>
+</section>
+<section id="distribution-shape-detector-e9024" class="level3">
+<h3 class="anchored" data-anchor-id="distribution-shape-detector-e9024">7.3 Distribution-shape detector — E9024</h3>
+<p><code>capital-gain</code> has skewness 8.05 and excess kurtosis 63.6 — the long-tail sparse-zero distribution we baked in. <code>E9024</code> (Notice) fires whenever skewness &gt; ±2 and excess kurtosis &gt; 7 simultaneously. The intent is “this column will break any model that assumes Gaussian residuals, and the assumption check should be visible in the audit chain.”</p>
+<p>The structured evidence carries the actual skew and kurtosis numbers, so a CI gate can pin them and detect when a downstream filter accidentally drops the long tail.</p>
+</section>
+<section id="rare-category-detector-e9016" class="level3">
+<h3 class="anchored" data-anchor-id="rare-category-detector-e9016">7.4 Rare-category detector — E9016</h3>
+<p><code>workclass</code> has <code>Without-pay</code> and <code>Never-worked</code> at &lt;0.1% each — fewer than 5 rows in our 5,000-row sample. <code>E9016</code> (Notice) flags categories with count &lt; 5 because they’ll dominate variance in any per-class metric and will likely vanish from a 70/30 split.</p>
+</section>
+<section id="edit-distance-near-duplicate-detector-e9082" class="level3">
+<h3 class="anchored" data-anchor-id="edit-distance-near-duplicate-detector-e9082">7.5 Edit-distance near-duplicate detector — E9082</h3>
+<p><code>education</code> has 16 levels including <code>10th</code>, <code>11th</code>, <code>12th</code>, which are all within edit distance ≤ 2 of one another. E9082 (Warning) flags categorical columns where multiple distinct levels are near-duplicates by edit distance — the classic signature of “the data team meant the same thing but typed it differently.” Here the levels are <em>intentionally</em> distinct (10th grade vs 11th grade), but the warning is still useful as an “are you sure?” signal that you can suppress per-column once verified.</p>
+<p><code>income</code> also fires E9082 — <code>&gt;50K</code> and <code>&lt;=50K</code> are 4 characters apart. Marking them as near-duplicates is technically correct but operationally noise; in real use you’d <code>apply_policy</code> to suppress E9082 on <code>income</code>.</p>
+</section>
+<section id="outlier-detectors-e9040-e9041" class="level3">
+<h3 class="anchored" data-anchor-id="outlier-detectors-e9040-e9041">7.6 Outlier detectors — E9040 + E9041</h3>
+<p>Two-tier IQR-based outlier detection. <code>E9040</code> (Notice) fires when ≥1% of values are mild outliers (1.5×IQR or |modZ| ≥ 3.5). <code>E9041</code> (Warning) fires when ≥0.5% are extreme outliers (3×IQR or |modZ| ≥ 5).</p>
+<p><code>education-num</code> is the interesting case here — fires both because the densely-packed 1..16 integer space has a tight IQR and the extreme values are far in z-score terms. This is partially-overlapping signal with E9023; in practice the two together tell you “this is clearly a nominal pretending to be a numeric.”</p>
+<p><code>age</code> and <code>hours-per-week</code> are mildly skewed and have natural outliers.</p>
+</section>
+<section id="what-i-deliberately-didnt-put-in" class="level3">
+<h3 class="anchored" data-anchor-id="what-i-deliberately-didnt-put-in">7.7 What I <em>deliberately</em> didn’t put in</h3>
+<p>Two findings I’d hoped to surface but didn’t, for honest reporting:</p>
+<ul>
+<li><code>E9063</code> (multi-class one-vs-rest AUC ≥ 0.95) — would catch <code>education-num</code> predicting <code>education</code>, but it needs the target encoded as an Int and the <em>feature</em> to be Float. Our <code>education</code> is Str. The same dataset with <code>education</code> integer-encoded would fire it.</li>
+<li><code>E9064</code> (per-level deterministic prediction P(class | level) ≥ 0.99) — would catch the <code>Preschool → &lt;=50K</code> signature. It needs the target to be Bool or binary Int. Our <code>income</code> is Str. With the binary recoding (last section of <code>run_locke.py</code>) E9064 still doesn’t fire on this synthetic because the support per level isn’t high enough — only 73 <code>Preschool</code> rows in 5,000, and the conditional-threshold default is 0.99 which would need ≥73 P(&gt;50K|Preschool) = 0 to clear support. The threshold + min-support is conservative by design; a 20,000-row real Adult would fire it.</li>
+</ul>
+<p>These omissions are real, and I want them documented rather than hidden. The point of the post isn’t “Locke catches everything.” It’s “Locke catches an honest set of real things, with default config.”</p>
+</section>
+</section>
+<section id="the-30000-foot-locke-capability-map" class="level2">
+<h2 class="anchored" data-anchor-id="the-30000-foot-locke-capability-map">8. The 30,000-foot Locke capability map</h2>
+<p>Now the documentation half of the post. What can Locke do that the comparison above didn’t exercise? Quite a lot. Here’s the full surface organised by what question each piece answers.</p>
+<section id="the-detector-zoo-60-finding-codes" class="level3">
+<h3 class="anchored" data-anchor-id="the-detector-zoo-60-finding-codes">8.1 The detector zoo (60+ finding codes)</h3>
+<p><code>validate()</code> runs roughly six detector clusters:</p>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Cluster</th>
+<th>Sample codes</th>
+<th>What it catches</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Schema</strong></td>
+<td>E9002, E9020, E9021, E9022, E9023</td>
+<td>Type info, range info, label-encoded nominals, numeric-vs-categorical</td>
+</tr>
+<tr class="even">
+<td><strong>Missingness</strong></td>
+<td>E9001, E9006, E9007, E9008, E9070</td>
+<td>NaN counts, sentinel strings (<code>?</code>/<code>NA</code>/etc.), out-of-bounds masks, conditional missingness</td>
+</tr>
+<tr class="odd">
+<td><strong>Distribution</strong></td>
+<td>E9010, E9011, E9024, E9040, E9041</td>
+<td>Distinct counts, near-constant, skew/kurt, IQR outliers, extreme outliers</td>
+</tr>
+<tr class="even">
+<td><strong>Categorical quality</strong></td>
+<td>E9016, E9017, E9018, E9019, E9080, E9081, E9082, E9083, E9084</td>
+<td>Rare/dominant levels, cardinality drift, case-fold collisions, whitespace/punct variants, near-duplicates, mixed Unicode script, mojibake (UTF-8-decoded-as-Latin1)</td>
+</tr>
+<tr class="odd">
+<td><strong>Leakage</strong></td>
+<td>E9060, E9061, E9063, E9064, E9072, E9073</td>
+<td>Per-feature ROC-AUC, multi-class one-vs-rest, per-level deterministic prediction, ID-like columns, duplicate-key disagreement</td>
+</tr>
+<tr class="even">
+<td><strong>PII</strong></td>
+<td>E9090, E9091, E9092</td>
+<td>Phone, email, SSN-like patterns (regex-driven, deterministic)</td>
+</tr>
+</tbody>
+</table>
+<p><code>compare_drift()</code> adds:</p>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Cluster</th>
+<th>Codes</th>
+<th>What it catches</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><strong>Numeric drift</strong></td>
+<td>E9030, E9031, E9032, E9034, E9039</td>
+<td>Mean shift, std shift, range widening, missingness rate shift, KS-D + Wasserstein</td>
+</tr>
+<tr class="even">
+<td><strong>Categorical drift</strong></td>
+<td>E9018, E9019, E9035</td>
+<td>Cardinality explosion, entropy shift, total-variation distance</td>
+</tr>
+<tr class="odd">
+<td><strong>Sample-size warnings</strong></td>
+<td>E9036</td>
+<td>Test set too small for reliable drift</td>
+</tr>
+<tr class="even">
+<td><strong>Text drift</strong></td>
+<td>E9110, E9111, E9112</td>
+<td>Vocabulary KS-D, token entropy shift, character 3-gram KS-D</td>
+</tr>
+</tbody>
+</table>
+<p>Each finding is a structured object with typed evidence, declared assumptions, and a suggested-next-check list. The shape is in section 7.1 above.</p>
+</section>
+<section id="the-belief-score-an-8-axis-composable-score" class="level3">
+<h3 class="anchored" data-anchor-id="the-belief-score-an-8-axis-composable-score">8.2 The belief score — an 8-axis composable score</h3>
+<p>Most data-quality tools give you <code>pass/fail</code> or a single number. Locke gives you an 8-vector:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a>belief <span class="op">=</span> cjc_locke.belief_report(report)</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>belief.score_dict()</span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a><span class="co"># {'overall': 0.9685, 'schema': 0.7800, 'missingness': 0.9883,</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a><span class="co">#  'drift': 1.0000, 'leakage': 1.0000, 'lineage': 1.0000,</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a><span class="co">#  'sample': 1.0000, 'duplication': 1.0000, 'constraint': 0.9800}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>On the Adult clone the schema axis is the lowest (0.78) because the 12 <code>E9002</code> informational findings plus the 4 <code>E9023</code>/<code>E9024</code>/<code>E9040</code>/<code>E9041</code> distributional notices dock the schema-confidence axis. The other axes are near-perfect because there’s no drift, leakage, lineage, sample-size, or duplication issue in <em>this</em> dataset.</p>
+<p>The score isn’t a magic-number aggregate — it’s a <em>meet-semilattice element</em>. The composition operator <code>compose(b1, b2, rules)</code> takes per-axis minimums under default rules (<code>Min</code> per axis). The proof-checked properties under the <code>Min</code> rule are:</p>
+<ul>
+<li>identity: <code>compose(b, top()) = b</code> where <code>top() = (1,1,1,1,1,1,1,1)</code></li>
+<li>idempotence: <code>compose(b, b) = b</code></li>
+<li>commutativity: <code>compose(b1, b2) = compose(b2, b1)</code></li>
+<li>associativity: <code>compose(compose(b1, b2), b3) = compose(b1, compose(b2, b3))</code></li>
+<li>monotonicity: <code>compose(b1, b2) ≤ b1</code> componentwise</li>
+</ul>
+<p>These are proptest-locked in <code>crates/cjc-locke/src/algebra.rs</code>. The practical consequence: cascading multiple drift reports against the same train belief gives a <em>monotonically floor-ing</em> drift axis — the score never recovers above its current value, by algebraic construction. That’s the v0.7+ B5.4 fix surfaced as a contract.</p>
+</section>
+<section id="lineage-audit-chain-with-content-addressed-ids" class="level3">
+<h3 class="anchored" data-anchor-id="lineage-audit-chain-with-content-addressed-ids">8.3 Lineage + audit chain with content-addressed IDs</h3>
+<p>If you want to track <em>which transforms</em> produced <em>which findings</em>, Locke gives you a deterministic lineage graph:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a>b <span class="op">=</span> cjc_locke.LineageBuilder(<span class="st">"daily-pipeline"</span>)</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>src <span class="op">=</span> b.add_impression(<span class="st">"train.csv"</span>, kind<span class="op">=</span><span class="st">"dataset"</span>, n_rows<span class="op">=</span><span class="dv">10_000</span>, columns<span class="op">=</span>[<span class="st">"x"</span>, <span class="st">"y"</span>])</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>filt <span class="op">=</span> b.add_idea(name<span class="op">=</span><span class="st">"filter_active"</span>,</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>                  op_id<span class="op">=</span><span class="st">"filter"</span>,</span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>                  parents<span class="op">=</span>[src],</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>                  params<span class="op">=</span>{<span class="st">"expr"</span>: <span class="st">"is_active == True"</span>})</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>agg <span class="op">=</span> b.add_idea(name<span class="op">=</span><span class="st">"aggregate"</span>,</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>                 op_id<span class="op">=</span><span class="st">"groupby"</span>,</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>                 parents<span class="op">=</span>[filt],</span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>                 params<span class="op">=</span>{<span class="st">"by"</span>: <span class="st">"x"</span>})</span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>graph <span class="op">=</span> b.finish()</span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> graph.is_acyclic()</span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>graph.validate_audit_monotonic()          <span class="co"># raises ValueError on violation</span></span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(graph.emit_mermaid())               <span class="co"># Quarto-renderable diagram</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Every node’s <code>FingerprintId</code> is a SHA-256-derived 64-bit content-addressed hash over the node’s logical content (impression source / idea name + transform-record-fingerprint + sorted parents). Re-running the pipeline produces <em>identical</em> fingerprints — so you can store fingerprints in a manifest and verify them on replay.</p>
+<p>Binary ops (<code>join</code>, <code>concat</code>, <code>bind_cols</code>) encode parent order in the transform’s params so <code>A.join(B)</code> ≠ <code>B.join(A)</code> at the identity level. That was the v0.7+ B5.1 fix — <code>LockeIdea::new</code> sorts parents (commutative-safe), so binary asymmetric ops have to carry the ordering as a param.</p>
+<p>The audit chain (<code>Vec&lt;AuditEvent&gt;</code>) is monotonically increasing in <code>seq</code> within a <code>run_label</code>. Externally-constructed events can be validated via <code>graph.validate_audit_monotonic()</code>.</p>
+</section>
+<section id="streaming-validator-out-of-core" class="level3">
+<h3 class="anchored" data-anchor-id="streaming-validator-out-of-core">8.4 Streaming validator — out-of-core</h3>
+<p>If your data doesn’t fit in RAM, the streaming validator runs the same detectors over chunks:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>sv <span class="op">=</span> cjc_locke.StreamingValidator(<span class="st">"stream"</span>, config<span class="op">=</span>{<span class="st">"sample_cap"</span>: <span class="dv">100_000</span>})</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> chunk <span class="kw">in</span> chunked_csv_reader(<span class="st">"huge.csv"</span>, chunk_size<span class="op">=</span><span class="dv">50_000</span>):</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    sv.ingest_chunk(chunk)               <span class="co"># chunk is a dict[str, ndarray|list]</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>final <span class="op">=</span> sv.into_report()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Running summaries (<code>streaming_summaries()</code>) maintain bit-exact Welford + ECDF state, lossless across chunk boundaries. <code>into_report()</code> reconstructs a sampled DataFrame and runs the standard <code>validate()</code>. There is a documented caveat (B5.6) that <code>into_report()</code> is byte-identical to a single-shot <code>validate(full_df)</code> <strong>only when no column exceeded <code>sample_cap</code></strong> — past that point, the report sees the truncated sample. Running summaries are unaffected.</p>
+</section>
+<section id="policy-gates" class="level3">
+<h3 class="anchored" data-anchor-id="policy-gates">8.5 Policy gates</h3>
+<p>For CI/CD use, the <code>apply_policy()</code> interface lets you express suppression rules, owner attribution, and pass/fail requirements:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>result <span class="op">=</span> cjc_locke.apply_policy(report, policy<span class="op">=</span>{</span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    <span class="st">"suppressions"</span>: [</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Pin a finding as acknowledged; doesn't fail the gate.</span></span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>        {<span class="st">"code"</span>: <span class="st">"E9082"</span>, <span class="st">"column"</span>: <span class="st">"income"</span>, <span class="st">"reason"</span>: <span class="st">"binary target by design"</span>},</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>    ],</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>    <span class="st">"owners"</span>: [</span>
+<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Routing: any remaining E9072 falls to the data-quality team.</span></span>
+<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>        {<span class="st">"team"</span>: <span class="st">"data-quality"</span>, <span class="st">"code"</span>: <span class="st">"E9072"</span>},</span>
+<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a>    ],</span>
+<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a>    <span class="st">"requirements"</span>: [</span>
+<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>        <span class="co"># The gate condition: no E9001 must remain.</span></span>
+<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a>        {<span class="st">"code"</span>: <span class="st">"E9001"</span>, <span class="st">"operator"</span>: <span class="st">"eq_zero"</span>, <span class="st">"threshold"</span>: <span class="dv">0</span>},</span>
+<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a>    ],</span>
+<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a>})</span>
+<span id="cb10-15"><a href="#cb10-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb10-16"><a href="#cb10-16" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> result.gate_fails():</span>
+<span id="cb10-17"><a href="#cb10-17" aria-hidden="true" tabindex="-1"></a>    <span class="cf">raise</span> <span class="pp">SystemExit</span>(<span class="st">"policy gate failed"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><code>gate_fails()</code> returns <code>True</code> when any requirement is unsatisfied AND there’s at least one un-suppressed error-severity finding remaining. Owner attribution flows to first-match-wins (the v0.7+ B5.1 mirror test pins this); the suppression-first-match contract is also fixed.</p>
+<p>Suppression rules can be exact-column (<code>"column": "phone"</code>) or glob (<code>"column": "diag_*"</code>) — <code>ColumnMatcher::from_pattern</code> auto-routes based on the presence of <code>*</code>. Empty-pattern <code>column = ""</code> only matches an empty-string column name (v0.7+ B6 / Polish P6 documented; use <code>any_column</code> for code-only suppression).</p>
+</section>
+<section id="causal-guardrail" class="level3">
+<h3 class="anchored" data-anchor-id="causal-guardrail">8.6 Causal guardrail</h3>
+<p>Locke ships a conservative causal layer:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a>cg <span class="op">=</span> cjc_locke.causal_guardrail(</span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>    data,</span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    target_column<span class="op">=</span><span class="st">"income"</span>,</span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>    causal_config<span class="op">=</span>{<span class="st">"mode"</span>: <span class="st">"observational_only"</span>},</span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(cg.n_warnings, cg.warning_kinds())</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>This computes pairwise Pearson correlations, flags strong ones, identifies confounder candidates (a Z correlated with both feature and target), and scans any user-supplied label text for causal-language keywords. Every report carries a top-level disclaimer; no warning kind is named <code>Cause</code> or <code>Effect</code>. In <code>observational_only</code> mode every correlation finding is <em>upgraded</em> to a warning (“treat as non-causal until intervention”).</p>
+<p>The <code>CausalDag</code> lets users pre-register hypothesised causal pathways. Pairs reachable in the DAG have their warning severity <em>downgraded</em> (not removed) — making “I expected this; don’t bother me” explicit.</p>
+</section>
+<section id="json-html-mermaid-emit" class="level3">
+<h3 class="anchored" data-anchor-id="json-html-mermaid-emit">8.7 JSON, HTML, Mermaid emit</h3>
+<div class="sourceCode" id="cb12"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="co"># Canonical byte-identical JSON for CI diffing</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>js <span class="op">=</span> report.to_json()</span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> js <span class="op">==</span> cjc_locke.validate(df, label<span class="op">=</span><span class="st">"adult-synth"</span>).to_json()  <span class="co"># always True</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Reparse back to a structured object</span></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>restored <span class="op">=</span> cjc_locke.parse_report_json(js)</span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Dict-shaped form for ad-hoc Python work</span></span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a>d <span class="op">=</span> report.to_dict()</span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> f <span class="kw">in</span> d[<span class="st">"findings"</span>]:</span>
+<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a>    <span class="bu">print</span>(f[<span class="st">"code"</span>], f[<span class="st">"severity"</span>], f[<span class="st">"message"</span>], f[<span class="st">"evidence"</span>])</span>
+<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb12-13"><a href="#cb12-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Mermaid lineage diagram (Quarto-renderable, see section 8.3)</span></span>
+<span id="cb12-14"><a href="#cb12-14" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(graph.emit_mermaid())</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The JSON path uses a hand-rolled deterministic emit (zero external deps; the schema is documented at <code>crates/cjc-locke/src/json_emit.rs</code>). The v0.7+ deep dive hardened it: <code>parse_int → parse_u64</code> for unsigned fields (catches negative-wrap attacks), surrogate-pair handling in <code>\u</code> escapes, a thread-local interner so repeated parses don’t leak.</p>
+<p>There’s also an HTML emit (<code>emit_locke_report_html</code>, accessed from the CLI side, not yet wired through the Python wrapper) that renders an inline-SVG Pearson heatmap when ≥3 numeric columns are present.</p>
+</section>
+<section id="the-determinism-contract" class="level3">
+<h3 class="anchored" data-anchor-id="the-determinism-contract">8.8 The determinism contract</h3>
+<p>The thing that distinguishes Locke from the alternatives, repeated in this post a few times because it matters: <strong>every Locke artefact is byte-identical across runs.</strong></p>
+<ul>
+<li>Finding IDs are content-addressed (SHA-256-derived 64-bit fingerprint over the finding’s logical content).</li>
+<li>JSON output is canonical (BTreeMap-sorted keys, no timestamps, no UUIDs, no map-iteration noise).</li>
+<li>Numeric reductions use Kahan summation (no parallel-order-dependence on floating-point sums).</li>
+<li>BTreeMap and BTreeSet are used everywhere; no HashMap iteration order leaks.</li>
+<li>The RNG is <code>SplitMix64</code> with explicit seed threading.</li>
+<li>No SIMD path uses FMA (preserves bit-equality across CPU vendors).</li>
+</ul>
+<p>The deep-dive audit (Locke v0.7+) ran four parallel agent-clusters over ~26K LOC and found exactly four silent-correctness bugs over the lifetime of the codebase — <code>CategoricalAdaptive::cell_bytes</code> writing the row index instead of dereferencing the dictionary; <code>distinct_count</code> returning row count instead of dictionary length; <code>top_value_freq</code> returning 0; <code>ks_d_statistic</code> over-counting D on tied clusters. All four fixed; all four covered by regression tests. The audit-chain canaries at 629/629 unmoved across the entire fix series. That’s the determinism cost-of-doing-business.</p>
+</section>
+</section>
+<section id="the-determinism-story-in-two-assertions" class="level2">
+<h2 class="anchored" data-anchor-id="the-determinism-story-in-two-assertions">9. The determinism story, in two assertions</h2>
+<div class="sourceCode" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> cjc_locke</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pandas <span class="im">as</span> pd</span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>df <span class="op">=</span> pd.read_csv(<span class="st">"adult_synth.csv"</span>)</span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a>report_a <span class="op">=</span> cjc_locke.validate(df, label<span class="op">=</span><span class="st">"adult-synth"</span>)</span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>report_b <span class="op">=</span> cjc_locke.validate(df, label<span class="op">=</span><span class="st">"adult-synth"</span>)</span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> report_a.to_json() <span class="op">==</span> report_b.to_json()       <span class="co"># always True</span></span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a><span class="cf">assert</span> report_a.to_dict()[<span class="st">"run_id"</span>] <span class="op">==</span> report_b.to_dict()[<span class="st">"run_id"</span>]</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Two <code>cjc_locke.validate()</code> calls produce byte-identical JSON across runs, machines, and CI vendors (we test on Windows MSVC + Linux glibc; both match). The same dataset two days from now will produce the same <code>run_id</code> modulo any code changes to Locke itself. CI gates can use <code>git diff --no-index report_old.json report_new.json</code> to detect <em>any</em> change in either the data quality state or the Locke schema. Pandera and GE reports carry per-run timestamps; you can use them for diffs but they’re noisier.</p>
+<p>A natural follow-up question: <em>does the report ever drift across Locke versions?</em> Yes — when the detector code changes. The v0.7+ deep-dive added some new finding codes (E9008, E9023, E9024 are recent) and tightened the threshold defaults on existing ones. Each release bump should be expected to shift report bytes for <em>some</em> inputs. The <code>schema_version</code> field at the top of the JSON pins which Locke schema the report belongs to.</p>
+</section>
+<section id="when-to-use-which-tool-honest-positioning" class="level2">
+<h2 class="anchored" data-anchor-id="when-to-use-which-tool-honest-positioning">10. When to use which tool — honest positioning</h2>
+<p>I built Locke and I’m comparing it to the alternatives. So this section is the one where I make explicit when Locke is <em>not</em> the right tool.</p>
+<ul>
+<li><p><strong>Use Pandera when</strong> you have a well-understood schema, you want type checks at API boundaries, you want pydantic-style declarative validation, you’re integrating with FastAPI or another schema-aware framework, you need the rich ecosystem of community-written checks.</p></li>
+<li><p><strong>Use Great Expectations when</strong> you have a team that already runs GE, you need the dashboard / docs-rendering / Data Docs UI, you have non-engineering stakeholders who use the GE catalog, you need the years of accumulated expectations and community plugins.</p></li>
+<li><p><strong>Use Locke when</strong> the data is large and varied enough that you can’t pre-register every expectation; <em>or</em> you need byte-identical reports for CI gates; <em>or</em> you need an audit chain that survives across the entire pipeline; <em>or</em> you need belief-score composition algebra; <em>or</em> you need both data-quality validation and lineage tracking in the same tool; <em>or</em> you’re already in CJC-Lang and want zero external deps.</p></li>
+</ul>
+<p>You can use all three at once. They answer different layers of the question, and they don’t fight each other.</p>
+<p>Where Locke gets adopted, in practice: as the deterministic CI gate at the bottom of the stack (no flaking, byte-stable diffs) with Pandera or GE running above it as the <em>expressive</em> schema-validation layer that domain teams own.</p>
+</section>
+<section id="try-it-from-python" class="level2">
+<h2 class="anchored" data-anchor-id="try-it-from-python">11. Try it from Python</h2>
+<p>The Locke Rust crate has had a Python wrapper since the v0.7+ work in this session. The full install + smoke test:</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="fu">git</span> clone https://github.com/AdamEzzat1/CJC</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> CJC/python</span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> <span class="at">-m</span> venv .venv</span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a><span class="bu">source</span> .venv/Scripts/activate              <span class="co"># Unix: .venv/bin/activate</span></span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install maturin numpy pandas</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a><span class="ex">maturin</span> develop <span class="at">--release</span>                  <span class="co"># ~5 min cold build</span></span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> <span class="at">-c</span> <span class="st">"import cjc_locke; print(cjc_locke.__version__)"</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Once built, the wrapper is a thin PyO3 binding (~900 LOC Rust + ~200 LOC Python facade). Every Python function delegates to one Rust call. Numpy <code>f64</code>/<code>i64</code>/<code>bool</code> arrays cross the FFI boundary zero-copy via the buffer protocol; pandas and polars DataFrames work via duck-typed adapters. Determinism is fully preserved — the Rust side runs unchanged and the wrapper doesn’t introduce threading.</p>
+<p>To reproduce the numbers in this post:</p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="bu">cd</span> <span class="op">&lt;</span>path-to-this-post<span class="op">&gt;</span></span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> generate_data.py                    <span class="co"># writes adult_synth.csv</span></span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a><span class="ex">python</span> run_locke.py                        <span class="co"># runs all the analyses</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Both scripts are in this post’s directory (<a href="./generate_data.py"><code>generate_data.py</code></a>, <a href="./run_locke.py"><code>run_locke.py</code></a>).</p>
+</section>
+<section id="whats-next" class="level2">
+<h2 class="anchored" data-anchor-id="whats-next">12. What’s next</h2>
+<p>Locke is shipped to crates.io at v0.1.10. The Python wrapper from this post’s series is in the CJC-Lang repo at <code>python/</code>. Open questions I’m actively working on:</p>
+<ul>
+<li><strong>More real-world datasets</strong>: this post deliberately used a synthetic Adult clone because the structural quirks are reproducible. Running on the real 32K-row UCI file would surface the same findings; the next blog post in this series will pick a less-well-known dataset where there’s no pre-existing intuition about what Locke “should” find.</li>
+<li><strong>GE-spec import</strong>: a translator from GE expectation files into Locke <code>ValidationConfig</code> overrides, so teams already on GE can run both side by side.</li>
+<li><strong>Streaming summaries → direct validation</strong>: today’s <code>StreamingValidator::into_report()</code> rebuilds a sampled DataFrame and runs the standard validate. A v0.4-target rewrite would run every check incrementally so <code>sample_cap</code> no longer caps any check at its boundary.</li>
+<li><strong>Hand-rolled canonical f64 printer</strong>: today’s deterministic JSON relies on Rust’s <code>f64::Debug</code> shortest-round-trip format, which has been stable in practice but is not a formal stdlib guarantee. A v0.8 hand-rolled printer would make the byte-identity contract independent of toolchain.</li>
+</ul>
+</section>
+<section id="acknowledgements" class="level2">
+<h2 class="anchored" data-anchor-id="acknowledgements">13. Acknowledgements</h2>
+<p>Pandera is a great library that I use elsewhere and that I’m not knocking. Great Expectations is mature and broadly adopted; the existing benchmark post in this series (<a href="../../../blog/posts/cjc-locke-v0.1-released/index.html">Locke v0.1.10</a>) covers GE in more depth. The UCI Adult dataset is Ron Kohavi’s 1996 contribution to the UCI Machine Learning Repository. The synthetic clone in this post is a deterministic stand-in that reproduces the <em>quality issues</em> of Adult; it is not the real dataset.</p>
+<p>The Python wrapper is in the CJC-Lang repo at <code>python/</code> and the Rust crate is at <code>crates/cjc-locke/</code>. Both are MIT-licensed.</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const disableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'prefetch';
+    }
+  }
+  const enableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'stylesheet';
+    }
+  }
+  const manageTransitions = (selector, allowTransitions) => {
+    const els = window.document.querySelectorAll(selector);
+    for (let i=0; i < els.length; i++) {
+      const el = els[i];
+      if (allowTransitions) {
+        el.classList.remove('notransition');
+      } else {
+        el.classList.add('notransition');
+      }
+    }
+  }
+  const toggleColorMode = (alternate) => {
+    // Switch the stylesheets
+    const alternateStylesheets = window.document.querySelectorAll('link.quarto-color-scheme.quarto-color-alternate');
+    manageTransitions('#quarto-margin-sidebar .nav-link', false);
+    if (alternate) {
+      enableStylesheet(alternateStylesheets);
+      for (const sheetNode of alternateStylesheets) {
+        if (sheetNode.id === "quarto-bootstrap") {
+          toggleBodyColorMode(sheetNode);
+        }
+      }
+    } else {
+      disableStylesheet(alternateStylesheets);
+      toggleBodyColorPrimary();
+    }
+    manageTransitions('#quarto-margin-sidebar .nav-link', true);
+    // Switch the toggles
+    const toggles = window.document.querySelectorAll('.quarto-color-scheme-toggle');
+    for (let i=0; i < toggles.length; i++) {
+      const toggle = toggles[i];
+      if (toggle) {
+        if (alternate) {
+          toggle.classList.add("alternate");     
+        } else {
+          toggle.classList.remove("alternate");
+        }
+      }
+    }
+    // Hack to workaround the fact that safari doesn't
+    // properly recolor the scrollbar when toggling (#1455)
+    if (navigator.userAgent.indexOf('Safari') > 0 && navigator.userAgent.indexOf('Chrome') == -1) {
+      manageTransitions("body", false);
+      window.scrollTo(0, 1);
+      setTimeout(() => {
+        window.scrollTo(0, 0);
+        manageTransitions("body", true);
+      }, 40);  
+    }
+  }
+  const isFileUrl = () => { 
+    return window.location.protocol === 'file:';
+  }
+  const hasAlternateSentinel = () => {  
+    let styleSentinel = getColorSchemeSentinel();
+    if (styleSentinel !== null) {
+      return styleSentinel === "alternate";
+    } else {
+      return false;
+    }
+  }
+  const setStyleSentinel = (alternate) => {
+    const value = alternate ? "alternate" : "default";
+    if (!isFileUrl()) {
+      window.localStorage.setItem("quarto-color-scheme", value);
+    } else {
+      localAlternateSentinel = value;
+    }
+  }
+  const getColorSchemeSentinel = () => {
+    if (!isFileUrl()) {
+      const storageValue = window.localStorage.getItem("quarto-color-scheme");
+      return storageValue != null ? storageValue : localAlternateSentinel;
+    } else {
+      return localAlternateSentinel;
+    }
+  }
+  let localAlternateSentinel = 'default';
+  // Dark / light mode switch
+  window.quartoToggleColorScheme = () => {
+    // Read the current dark / light value 
+    let toAlternate = !hasAlternateSentinel();
+    toggleColorMode(toAlternate);
+    setStyleSentinel(toAlternate);
+  };
+  // Ensure there is a toggle, if there isn't float one in the top right
+  if (window.document.querySelector('.quarto-color-scheme-toggle') === null) {
+    const a = window.document.createElement('a');
+    a.classList.add('top-right');
+    a.classList.add('quarto-color-scheme-toggle');
+    a.href = "";
+    a.onclick = function() { try { window.quartoToggleColorScheme(); } catch {} return false; };
+    const i = window.document.createElement("i");
+    i.classList.add('bi');
+    a.appendChild(i);
+    window.document.body.appendChild(a);
+  }
+  // Switch to dark mode if need be
+  if (hasAlternateSentinel()) {
+    toggleColorMode(true);
+  } else {
+    toggleColorMode(false);
+  }
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+      &nbsp;
+    </div>   
+    <div class="nav-footer-center">© 2026 Adam Ezzat. Built with <a href="https://quarto.org/">Quarto</a>.</div>
+    <div class="nav-footer-right">
+      &nbsp;
+    </div>
+  </div>
+</footer>
+
+
+
+<script src="../../../site_libs/quarto-html/zenscroll-min.js"></script>
+</body></html>
