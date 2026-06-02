@@ -10,7 +10,2624 @@
 <atom:link href="https://adamezzat1.github.io/blog/index.xml" rel="self" type="application/rss+xml"/>
 <description>Systems engineer building CJC-Lang — a deterministic scientific computing language</description>
 <generator>quarto-1.3.340</generator>
-<lastBuildDate>Sat, 30 May 2026 07:00:00 GMT</lastBuildDate>
+<lastBuildDate>Tue, 02 Jun 2026 07:00:00 GMT</lastBuildDate>
+<item>
+  <title>Locke v0.8: A LendingClub Demo, an Honest Model, and the Three Gaps the Audit Found</title>
+  <dc:creator>Adam Ezzat</dc:creator>
+  <link>https://adamezzat1.github.io/blog/posts/locke-v0.8-lendingclub-and-the-three-gaps/index.html</link>
+  <description><![CDATA[ 
+
+
+
+<div class="reading-time">
+🕑 ~38 min read
+</div>
+<div class="stats-row">
+<div class="stat">
+<span class="number">2.26M</span><span class="stat-label">rows audited</span>
+</div>
+<div class="stat">
+<span class="number">0.7388</span><span class="stat-label">honest-model |AUC| with custom det.</span>
+</div>
+<div class="stat">
+<span class="number">1879</span><span class="stat-label">E9070 firings after v0.8 wiring</span>
+</div>
+<div class="stat">
+<span class="number">71</span><span class="stat-label">new tests, all passing</span>
+</div>
+</div>
+<div class="callout callout-style-simple callout-tip no-icon callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+TL;DR
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>A single session against the full Kaggle <a href="https://www.kaggle.com/datasets/wordsforthewise/lending-club"><code>wordsforthewise/lending-club</code></a> snapshot (~2.26M loans, 151 columns) produced:</p>
+<ul>
+<li><strong>A working end-to-end LC demo</strong> with byte-identical determinism — two 8-minute runs over the 1.6 GB decompressed CSV produce SHA-256-matching 469 KB JSON reports.</li>
+<li><strong>An honest finding about Locke’s own value</strong>: the built-in <code>|AUC| ≥ 0.85</code> leakage heuristic (E9061) catches the strongest signals (<code>last_fico_range_low/high</code>, <code>total_rec_prncp</code> — <em>not</em> the columns the audit-design exercise predicted) but not all of them. A 3-way logistic regression on the binarized frame: removing only E9061-flagged columns leaves <code>|AUC| = 0.9995</code> essentially unchanged from the naive <code>0.9993</code>. Only removing the 12-column hand-curated domain post-origination list collapses AUC to <code>0.7394</code> — squarely in the Bao et al.&nbsp;(2019) credit-risk literature band.</li>
+<li><strong>ADR-0041, the custom-detector extension layer</strong>: a new <code>CustomDetector</code> trait + <code>FindingSink</code> + <code>BeliefAxisSet</code>, code namespace <code>E9500..=E9999</code>, belief-axis routing for the meet-semilattice algebra, plus a Python bridge whose determinism contract is <strong>structural</strong> rather than behavioural — proven by an emission-shuffle proptest. The LC re-measurement: a 30-LOC <code>PostOriginationByNameDetector</code> flags 39 columns by name pattern; the honest-model harness reads the report’s <code>E9500 ∪ E9061</code> columns as exclusion set; resulting <code>|AUC| = 0.7388</code> lands <strong>within 0.0006 of the hand-curated domain-honest baseline</strong>.</li>
+<li><strong>ADR-0042, Str-to-Float auto-promotion + E9070 wiring</strong>: closes a silent-skip gap on numeric columns CSV readers mis-type as <code>Str</code>. The investigation revealed <em>two</em> gaps in one ADR — auto-promotion AND a missing call site for <code>detect_conditional_missingness</code>, which had been defined and unit-tested in v0.6.4 but never invoked from <code>validate_dataframe</code>. LC post-fix: <code>E9009 × 22</code> auto-promoted columns, <code>E9070 × 1879</code> firings (was zero pre-v0.8). A third gap (CSV quoted-string handling) was discovered, scoped, and deferred.</li>
+<li><strong>A release</strong>: <code>cjc-locke v0.1.11</code> on <a href="https://crates.io/crates/cjc-locke/0.1.11">crates.io</a> (alongside 24 sibling crates), <code>cjc-locke v0.1.2</code> on <a href="https://pypi.org/project/cjc-locke/0.1.2/">PyPI</a>.</li>
+</ul>
+<p>The secondary headline is the discovery cascade: each step in the session surfaced the gap the next step closed. The handoff predicted X; Locke found Y; Y didn’t match the honest model; the architectural response is ADR-0041; preparing for the <em>next</em> demo surfaced ADR-0042’s gap; both shipped in the same release.</p>
+</div>
+</div>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Prototype disclaimer
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Locke and CJC-Lang remain research-stage prototypes. The numbers below are one reproducible engineering campaign — five commits on a single PR, every chain head verifiable — not a validated benchmark, not deployed at production scale, not peer-reviewed. The four-way AUC comparison is on a 200K-row subsample with a single seed; full-dataset and multi-seed work is queued. Read as honest exploratory engineering on a real but bounded dataset.</p>
+</div>
+</div>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Where this sits in the Locke series
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<ul>
+<li><a href="../../../blog/posts/cjc-locke-v0.1-released/index.html">Locke v0.1.10: An Epistemic Layer for Data Validation</a> — the framing post. Determinism, content-addressed findings, belief-score algebra, side-by-side with Great Expectations.</li>
+<li><a href="../../../blog/posts/abng-diabetes-revisited-with-locke/index.html">Diabetes-130 Revisited with Locke</a> — Locke + ABNG on medical data. The handoff’s “Locke prune → AUC up” hypothesis falsified itself; Locke’s contribution turned out to be structural (a patient-encounter leakage hole, a <code>?</code>-sentinel detector gap proposal).</li>
+<li><strong>This post</strong> — Locke against real consumer-credit data at scale, the audit’s honest-model AUC test, and the two ADRs the audit forced into the v0.8 release.</li>
+</ul>
+</div>
+</div>
+<section id="the-brief" class="level2">
+<h2 class="anchored" data-anchor-id="the-brief">1. The brief</h2>
+<p>The session started with a handoff document I’d drafted earlier under a different worktree. The document specified two demos to ship — <strong>Project A</strong>: LendingClub leakage audit (the “fits in RAM, 2-minute iteration loop” demo); <strong>Project B</strong>: NYC Taxi 2019–2020 pandemic drift (the “streaming, 30-minute sweep, thermal observability” demo). The intent was that together they’d cover all four Locke value claims: numerical rigor, determinism, thermal control, memory efficiency. Separately each covers two.</p>
+<p>This post is exclusively about Project A — but the <em>reason</em> we hit two ADRs is that Project A’s findings made Project B’s blockers visible.</p>
+<p>The Project A spec, condensed:</p>
+<table class="table">
+<colgroup>
+<col style="width: 27%">
+<col style="width: 72%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Dataset</td>
+<td>Kaggle <code>wordsforthewise/lending-club</code>, accepted-loans CSV</td>
+</tr>
+<tr class="even">
+<td>Size</td>
+<td>~600 MB compressed → ~1.6 GB raw → 2.26M rows × 151 cols</td>
+</tr>
+<tr class="odd">
+<td>Source target</td>
+<td><code>loan_status</code> (multi-class)</td>
+</tr>
+<tr class="even">
+<td>Derived binary target</td>
+<td><code>target_default</code> (Charged Off ∪ Default = 1; Fully Paid = 0; other rows dropped)</td>
+</tr>
+<tr class="odd">
+<td>Locke entry point</td>
+<td><code>cjc-locke::api::validate</code> + <code>detect_target_leakage</code> + <code>detect_id_like_columns</code></td>
+</tr>
+<tr class="even">
+<td>Determinism contract</td>
+<td>Two runs → byte-identical JSON output</td>
+</tr>
+<tr class="odd">
+<td>Compute budget</td>
+<td>&lt;2 min per iteration (laptop)</td>
+</tr>
+</tbody>
+</table>
+<p>The handoff itself was opinionated about what would fire. From handoff §3.3, “E-codes expected to fire”:</p>
+<blockquote class="blockquote">
+<p><strong>E9060</strong> | Error | <code>total_pymnt</code>, <code>total_rec_int</code>, <code>last_pymnt_amnt</code>, <code>recoveries</code>, <code>collection_recovery_fee</code> | AUC ≥ 0.95 against <code>loan_status</code> (<code>charged_off</code> vs <code>fully_paid</code>)</p>
+<p><strong>E9061</strong> | Warning | <code>out_prncp</code>, <code>total_pymnt_inv</code> | AUC in [0.85, 0.95]</p>
+</blockquote>
+<p>That prediction is the first thing the demo would refute.</p>
+</section>
+<section id="building-the-demo-the-boring-parts-that-have-to-work" class="level2">
+<h2 class="anchored" data-anchor-id="building-the-demo-the-boring-parts-that-have-to-work">2. Building the demo: the boring parts that have to work</h2>
+<p>I’ll keep this short because the audit findings are the interesting bit, but the foundation deserves a note. Three engineering decisions in the demo scaffolding compounded:</p>
+<p><strong>Workspace member, not standalone.</strong> <code>demos/lendingclub/</code> is a workspace member with <code>publish = false</code>. Three workspace deps (<code>cjc-data</code>, <code>cjc-locke</code>, <code>flate2</code>) plus standard Cargo conventions. The crate has both a <code>[lib]</code> (testable helpers) and two <code>[[bin]]</code> entries (the main demo and an <code>honest_model</code> evaluator I’ll describe below).</p>
+<p><strong>Library + thin binary split.</strong> <code>src/lib.rs</code> exposes <code>load_csv_gz</code>, <code>binarize_loan_status</code>, <code>run_locke_audit</code>, and the helper types. <code>src/main.rs</code> is a CLI argument parser around them. The integration test in <code>tests/expected_findings.rs</code> and the unit tests in <code>src/lib.rs</code> exercise the helpers without ever touching the 600 MB CSV. Eight library unit tests passed before I downloaded any data.</p>
+<p><strong>Binarization as a row filter + new column.</strong> <code>binarize_loan_status</code> classifies each <code>loan_status</code> string via:</p>
+<div class="sourceCode" id="cb1" style="background: #f1f3f5;"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb1-1"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">fn</span> classify_status(raw<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">str</span>) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Option</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">bool</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb1-2">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">match</span> raw<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>trim() <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb1-3">        <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Charged Off"</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">|</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Default"</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=&gt;</span> <span class="cn" style="color: #8f5902;
+background-color: null;
+font-style: inherit;">Some</span>(<span class="cn" style="color: #8f5902;
+background-color: null;
+font-style: inherit;">true</span>)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb1-4">        <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Fully Paid"</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=&gt;</span> <span class="cn" style="color: #8f5902;
+background-color: null;
+font-style: inherit;">Some</span>(<span class="cn" style="color: #8f5902;
+background-color: null;
+font-style: inherit;">false</span>)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb1-5">        _ <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=&gt;</span> <span class="cn" style="color: #8f5902;
+background-color: null;
+font-style: inherit;">None</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb1-6">    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb1-7"><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span></code></pre></div>
+<p><code>None</code> drops the row. <code>Some(b)</code> is appended to a new <code>Column::Bool</code> named <code>target_default</code>. This makes <code>cjc-locke::leakage::detect_target_leakage</code>’s binary-target requirement satisfied without modifying Locke’s contract. The function’s signature is also a contract: any future status not in the match drops out cleanly. Out of 2.26M rows loaded, <strong>1,325,938 reach a terminal outcome</strong> — 58.7% of the dataset.</p>
+<p><strong>Determinism verified by hash, not by intuition.</strong> Two demo runs of <code>cargo run -p lendingclub-demo</code> over the identical CSV produce identical 469 KB JSON reports. SHA-256 match across runs. The Rust side has it from construction; the demo is the integration verification.</p>
+<p>The total scaffolding came in at ~290 lines of library code + ~150 lines of CLI binary + ~270 lines of unit + integration tests. The tests caught two mistakes during writing — an <code>ImpossibleValueRule</code> constructor I assumed existed that didn’t (it’s an enum variant, not a function), and a non-exhaustive <code>Column</code> match (I forgot <code>Categorical { .. }</code>, <code>CategoricalAdaptive(_)</code>, and <code>DateTime(_)</code> exist). Compile-fail discipline is its own dividend.</p>
+</section>
+<section id="the-audit-and-the-first-surprise" class="level2">
+<h2 class="anchored" data-anchor-id="the-audit-and-the-first-surprise">3. The audit, and the first surprise</h2>
+<p>A full-dataset audit produces an 8-9 minute wall time, dominated by the Locke audit phase (~437 s on 1.32M binarized rows × 152 cols). The summary the demo’s CLI prints:</p>
+<pre><code>[load] 1597.5 MB decompressed, 2260701 rows × 151 cols, 52.2s
+[derive] kept 1325938 rows × 152 cols, 27.50s
+[locke] running validate() + detect_target_leakage + detect_id_like_columns
+[locke] 577 findings (40 error, 104 warning, 289 notice, 144 info), 437.90s
+[locke] findings by code:
+        E9001 × 55
+        E9002 × 10
+        E9007 × 47
+        E9008 × 55
+        ...
+        E9061 × 3
+        E9072 × 2
+        ...</code></pre>
+<p>The headline result wasn’t the run time. It was the E9061 column set.</p>
+<section id="the-handoff-said-x.-the-data-said-y." class="level3">
+<h3 class="anchored" data-anchor-id="the-handoff-said-x.-the-data-said-y.">The handoff said X. The data said Y.</h3>
+<p>I’d told the handoff E9061 (suspicious target leakage, <code>|AUC|</code> in <code>[0.85, 0.95]</code>) would fire on <code>out_prncp</code> and <code>total_pymnt_inv</code> — <em>partial</em> signals of the payment streams. E9060 (the strong-leakage code, <code>|AUC| ≥ 0.95</code>) would fire on the payment streams proper.</p>
+<p>What actually fired:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Code</th>
+<th>Column</th>
+<th><code>\|AUC\|</code></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>E9061</td>
+<td><code>last_fico_range_high</code></td>
+<td>0.9162</td>
+</tr>
+<tr class="even">
+<td>E9061</td>
+<td><code>last_fico_range_low</code></td>
+<td>0.9284</td>
+</tr>
+<tr class="odd">
+<td>E9061</td>
+<td><code>total_rec_prncp</code></td>
+<td>0.8675</td>
+</tr>
+</tbody>
+</table>
+<p><code>E9060</code> — the “near-deterministic” leakage code at the <code>|AUC| ≥ 0.95</code> threshold — <strong>fired zero times</strong>. Every post-origination column the handoff named landed <em>below</em> the 0.85 threshold and produced no finding at all (E9061 is <code>continue</code> in the loop, not an <code>Info</code>-severity ack).</p>
+<p>The top two signals were <code>last_fico_range_high</code> and <code>last_fico_range_low</code> — the borrower’s last credit-bureau refresh, recorded <em>after</em> the loan exists. The handoff hadn’t predicted those columns. It had predicted total payment amounts.</p>
+<p>The retrospective interpretation is sensible: payment amounts are dominated by loan size and term duration; their distributional spread under both terminal outcomes overlaps significantly, dragging AUC down to the sub-threshold band. The borrower’s <em>post-loan</em> FICO score, by contrast, collapses sharply when the loan is charged off (delinquency reports update the bureau record), so the FICO refresh column carries a much cleaner separation signal.</p>
+<p><strong>Locke disagreed with the analyst, and Locke was right.</strong> This is the first finding worth banking: not “Locke caught what the analyst predicted” but “Locke surfaced something the analyst’s reasoning missed.” A tool that updates the analyst’s priors is more valuable than one that confirms them.</p>
+</section>
+<section id="other-useful-surprises-in-the-same-run" class="level3">
+<h3 class="anchored" data-anchor-id="other-useful-surprises-in-the-same-run">Other useful surprises in the same run</h3>
+<ul>
+<li><code>E9072</code> (ID-like cardinality, <code>distinct / n_rows ≥ 0.95</code>) fired on <code>id</code> (the loan key, expected) AND on <code>url</code> (unexpected, but the LC URL embeds the loan ID — so it inherits the cardinality). <code>member_id</code> did <em>not</em> fire because the same member can hold multiple loans.</li>
+<li><code>E9001</code> (high missingness) fired on the joint-application column set (<code>annual_inc_joint</code>, <code>dti_joint</code>, <code>verification_status_joint</code>) at ~85% missingness, matching the empirical ratio of individual-to-joint loans.</li>
+<li><code>E9008</code> (auto-detected string sentinel) fired on <code>emp_length</code> for <code>"n/a"</code> and on the joint columns for <code>""</code>.</li>
+</ul>
+<p>But it also under-fired in two ways the handoff <em>had</em> anticipated, and getting those right matters for the rest of the post:</p>
+<ul>
+<li><code>E9008</code> did <strong>not</strong> fire on <code>term</code> despite its leading-space <code>" 36 months"</code> format. The detector matches against <code>BUILTIN_STRING_SENTINELS</code> exactly (<code>""</code>, <code>"?"</code>, <code>"NA"</code>, etc.) — leading whitespace on a domain-meaningful value isn’t a sentinel by Locke’s definition. The handoff’s prediction here conflated “sentinel” with “formatting artifact.”</li>
+<li><code>E9070</code> (conditional missingness on <code>(A, B)</code> pairs) did <strong>not</strong> fire on the joint columns — a real gap that would later turn out to be <em>two</em> gaps. We come back to this in §5.</li>
+</ul>
+<p>The empirical fixture I committed (<code>expected_findings.json</code>) was calibrated against measured reality, not the handoff’s predictions. The doc-vs-data divergence is itself the artifact: a future contributor reading the fixture sees the predictions that didn’t pan out and the empirical replacement.</p>
+</section>
+</section>
+<section id="the-honest-model-auc-follow-up-the-gut-punch" class="level2">
+<h2 class="anchored" data-anchor-id="the-honest-model-auc-follow-up-the-gut-punch">4. The honest-model AUC follow-up: the gut punch</h2>
+<p>The cross-validation file (<code>cross_validate.md</code>) in the demo had a <code>TBD</code> row labeled “honest-model AUC”. The literature for similar credit-risk feature spaces (Tsai &amp; Wu 2008, Bao et al.&nbsp;2019, FICO score in isolation) puts the achievable AUC on pre-origination features in the <strong>0.69 – 0.74</strong> band. The optional follow-up was to actually measure it: train a logistic regression on the binarized frame with and without leakage columns, and confirm the post-Locke variant lands in the literature band.</p>
+<section id="what-was-available-in-cjc-runtime" class="level3">
+<h3 class="anchored" data-anchor-id="what-was-available-in-cjc-runtime">What was available in cjc-runtime</h3>
+<p>This is one of the moments where having the underlying language stack pays off. The four primitives needed already existed:</p>
+<div class="sourceCode" id="cb3" style="background: #f1f3f5;"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb3-1"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// From cjc-runtime</span></span>
+<span id="cb3-2"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">fn</span> logistic_regression(x_flat<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>[<span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">f64</span>]<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> y<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>[<span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">f64</span>]<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> n<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">usize</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> p<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">usize</span>) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Result</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span>LogisticResult<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">String</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;;</span></span>
+<span id="cb3-3"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">fn</span> auc_roc(scores<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>[<span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">f64</span>]<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> labels<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>[<span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">bool</span>]) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Result</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">f64</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">String</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;;</span></span>
+<span id="cb3-4"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">fn</span> train_test_split(n<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">usize</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> test_fraction<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">f64</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> seed<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">u64</span>) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> (<span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Vec</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">usize</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;,</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Vec</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">usize</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;</span>)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb3-5"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">fn</span> z_score(data<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>[<span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">f64</span>]) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Result</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Vec</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">f64</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;,</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">String</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;;</span></span></code></pre></div>
+<p><code>logistic_regression</code> is IRLS (Iteratively Reweighted Least Squares) with the intercept auto-added. <code>auc_roc</code> is the trapezoidal ROC integration with <code>f64::total_cmp</code> tie-breaking — deterministic. <code>train_test_split</code> uses a seeded Fisher-Yates shuffle. <code>z_score</code> does Kahan-summed mean + standard deviation.</p>
+<p>That covers everything needed for a deterministic tabular-ML evaluator. The demo’s <code>honest_model</code> binary is ~300 LOC of Rust orchestrating these primitives:</p>
+<div class="sourceCode" id="cb4" style="background: #f1f3f5;"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb4-1"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// Pseudocode, not the actual source.</span></span>
+<span id="cb4-2"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> (raw_df<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> _) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> load_csv_gz(input<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="cn" style="color: #8f5902;
+background-color: null;
+font-style: inherit;">Some</span>(load_cap))<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">?;</span></span>
+<span id="cb4-3"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> df <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> binarize_loan_status(raw_df)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">?;</span></span>
+<span id="cb4-4"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> sample_indices<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Vec</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">usize</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> (<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">..</span>actual_sample)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>collect()<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb4-5"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> (train_local<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> test_local) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> train_test_split(sample_indices<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>len()<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> test_fraction<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> seed)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb4-6"></span>
+<span id="cb4-7"><span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">for</span> (label<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> exclusion_set) <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">in</span> [</span>
+<span id="cb4-8">    (<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"pre-Locke (naive)"</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">vec!</span>[])<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span>                                  <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// 87 cols</span></span>
+<span id="cb4-9">    (<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"Locke-filtered"</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span>     LOCKE_E9061_COLUMNS<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>to_vec())<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span>           <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// 84 cols (–3)</span></span>
+<span id="cb4-10">    (<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"domain-honest"</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span>      DOMAIN_POST_ORIGINATION_COLUMNS<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>to_vec())<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// 75 cols (–12)</span></span>
+<span id="cb4-11">] <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb4-12">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> (names<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> columns) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> select_numeric_columns(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>df<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>full_excludes)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb4-13">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> (names<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> columns) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> drop_useless_columns(names<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> columns)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb4-14">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// Per-column: fit mean/std on train only; apply to train + test.</span></span>
+<span id="cb4-15">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// No information leak across the split.</span></span>
+<span id="cb4-16">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> logreg <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> logistic_regression(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>x_train_flat<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>y_train<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> n_train<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> p)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">?;</span></span>
+<span id="cb4-17">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> eta <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> score_logistic(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>logreg<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>coefficients<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>x_test_flat<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> n_test<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> p)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb4-18">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> auc <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> auc_roc(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>eta<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>y_test_bool)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">?;</span></span>
+<span id="cb4-19">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// ...</span></span>
+<span id="cb4-20"><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span></code></pre></div>
+<p>The deliberate constraints: 200K-row stratified subsample (because IRLS at full n × p² is slow), seed = 42 fixed, 70/30 train/test split, z-score normalization fit on train only.</p>
+</section>
+<section id="the-three-way-comparison" class="level3">
+<h3 class="anchored" data-anchor-id="the-three-way-comparison">The three-way comparison</h3>
+<pre class="text"><code>=== Summary ===
+variant                     |AUC|    n_train     n_test          p
+pre-Locke (naive)          0.9993     140000      60000         87
+Locke-filtered             0.9995     140000      60000         84
+domain-honest              0.7394     140000      60000         75</code></pre>
+<p><strong>Pre-Locke (the naive model).</strong> 87 numeric columns; only the target column itself and the two ID columns excluded. Test <code>|AUC| = 0.9993</code>. IRLS hits the iteration cap of 100 without converging. The model is catastrophically over-fit via leakage — but more interestingly, the <em>exact</em> form of catastrophe is the post-origination columns moving together as a multicollinear cluster. The <code>X^T W X</code> matrix in IRLS becomes near-singular; Newton steps stop converging.</p>
+<p><strong>Locke-filtered (E9061 only).</strong> Same setup minus <code>last_fico_range_high</code>, <code>last_fico_range_low</code>, <code>total_rec_prncp</code> — the three columns Locke flagged at <code>|AUC| ≥ 0.85</code>. Test <code>|AUC| = 0.9995</code>. <em>Essentially unchanged</em> from naive. IRLS still hits the iteration cap.</p>
+<p><strong>Domain-honest (data dictionary).</strong> Same setup minus the full handoff §3.3 post-origination list: 12 columns covering payment streams, recoveries, outstanding principal, and the last-refreshed FICO. Test <code>|AUC| = 0.7394</code>. IRLS converges cleanly in 14 iterations.</p>
+<p>The headline three-way table prints in the binary’s CLI output and lands in <code>cross_validate.md</code> §3.1.</p>
+</section>
+<section id="the-finding" class="level3">
+<h3 class="anchored" data-anchor-id="the-finding">The finding</h3>
+<p>Locke’s <code>|AUC| ≥ 0.85</code> heuristic catches the <em>strongest</em> leakage but not all of it. The columns that survive the Locke filter (<code>total_pymnt</code>, <code>out_prncp</code>, <code>total_pymnt_inv</code>, <code>last_pymnt_amnt</code>, <code>recoveries</code>, etc.) carry enough leakage signal <em>jointly</em> to keep the model’s AUC inflated. Removing them — via the domain-knowledge list — is what actually collapses AUC into the honest band.</p>
+<p><strong>This is not a bug in Locke.</strong> Locke’s per-feature ROC AUC computation is correct. The post-origination columns are leaky; their individual AUCs are merely in <code>[0.5, 0.85)</code> because each carries a noisy signal that happens to align with a sibling column. The detector’s threshold is doing what it was designed to do — fire on individually-strong signals. The architectural question is whether Locke should also detect <em>jointly</em>-strong-but-individually-weak leakage. v0.8 doesn’t change that.</p>
+<p>What v0.8 <em>does</em> change is the framing of Locke’s value claim.</p>
+<p>The naive framing is “Locke catches leakage.” That doesn’t survive contact with the LC follow-up. The Locke-filtered AUC stays at 0.9995. A reviewer who tried this would conclude the tool failed.</p>
+<p>The honest framing is “<strong>Locke shows you where to look; the analyst applies domain triage</strong>.” That survives the LC follow-up because the data shows exactly that. <code>last_fico_range_high</code> jumping out at <code>|AUC| 0.94</code> is the analyst’s cue to ask: <em>is this column recorded before or after the loan?</em> The answer (after) implies a fuller exclusion list — the kind of list <code>DOMAIN_POST_ORIGINATION_COLUMNS</code> encodes. Without Locke, the analyst might never have realized the last-refreshed FICO range was post-origination at all.</p>
+<p>But that framing implies a missing piece: the analyst’s domain triage has nowhere to live <em>inside</em> Locke. It lives in their own code, as a separate exclusion list maintained per project. The triage doesn’t compose with the belief algebra, doesn’t get fingerprinted, doesn’t show up in the canonical JSON, doesn’t get caught by regression gates if the domain knowledge changes.</p>
+<p>That gap is what ADR-0041 closes.</p>
+</section>
+</section>
+<section id="adr-0041-the-custom-detector-extension-layer" class="level2">
+<h2 class="anchored" data-anchor-id="adr-0041-the-custom-detector-extension-layer">5. ADR-0041: The Custom Detector Extension Layer</h2>
+<p>The architectural decision is in <a href="https://github.com/AdamEzzat1/CJC/blob/master/CJC-Lang_Obsidian_Vault/13_ADRs/ADR-0041%20Locke%20v0.8%20%E2%80%94%20Custom%20Detector%20Extension%20Layer.md"><code>ADR-0041</code></a>. The brief is:</p>
+<div class="callout callout-style-simple callout-note no-icon">
+<div class="callout-body d-flex">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-body-container">
+<p><strong>Goal.</strong> Let analysts encode domain checks as first-class Locke detectors that share the same finding format, belief composition, and determinism guarantees as the built-ins — without diluting the opinionated baseline or opening the determinism contract.</p>
+<p><strong>Non-goal.</strong> Become Great Expectations. Locke is a determinism-first belief-aware auditor; GE is a test framework. The custom-detector layer extends Locke’s vocabulary, not its identity.</p>
+</div>
+</div>
+</div>
+<p>The trait shape, after several iterations:</p>
+<div class="sourceCode" id="cb6" style="background: #f1f3f5;"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb6-1"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">trait</span> CustomDetector<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">Send</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">Sync</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">+</span> <span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">std::fmt::</span><span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">Debug</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb6-2">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">/// E-code in E9500..=E9999. Validated at registration; codes</span></span>
+<span id="cb6-3">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">/// outside this range produce a CustomDetectorError and the</span></span>
+<span id="cb6-4">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">/// detector is silently skipped at run.</span></span>
+<span id="cb6-5">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">fn</span> code(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">self</span>) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span><span class="ot" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">'static</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">str</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb6-6"></span>
+<span id="cb6-7">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">/// Which belief axes this detector's findings affect.</span></span>
+<span id="cb6-8">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">fn</span> belief_axes(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">self</span>) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> BeliefAxisSet<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb6-9"></span>
+<span id="cb6-10">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">fn</span> name(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">self</span>) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">str</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">self</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>code() <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb6-11"></span>
+<span id="cb6-12">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">fn</span> run(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">self</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> df<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>DataFrame<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> sink<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">mut</span> FindingSink)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb6-13"><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span></code></pre></div>
+<p>Three architectural decisions deserve unpacking.</p>
+<section id="code-namespace-e9500..e9999" class="level3">
+<h3 class="anchored" data-anchor-id="code-namespace-e9500..e9999">5.1 Code namespace <code>E9500..=E9999</code></h3>
+<p>Locke’s built-in codes occupy <code>E9001..=E9112</code>. The custom range starts safely above them and leaves 500 slots, with the upper 4000 reserved for future framework use. Reading a report, you can always tell which findings came from Locke’s opinionated baseline (E9xxx with <code>xxx &lt; 9500</code>) versus a team’s custom rules (<code>xxx &gt;= 9500</code>).</p>
+<p>The validator <code>validate_custom_code(&amp;str) -&gt; Result&lt;u32, CustomDetectorError&gt;</code> is the single point of truth. Both the Rust-side registration and the Python bridge call it, so error messages are uniform. Codes outside the namespace are rejected at registration time (not at run time, which would be a footgun) with a clear <code>CustomDetectorError::CodeOutOfNamespace { code, reason }</code>. The result type is exposed so callers can inspect rejection reasons without trying to parse error strings.</p>
+</section>
+<section id="findingsink-as-the-only-emission-surface" class="level3">
+<h3 class="anchored" data-anchor-id="findingsink-as-the-only-emission-surface">5.2 <code>FindingSink</code> as the only emission surface</h3>
+<p>The sink is the restricted finding-emission surface. <code>emit()</code> is the only mutation method:</p>
+<div class="sourceCode" id="cb7" style="background: #f1f3f5;"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb7-1"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">fn</span> emit(</span>
+<span id="cb7-2">    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">mut</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">self</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb7-3">    severity<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> FindingSeverity<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb7-4">    message<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">impl</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">Into</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">String</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;,</span></span>
+<span id="cb7-5">    column<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Option</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">String</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;,</span></span>
+<span id="cb7-6">    row_range<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Option</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span>(<span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">usize</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">usize</span>)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;,</span></span>
+<span id="cb7-7">    evidence<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Vec</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span>FindingEvidence<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;,</span></span>
+<span id="cb7-8">    sample_size<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">u64</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb7-9">) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">usize</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span></code></pre></div>
+<p>All canonicalization (fingerprint composition, byte ordering) happens inside <code>emit</code>. The detector cannot construct findings directly. This is what makes determinism a <em>structural</em> guarantee rather than a <em>trust</em> contract — you can’t write a non-deterministic custom detector that produces non-deterministic output, even if you try. The sink also rejects two cases:</p>
+<ul>
+<li><strong>Empty message.</strong> A finding without a message is unhelpful; rejected with <code>CustomDetectorError::EmptyMessage</code>.</li>
+<li><strong>Non-<code>Info</code> severity from an axes-empty detector.</strong> A detector that declared <code>BeliefAxisSet::NONE</code> produces findings that affect no belief score (advisory-only). Allowing it to emit Warning- or Error-severity findings would be a self-contradiction — the finding would appear in the report but couldn’t drag the score. Rejected with <code>CustomDetectorError::NonAdvisoryAxesEmpty</code>.</li>
+</ul>
+<p>Both errors are <em>recorded</em>, not raised. The detector’s <code>run()</code> continues; the framework drains the errors after <code>run()</code> returns and surfaces them in <code>LockeReport.assumptions</code>.</p>
+</section>
+<section id="belief-axis-routing-via-beliefaxisset" class="level3">
+<h3 class="anchored" data-anchor-id="belief-axis-routing-via-beliefaxisset">5.3 Belief-axis routing via <code>BeliefAxisSet</code></h3>
+<p>The 8 Locke belief axes (schema, missingness, drift, leakage, lineage, sample, duplication, constraint) are represented as a <code>u16</code> bitset:</p>
+<div class="sourceCode" id="cb8" style="background: #f1f3f5;"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb8-1"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">struct</span> BeliefAxisSet(<span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">u16</span>)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb8-2"></span>
+<span id="cb8-3"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">impl</span> BeliefAxisSet <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb8-4">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">const</span> SCHEMA<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Self</span>      <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Self</span>(<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span>)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb8-5">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">const</span> MISSINGNESS<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Self</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Self</span>(<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb8-6">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">const</span> DRIFT<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Self</span>       <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Self</span>(<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">2</span>)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb8-7">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">const</span> LEAKAGE<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Self</span>     <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Self</span>(<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;&lt;</span> <span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">3</span>)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb8-8">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// ...</span></span>
+<span id="cb8-9">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">const</span> NONE<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Self</span>        <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Self</span>(<span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">0</span>)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb8-10"><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span></code></pre></div>
+<p>When the framework runs a custom detector, it records the detector’s declared axes in a new field on <code>LockeReport</code>:</p>
+<div class="sourceCode" id="cb9" style="background: #f1f3f5;"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb9-1"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">struct</span> LockeReport <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb9-2">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// ... existing fields ...</span></span>
+<span id="cb9-3">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> custom_axis_assignments<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> BTreeMap<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">String</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> BeliefAxisSet<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;,</span></span>
+<span id="cb9-4"><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span></code></pre></div>
+<p>The belief composition (the meet-semilattice algebra over <code>(BeliefScore, meet, ⊤=[1,...,1])</code> from <a href="../../../blog/posts/cjc-locke-v0.1-released/index.html#composing-evidence-across-stages-v07">ADR-0036</a>) gets one new closure:</p>
+<div class="sourceCode" id="cb10" style="background: #f1f3f5;"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb10-1"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> custom_contains <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">|</span>code<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">str</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> axis<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> BeliefAxisSet<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">|</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">bool</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb10-2">    report<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>custom_axis_assignments</span>
+<span id="cb10-3">        <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>get(code)</span>
+<span id="cb10-4">        <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>map(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">|</span>axes<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">|</span> axes<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>contains(axis))</span>
+<span id="cb10-5">        <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>unwrap_or(<span class="cn" style="color: #8f5902;
+background-color: null;
+font-style: inherit;">false</span>)</span>
+<span id="cb10-6"><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">};</span></span></code></pre></div>
+<p>Then each per-axis filter ORs the existing built-in code matchers with a <code>custom_contains(code, AXIS)</code> check. Built-in codes still match by name; custom codes match by their declared axes. No restructuring of the algebra was needed — the closure-based filter pattern in <code>penalty_from_findings_with_model</code> extends cleanly.</p>
+<p>The empty-map default is byte-identical to pre-v0.8 belief composition when no custom detectors are registered.</p>
+</section>
+<section id="the-python-bridge-structural-determinism-across-the-ffi-boundary" class="level3">
+<h3 class="anchored" data-anchor-id="the-python-bridge-structural-determinism-across-the-ffi-boundary">5.4 The Python bridge: structural determinism across the FFI boundary</h3>
+<p>The most architecturally interesting piece is the Python side. The naive PyO3 approach — give Python a mutable reference to the Rust <code>FindingSink</code> — runs into lifetime restrictions (<code>#[pyclass]</code> can’t hold borrowed references that might outlive the Python object). The path I took is a two-staged collector:</p>
+<div class="sourceCode" id="cb11" style="background: #f1f3f5;"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb11-1"><span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">#[</span>pyclass<span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">(</span>name <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"CustomDetectorSink"</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> module <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"cjc_locke"</span><span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">)]</span></span>
+<span id="cb11-2"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">struct</span> PyDetectorSink <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb11-3">    pending<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Vec</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span>PyEmittedFinding<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;,</span></span>
+<span id="cb11-4">    code<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">String</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb11-5">    axes_empty<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">bool</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb11-6">    last_error<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Option</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">String</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;,</span></span>
+<span id="cb11-7"><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span></code></pre></div>
+<p>The Python detector’s <code>run(df, sink)</code> receives a <code>PyDetectorSink</code> it can call <code>emit(...)</code> on; the <code>emit</code> pushes into <code>pending</code> but does NOT yet construct a canonical <code>ValidationFinding</code>. After Python’s <code>run()</code> returns, the Rust adapter drains <code>pending</code> into the real Rust <code>FindingSink</code>:</p>
+<div class="sourceCode" id="cb12" style="background: #f1f3f5;"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb12-1"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">impl</span> CustomDetector <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">for</span> PyCustomDetectorAdapter <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb12-2">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">fn</span> run(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">self</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> df<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>DataFrame<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> sink<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">mut</span> FindingSink) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb12-3">        <span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Python::</span>with_gil(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">|</span>py<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">|</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb12-4">            <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> view <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Py::</span>new(py<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> PyDetectorDataFrame <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span> inner<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Arc::</span>new(df<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>clone()) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span>)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">?;</span></span>
+<span id="cb12-5">            <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> py_sink <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Py::</span>new(py<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> PyDetectorSink <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span> <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">/* ... */</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span>)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">?;</span></span>
+<span id="cb12-6">            <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">self</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>instance<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>bind(py)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>call_method1(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"run"</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> (view<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> py_sink<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>clone_ref(py)))<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">?;</span></span>
+<span id="cb12-7">            <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// Drain pending emissions into the Rust sink. Canonicalization</span></span>
+<span id="cb12-8">            <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// happens at the Rust-side emit call.</span></span>
+<span id="cb12-9">            <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">for</span> emission <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">in</span> py_sink<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>bind(py)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>borrow()<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>pending<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>clone() <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb12-10">                sink<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>emit(emission<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>severity<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> emission<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>message<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> emission<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>column<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">/* ... */</span>)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb12-11">            <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb12-12">        <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span>)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb12-13">    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb12-14"><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span></code></pre></div>
+<p>This is the architectural sleight-of-hand: <strong>the framework canonicalizes the Python detector’s findings on the Rust side after Python returns</strong>. The user-supplied Python code can be as non-deterministic as it wants — <code>random.shuffle</code>, <code>set</code> iteration, <code>dict</code> order from <code>PYTHONHASHSEED</code> — and the framework still produces byte-identical reports across runs as long as the <em>set</em> of findings is the same.</p>
+<p>This is provable. The pytest in <code>python/tests/test_custom_detectors.py</code>:</p>
+<div class="sourceCode" id="cb13" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">class</span> _ShuffleEmissionDetector(cjc_locke.CustomDetector):</span>
+<span id="cb13-2">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">"""Emits findings in a randomised order each run."""</span></span>
+<span id="cb13-3">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">def</span> <span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">__init__</span>(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>, seed: <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">int</span>):</span>
+<span id="cb13-4">        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>._rng <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> random.Random(seed)</span>
+<span id="cb13-5"></span>
+<span id="cb13-6">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">def</span> code(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>): <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">return</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"E9502"</span></span>
+<span id="cb13-7">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">def</span> belief_axes(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>): <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">return</span> [<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"leakage"</span>]</span>
+<span id="cb13-8"></span>
+<span id="cb13-9">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">def</span> run(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>, df, sink):</span>
+<span id="cb13-10">        names <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">list</span>(df.column_names())</span>
+<span id="cb13-11">        <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>._rng.shuffle(names)            <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># explicit non-determinism</span></span>
+<span id="cb13-12">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">for</span> n <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">in</span> names:</span>
+<span id="cb13-13">            sink.emit(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"warning"</span>, <span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"shuffle finding on `</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>n<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">`"</span>,</span>
+<span id="cb13-14">                      column<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>n, sample_size<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>df.n_rows)</span>
+<span id="cb13-15"></span>
+<span id="cb13-16"></span>
+<span id="cb13-17"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">def</span> test_determinism_under_emission_shuffle(lc_like_data):</span>
+<span id="cb13-18">    d1 <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> _ShuffleEmissionDetector(seed<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">1</span>)</span>
+<span id="cb13-19">    d2 <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> _ShuffleEmissionDetector(seed<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="dv" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">2</span>)   <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># different shuffle seed</span></span>
+<span id="cb13-20">    r1 <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> cjc_locke.validate(lc_like_data, custom_detectors<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>[d1])</span>
+<span id="cb13-21">    r2 <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> cjc_locke.validate(lc_like_data, custom_detectors<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>[d2])</span>
+<span id="cb13-22">    <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">assert</span> r1.to_json() <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> r2.to_json()     <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># byte-identical</span></span></code></pre></div>
+<p>This is the credibility-anchor test for the whole Python bridge. The detector emits findings in a <code>random.Random</code>-shuffled order each call — two different shuffle seeds in two different runs — and the resulting JSON output is byte-identical. The framework’s canonical sort on the Rust side masks Python’s emission order entirely.</p>
+<p>Without this property, “Locke determinism survives the Python boundary” would be a brittle promise. With it, it’s a structural guarantee.</p>
+<p>The data path that makes that work:</p>
+<div class="cell">
+<div class="cell-output-display">
+<div>
+<div>
+<pre class="mermaid mermaid-js">sequenceDiagram
+    autonumber
+    participant Py as Python user code
+    participant Sink as PyDetectorSink&lt;br/&gt;(collector)
+    participant Adapter as PyCustomDetectorAdapter&lt;br/&gt;(implements Rust trait)
+    participant Rust as Rust FindingSink
+    participant Report as LockeReport JSON
+
+    Note over Py: Free to use random.shuffle,&lt;br/&gt;set iter, dict order
+    Py-&gt;&gt;Sink: sink.emit("warning", msg₁, ...)
+    Py-&gt;&gt;Sink: sink.emit("warning", msg₃, ...)
+    Py-&gt;&gt;Sink: sink.emit("warning", msg₂, ...)
+    Note over Sink: pending = [f₁, f₃, f₂]&lt;br/&gt;non-canonical order
+    Py--&gt;&gt;Adapter: run() returns
+    Adapter-&gt;&gt;Rust: drain pending → emit each
+    Note over Rust: canonical fingerprint&lt;br/&gt;per finding
+    Rust-&gt;&gt;Report: findings.sort_by(sort_key)
+    Note over Report: byte-identical across runs,&lt;br/&gt;regardless of Python order
+</pre>
+</div>
+</div>
+</div>
+</div>
+<p>The “non-canonical order” → “canonical sort” transition is the structural fix. The user is free to emit in whatever order they like; the framework reorders before the bytes leave Rust.</p>
+</section>
+<section id="the-python-abc" class="level3">
+<h3 class="anchored" data-anchor-id="the-python-abc">5.5 The Python ABC</h3>
+<p>The Python facade is intentionally small. Three methods, no metaclass magic:</p>
+<div class="sourceCode" id="cb14" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">class</span> CustomDetector:</span>
+<span id="cb14-2">    <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">"""Base class for user-defined Locke detectors (ADR-0041)."""</span></span>
+<span id="cb14-3"></span>
+<span id="cb14-4">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">def</span> code(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span>:</span>
+<span id="cb14-5">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">raise</span> <span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">NotImplementedError</span>(...)</span>
+<span id="cb14-6"></span>
+<span id="cb14-7">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">def</span> belief_axes(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> List[<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span>]:</span>
+<span id="cb14-8">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># Names from {schema, missingness, drift, leakage, lineage,</span></span>
+<span id="cb14-9">        <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># sample, duplication, constraint}. Empty list = advisory-only.</span></span>
+<span id="cb14-10">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">raise</span> <span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">NotImplementedError</span>(...)</span>
+<span id="cb14-11"></span>
+<span id="cb14-12">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">def</span> run(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>, df, sink) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">None</span>:</span>
+<span id="cb14-13">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">raise</span> <span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">NotImplementedError</span>(...)</span></code></pre></div>
+<p>A working detector subclass is ~10 lines:</p>
+<div class="sourceCode" id="cb15" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">class</span> PostOriginationByName(cjc_locke.CustomDetector):</span>
+<span id="cb15-2">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">def</span> code(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span>:</span>
+<span id="cb15-3">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">return</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"E9500"</span></span>
+<span id="cb15-4"></span>
+<span id="cb15-5">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">def</span> belief_axes(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">list</span>[<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span>]:</span>
+<span id="cb15-6">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">return</span> [<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"leakage"</span>]</span>
+<span id="cb15-7"></span>
+<span id="cb15-8">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">def</span> run(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>, df, sink) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">None</span>:</span>
+<span id="cb15-9">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">for</span> col <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">in</span> df.column_names():</span>
+<span id="cb15-10">            <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">if</span> col.startswith((<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"total_"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"last_pymnt_"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"recoveries"</span>)):</span>
+<span id="cb15-11">                sink.emit(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"error"</span>,</span>
+<span id="cb15-12">                          <span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"`</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>col<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">` matches a post-origination naming pattern"</span>,</span>
+<span id="cb15-13">                          column<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>col, sample_size<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>df.n_rows)</span></code></pre></div>
+<p>Wiring it into a validate call:</p>
+<div class="sourceCode" id="cb16" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1">report <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> cjc_locke.validate(</span>
+<span id="cb16-2">    data,</span>
+<span id="cb16-3">    label<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"lc"</span>,</span>
+<span id="cb16-4">    custom_detectors<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>[PostOriginationByName()],</span>
+<span id="cb16-5">)</span></code></pre></div>
+<p>Axis names cross the boundary as strings. Unknown names (e.g.&nbsp;<code>"nonsense"</code>) raise <code>ValueError</code> at registration — the underlying <code>BeliefAxisSet::from_names</code> returns a structured <code>Err</code> which the bridge converts to a <code>PyValueError</code>.</p>
+</section>
+<section id="the-4-way-lc-re-measurement" class="level3">
+<h3 class="anchored" data-anchor-id="the-4-way-lc-re-measurement">5.6 The 4-way LC re-measurement</h3>
+<p>The reason the layer exists is to close the LC gap. The Rust-side reference implementation is in the demo crate itself (<code>demos/lendingclub/src/lib.rs</code>):</p>
+<div class="sourceCode" id="cb17" style="background: #f1f3f5;"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb17-1"><span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">#[</span>derive<span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">(</span><span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">Debug</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">Default</span><span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">)]</span></span>
+<span id="cb17-2"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">struct</span> PostOriginationByNameDetector<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb17-3"></span>
+<span id="cb17-4"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">impl</span> PostOriginationByNameDetector <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb17-5">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">fn</span> is_post_origination(name<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">str</span>) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">bool</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb17-6">        <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">const</span> PREFIX_PATTERNS<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>[<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">str</span>] <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>[</span>
+<span id="cb17-7">            <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"total_"</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"last_pymnt_"</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"last_fico_range_"</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb17-8">            <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"out_prncp"</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"debt_settlement_"</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb17-9">            <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"hardship_"</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"settlement_"</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb17-10">        ]<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb17-11">        <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">const</span> EXACT_PATTERNS<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>[<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span><span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">str</span>] <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>[</span>
+<span id="cb17-12">            <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"recoveries"</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"collection_recovery_fee"</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"debt_settlement_flag"</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb17-13">        ]<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb17-14">        EXACT_PATTERNS<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>iter()<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>any(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">|</span>p<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">|</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">*</span>p <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">==</span> name)</span>
+<span id="cb17-15">            <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">||</span> PREFIX_PATTERNS<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>iter()<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>any(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">|</span>p<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">|</span> name<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>starts_with(p))</span>
+<span id="cb17-16">    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb17-17"><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb17-18"></span>
+<span id="cb17-19"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">impl</span> <span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">cjc_locke::custom_detector::</span>CustomDetector <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">for</span> PostOriginationByNameDetector <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb17-20">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">fn</span> code(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">self</span>) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span><span class="ot" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">'static</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">str</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"E9500"</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb17-21">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">fn</span> belief_axes(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">self</span>) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> BeliefAxisSet <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span> <span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">BeliefAxisSet::</span>LEAKAGE <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb17-22">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">fn</span> run(<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">self</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> df<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>DataFrame<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> sink<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">mut</span> FindingSink) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb17-23">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">for</span> (name<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> _col) <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">in</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>df<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>columns <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb17-24">            <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">if</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Self</span><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">::</span>is_post_origination(name) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span></span>
+<span id="cb17-25">                sink<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>emit(</span>
+<span id="cb17-26">                    <span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">FindingSeverity::</span><span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">Error</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb17-27">                    <span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">format!</span>(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"column `{}` matches a known post-origination naming pattern"</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> name)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb17-28">                    <span class="cn" style="color: #8f5902;
+background-color: null;
+font-style: inherit;">Some</span>(name<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>clone())<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb17-29">                    <span class="cn" style="color: #8f5902;
+background-color: null;
+font-style: inherit;">None</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb17-30">                    <span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">vec!</span>[]<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb17-31">                    df<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>nrows() <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">as</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">u64</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb17-32">                )<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb17-33">            <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb17-34">        <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb17-35">    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span>
+<span id="cb17-36"><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span></span></code></pre></div>
+<p>The CLI gets a <code>--use-custom-detectors</code> flag that wires this detector into <code>ValidateOptions::custom_detectors</code>. On the full LC dataset:</p>
+<blockquote class="blockquote">
+<p><code>E9500 × 39</code> — the custom detector fires 39 times, flagging 39 columns by name.</p>
+</blockquote>
+<p>The honest-model harness gets a <code>--from-report &lt;path&gt;</code> flag that reads the report JSON, extracts every column with an E9500 <em>or</em> E9061 finding, and uses that as the exclusion set for a fourth model variant.</p>
+<p>The four-way result, same 200K-row sample, same seed=42:</p>
+<pre class="text"><code>=== Summary ===
+variant                     |AUC|    n_train     n_test          p   iter
+pre-Locke (naive)          0.9993     140000      60000         87    100
+Locke-filtered             0.9995     140000      60000         84    100
+Locke + custom det.        0.7388     140000      60000         68     17  ← closes the gap inside Locke
+domain-honest              0.7394     140000      60000         75     14</code></pre>
+<figure style="margin: 2em 0;" class="figure">
+<svg viewbox="0 0 720 380" xmlns="http://www.w3.org/2000/svg" aria-label="Bar chart of the four-way honest-model AUC results">
+<!-- Title -->
+</svg><p><text x="360" y="22" text-anchor="middle" font-size="15" font-weight="600" fill="currentColor">Honest-model |AUC| — four-way comparison</text> <text x="360" y="40" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.7">200K-row LendingClub sample, seed=42, test fraction 0.3</text></p>
+<!-- Plot area: x 80-700, y 70-310 (height 240 = AUC of 1.0) -->
+<!-- Literature band 0.69–0.74 → y 226.4 to 238.4 -->
+<p><rect x="80" y="226.4" width="620" height="12" fill="#2d8b50" opacity="0.12"> <text x="694" y="234" text-anchor="end" font-size="10" fill="currentColor" opacity="0.65">literature band 0.69–0.74</text></rect></p>
+<!-- Y axis ticks at 0.0, 0.2, 0.4, 0.6, 0.8, 1.0 -->
+<p><line x1="80" y1="70" x2="80" y2="310" stroke="currentColor" stroke-opacity="0.4"> <line x1="80" y1="310" x2="700" y2="310" stroke="currentColor" stroke-opacity="0.4"> <line x1="75" y1="70" x2="80" y2="70" stroke="currentColor" stroke-opacity="0.4"> <text x="70" y="74" text-anchor="end" font-size="10" fill="currentColor">1.0</text> <line x1="75" y1="118" x2="80" y2="118" stroke="currentColor" stroke-opacity="0.4"> <text x="70" y="122" text-anchor="end" font-size="10" fill="currentColor">0.8</text> <line x1="75" y1="166" x2="80" y2="166" stroke="currentColor" stroke-opacity="0.4"> <text x="70" y="170" text-anchor="end" font-size="10" fill="currentColor">0.6</text> <line x1="75" y1="214" x2="80" y2="214" stroke="currentColor" stroke-opacity="0.4"> <text x="70" y="218" text-anchor="end" font-size="10" fill="currentColor">0.4</text> <line x1="75" y1="262" x2="80" y2="262" stroke="currentColor" stroke-opacity="0.4"> <text x="70" y="266" text-anchor="end" font-size="10" fill="currentColor">0.2</text> <line x1="75" y1="310" x2="80" y2="310" stroke="currentColor" stroke-opacity="0.4"> <text x="70" y="314" text-anchor="end" font-size="10" fill="currentColor">0.0</text></line></line></line></line></line></line></line></line></p>
+<!-- Bars: width 110, x positions 110, 270, 430, 590; bar height = AUC * 240 -->
+<!-- Pre-Locke 0.9993 → height 239.83 → y 70.17 -->
+<p><rect x="110" y="70.17" width="110" height="239.83" fill="#c1432d"> <text x="165" y="62" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor">0.9993</text> <text x="165" y="332" text-anchor="middle" font-size="11" fill="currentColor">Pre-Locke (naive)</text> <text x="165" y="346" text-anchor="middle" font-size="9" fill="currentColor" opacity="0.7">p=87, iter=100 cap</text></rect></p>
+<!-- Locke-filtered 0.9995 → height 239.88 → y 70.12 -->
+<p><rect x="270" y="70.12" width="110" height="239.88" fill="#c1432d"> <text x="325" y="62" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor">0.9995</text> <text x="325" y="332" text-anchor="middle" font-size="11" fill="currentColor">Locke-filtered</text> <text x="325" y="346" text-anchor="middle" font-size="9" fill="currentColor" opacity="0.7">E9061 only, p=84</text></rect></p>
+<!-- Locke + custom 0.7388 → height 177.31 → y 132.69 -->
+<p><rect x="430" y="132.69" width="110" height="177.31" fill="#2d8b50"> <text x="485" y="125" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor">0.7388</text> <text x="485" y="332" text-anchor="middle" font-size="11" fill="currentColor">Locke + custom det.</text> <text x="485" y="346" text-anchor="middle" font-size="9" fill="currentColor" opacity="0.7">E9500 ∪ E9061, p=68</text></rect></p>
+<!-- Domain-honest 0.7394 → height 177.46 → y 132.54 -->
+<p><rect x="590" y="132.54" width="110" height="177.46" fill="#2d8b50"> <text x="645" y="125" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor">0.7394</text> <text x="645" y="332" text-anchor="middle" font-size="11" fill="currentColor">Domain-honest</text> <text x="645" y="346" text-anchor="middle" font-size="9" fill="currentColor" opacity="0.7">hand-curated, p=75</text></rect></p>
+<!-- Bracket connecting bars 3 and 4 with the "0.0006 gap" annotation -->
+<line x1="485" y1="115" x2="485" y2="105" stroke="currentColor" stroke-opacity="0.5"> <line x1="485" y1="105" x2="645" y2="105" stroke="currentColor" stroke-opacity="0.5"> <line x1="645" y1="105" x2="645" y2="115" stroke="currentColor" stroke-opacity="0.5"> <text x="565" y="98" text-anchor="middle" font-size="10" fill="currentColor" opacity="0.8" font-style="italic">|Δ| = 0.0006</text>
+
+<figcaption style="text-align: center; font-size: 0.9em; opacity: 0.85; margin-top: 0.4em;" class="figure-caption">
+The custom detector (bar #3) recovers the honest credit-risk baseline (bar #4) inside Locke configuration. Bars #1 and #2 are inflated by leakage; bars #3 and #4 land within 0.0006 of each other, both inside the published credit-risk literature band of 0.69–0.74.
+</figcaption>
+</line></line></line></figure>
+<p><strong><code>Locke + custom det.</code> at <code>|AUC| = 0.7388</code> lands within 0.0006 of the hand-curated <code>domain-honest</code> baseline at <code>0.7394</code>.</strong> The custom detector recovered honest credit-risk performance entirely <em>inside</em> Locke configuration — using a ~30-LOC detector to encode the same domain knowledge that previously lived as a separate hard-coded exclusion list in the modeling code.</p>
+<p>Two further notes on this table:</p>
+<ul>
+<li><strong>The custom-detector variant uses FEWER features (68 vs 75).</strong> It’s <em>more</em> aggressive about exclusion (39 columns flagged vs the handoff’s 12, because the custom detector catches <code>sec_app_*</code>, <code>hardship_*</code>, <code>settlement_*</code> etc. that the handoff’s list didn’t anticipate). And yet it achieves essentially the same AUC. That’s empirical evidence the extra exclusions weren’t carrying useful signal — the custom detector is at least as conservative as expert curation.</li>
+<li><strong>IRLS convergence speed is a real diagnostic.</strong> The leaky models hit the 100-iter cap because the multicollinear post-origination cluster makes <code>X^T W X</code> near-singular. The honest variants both converge in 14–17 iterations because removing that cluster conditions the matrix well. Convergence speed is a proxy for “how well did the exclusion set capture the multicollinear leakage subspace” — and Locke + custom converged in 17 iters, comparable to domain-honest’s 14.</li>
+</ul>
+</section>
+<section id="tests-in-three-columns" class="level3">
+<h3 class="anchored" data-anchor-id="tests-in-three-columns">5.7 Tests, in three columns</h3>
+<table class="table">
+<colgroup>
+<col style="width: 17%">
+<col style="width: 43%">
+<col style="width: 4%">
+<col style="width: 34%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Layer</th>
+<th>File</th>
+<th>Tests</th>
+<th>Kind</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Rust unit</td>
+<td><code>crates/cjc-locke/src/custom_detector.rs</code></td>
+<td>15</td>
+<td>Trait, sink, namespace, axis set</td>
+</tr>
+<tr class="even">
+<td>Rust integration</td>
+<td><code>tests/locke/custom_detector_tests.rs</code></td>
+<td>14</td>
+<td>End-to-end + 3 proptest + 3 bolero fuzz</td>
+</tr>
+<tr class="odd">
+<td>Python end-to-end</td>
+<td><code>python/tests/test_custom_detectors.py</code></td>
+<td>14</td>
+<td>Registration, sink contract, emission shuffle</td>
+</tr>
+<tr class="even">
+<td>Demo</td>
+<td><code>demos/lendingclub/src/lib.rs</code> (in-module)</td>
+<td>2</td>
+<td>Pattern detector smoke tests</td>
+</tr>
+<tr class="odd">
+<td><strong>Total new</strong></td>
+<td></td>
+<td><strong>45</strong></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>The integration test file leans on a <code>NameMatchDetector</code> helper plus <code>ProptestDetector</code> plus <code>ShuffleEmissionDetector</code> — three detector subclasses that exercise different aspects of the trait. Three of the integration tests are bolero fuzz tests that exercise the registration namespace validator (<code>validate_custom_code</code>) and the emit input validation under arbitrary byte sequences. None of the fuzz inputs panic; either the input is valid (no error recorded) or it’s invalid (error recorded, no finding constructed). Determinism is also exercised in the Rust proptest: random axes + emit count + arbitrary DataFrame → byte-identical JSON across runs.</p>
+<p>Workspace test totals after ADR-0041 alone: <code>cjc-locke</code> lib passes 423 (was 408, +15); <code>tests/locke</code> integration passes 291 (was 277, +14); zero regressions in pre-existing tests.</p>
+</section>
+</section>
+<section id="adr-0042-the-str-with-sentinels-gap-which-turned-out-to-be-two-gaps" class="level2">
+<h2 class="anchored" data-anchor-id="adr-0042-the-str-with-sentinels-gap-which-turned-out-to-be-two-gaps">6. ADR-0042: The Str-with-sentinels gap (which turned out to be two gaps)</h2>
+<p>The ADR-0041 retrospective in <code>cross_validate.md</code> ended with a “Suggested Locke adjustments” section. The first item:</p>
+<blockquote class="blockquote">
+<p><strong>Str-with-sentinels columns silently bypass three detectors</strong> (E9070 conditional missingness, E9039 numeric drift, E9050+ temporal). The CSV reader infers a column as <code>Str</code> if the first row has empty/sentinel values. Once typed <code>Str</code>, the column carries the sentinel string instead of NaN, and the Float-only detectors skip it. <code>annual_inc_joint</code> is the canonical example — logically numeric, but the reader sees <code>""</code> in row 1 and types it <code>Str</code>.</p>
+</blockquote>
+<p>The intent was to address it before Project B (NYC Taxi), where every drift-detection scenario depends on Float typing. The investigation surfaced something the brief hadn’t anticipated.</p>
+<section id="gap-one-type-inference-from-the-first-data-row" class="level3">
+<h3 class="anchored" data-anchor-id="gap-one-type-inference-from-the-first-data-row">6.1 Gap one: type inference from the first data row</h3>
+<p><code>cjc-data::CsvReader</code> types each column from its first data row only. For <code>annual_inc_joint</code>, the first row’s value is <code>""</code> (empty string — the loan was an individual application, not joint). <code>infer_type("")</code> returns <code>InferredType::Str</code>. Once the column is <code>Str</code>, every subsequent numeric value (<code>"100000"</code>, <code>"50000.0"</code>, etc.) gets stored as a string. Downstream Float-only detectors skip the column.</p>
+<p>The fix lives in a new module <code>crates/cjc-locke/src/auto_promote.rs</code>. Each <code>Str</code> column is scanned and each value classified as:</p>
+<ul>
+<li><strong>Sentinel</strong> — matches the existing <code>BUILTIN_STRING_SENTINELS</code> (<code>""</code>, <code>"?"</code>, <code>"NA"</code>, <code>"N/A"</code>, <code>"NULL"</code>, <code>"null"</code>, <code>"nan"</code>, <code>"NaN"</code>, <code>"None"</code>, <code>"-"</code>) or <code>cfg.additional_sentinels</code>.</li>
+<li><strong>Parseable</strong> — <code>str::parse::&lt;f64&gt;()</code> succeeds. Accepts integer and float literals, including scientific notation (<code>1.5e-3</code>).</li>
+<li><strong>Other</strong> — text, malformed numbers, anything else.</li>
+</ul>
+<p>A column is <strong>promoted</strong> when:</p>
+<ul>
+<li><code>non_sentinel_rows &gt;= cfg.min_non_sentinel_rows_for_promotion</code> (default 10), AND</li>
+<li><code>n_parseable / non_sentinel &gt;= cfg.min_parseable_fraction_for_promotion</code> (default 0.80).</li>
+</ul>
+<p>Promoted columns are rebuilt as <code>Column::Float</code> where sentinels and unparseable values become <code>NaN</code>. Each emits one <code>E9009</code> (<code>Info</code> severity) finding with full evidence (counts, fraction).</p>
+<div class="sourceCode" id="cb19" style="background: #f1f3f5;"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb19-1"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">pub</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">fn</span> auto_promote_str_columns(</span>
+<span id="cb19-2">    df<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>DataFrame<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb19-3">    cfg<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>ValidationConfig<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb19-4">) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> (<span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Option</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span>DataFrame<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;,</span> <span class="dt" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">Vec</span><span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&lt;</span>ValidationFinding<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&gt;</span>)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span></code></pre></div>
+<p>The <code>Option&lt;DataFrame&gt;</code> return is the zero-allocation no-op path: if no column qualifies, returns <code>None</code> and the caller uses the original DataFrame without any clone cost. The wiring in <code>api::validate</code> is the <code>working_df</code> pattern:</p>
+<div class="sourceCode" id="cb20" style="background: #f1f3f5;"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb20-1"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> (maybe_promoted_df<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> promo_findings) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span></span>
+<span id="cb20-2">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">crate</span><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">::auto_promote::</span>auto_promote_str_columns(df<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>opts<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>config)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb20-3"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> working_df<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">:</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>DataFrame <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> maybe_promoted_df<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>as_ref()<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>unwrap_or(df)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb20-4"></span>
+<span id="cb20-5"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">let</span> <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">mut</span> findings <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> validate_dataframe(working_df<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">...</span>)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb20-6">findings<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>extend(promo_findings)<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb20-7"><span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// All downstream detectors + column reports + custom detectors use working_df.</span></span></code></pre></div>
+<p>The report’s <code>input.column_types</code> reflects post-promotion types, so JSON consumers see the right view. The default <code>auto_promote_str_to_float = true</code> was the deliberate choice — a flag that’s off by default doesn’t fix the gap for users who don’t know it exists.</p>
+</section>
+<section id="gap-two-e9070-was-defined-but-never-invoked" class="level3">
+<h3 class="anchored" data-anchor-id="gap-two-e9070-was-defined-but-never-invoked">6.2 Gap two: E9070 was defined but never invoked</h3>
+<p>Here’s where the investigation got interesting. After adding the auto-promotion, I ran the LC demo with promotion enabled. E9070 (conditional missingness) didn’t fire. Promotion was working — column types changed, joint columns were <code>Float</code>, NaN positions were correct — but E9070 stayed at zero.</p>
+<p>The cause was simpler and more embarrassing than the typing fix:</p>
+<div class="sourceCode" id="cb21" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb21-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">$</span> grep <span class="at" style="color: #657422;
+background-color: null;
+font-style: inherit;">-n</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"detect_conditional_missingness\b"</span> crates/cjc-locke/src/validation.rs</span>
+<span id="cb21-2"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">1425:pub</span> fn detect_conditional_missingness<span class="er" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">(</span></span>
+<span id="cb21-3"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">2398:</span>    let r = detect_conditional_missingness<span class="er" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">(</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">&amp;</span><span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">df</span>, ...<span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">);</span>  <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># inside a unit test</span></span>
+<span id="cb21-4"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">2420:</span>    let r = detect_conditional_missingness<span class="er" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">(</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">&amp;</span><span class="fu" style="color: #4758AB;
+background-color: null;
+font-style: inherit;">df</span>, ...<span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">);</span>  <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># inside a unit test</span></span>
+<span id="cb21-5"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">2771:</span>    let r = detect_conditional_missingness<span class="er" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">(</span>            <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># inside a unit test</span></span></code></pre></div>
+<p><code>detect_conditional_missingness</code> was defined, exported, unit-tested. But the call site inside <code>validate_dataframe</code> — the function that orchestrates the actual validation pipeline — never invoked it. The detector had been silently zero-firing for everyone, on every input, since v0.6.4. The unit tests that exercised it caught the function’s own behavior; they didn’t catch the missing wire.</p>
+<p>The fix is one <code>out.extend(...)</code> line:</p>
+<div class="sourceCode" id="cb22" style="background: #f1f3f5;"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb22-1">out<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>extend(detect_missingness(df<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> cfg<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>effective_masks))<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb22-2">out<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>extend(detect_conditional_missingness(   <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">// &lt;-- new</span></span>
+<span id="cb22-3">    df<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb22-4">    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">ConditionalMissingnessConfig::</span><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">default</span>()<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb22-5">    <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">&amp;</span>effective_masks<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span></span>
+<span id="cb22-6">))<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span>
+<span id="cb22-7">out<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">.</span>extend(detect_duplicates_full_row(df<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">,</span> cfg))<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">;</span></span></code></pre></div>
+<p>The detector honors <code>effective_masks</code> (the merged caller + auto-sentinel mask map), so it works for both Float-NaN columns and Str-with-mask columns. The opt-out path — disable auto-promotion via <code>ValidationConfig::auto_promote_str_to_float = false</code> — still fires E9070 via the sentinel-mask path. Both code paths produce findings; the auto-promotion makes them more numerous and the per-column missingness rates cleaner.</p>
+</section>
+<section id="the-real-lc-measurement-post-fix" class="level3">
+<h3 class="anchored" data-anchor-id="the-real-lc-measurement-post-fix">6.3 The real LC measurement post-fix</h3>
+<p>Re-running <code>lendingclub_demo</code> on the full 2.26M-row CSV with v0.8 enabled:</p>
+<table class="table">
+<colgroup>
+<col style="width: 8%">
+<col style="width: 36%">
+<col style="width: 36%">
+<col style="width: 17%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Code</th>
+<th>Pre-v0.8 (2026-06-01)</th>
+<th>Post-v0.8 (2026-06-02)</th>
+<th>What changed</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>E9008</td>
+<td>55</td>
+<td>33</td>
+<td>Some Str cols promoted; E9009 supersedes E9008 for those</td>
+</tr>
+<tr class="even">
+<td>E9009</td>
+<td>not implemented</td>
+<td><strong>22</strong></td>
+<td>Auto-promoted columns</td>
+</tr>
+<tr class="odd">
+<td>E9070</td>
+<td><strong>0</strong> (silently never invoked)</td>
+<td><strong>1879</strong></td>
+<td>Now fires across ~54 unique columns</td>
+</tr>
+<tr class="even">
+<td>E9001</td>
+<td>55</td>
+<td>55</td>
+<td>unchanged</td>
+</tr>
+<tr class="odd">
+<td>E9061</td>
+<td>3</td>
+<td>3</td>
+<td>unchanged</td>
+</tr>
+<tr class="even">
+<td>E9072</td>
+<td>2</td>
+<td>2</td>
+<td>unchanged</td>
+</tr>
+<tr class="odd">
+<td>total</td>
+<td>577</td>
+<td>2421</td>
+<td>mostly E9070 + a few E9009 + E9024/E9040 ticks</td>
+</tr>
+</tbody>
+</table>
+<figure style="margin: 2em 0;" class="figure">
+<svg viewbox="0 0 720 320" xmlns="http://www.w3.org/2000/svg" aria-label="Horizontal bar chart of LC finding counts that changed between pre-v0.8 and post-v0.8">
+<!-- Title -->
+</svg><p><text x="360" y="22" text-anchor="middle" font-size="15" font-weight="600" fill="currentColor">LC finding counts that changed across v0.7 → v0.8</text> <text x="360" y="40" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.7">Full 2.26M-row dataset; codes unchanged across the release omitted</text></p>
+<!-- Legend -->
+<p><rect x="480" y="56" width="14" height="10" fill="#9ca3af"> <text x="498" y="65" font-size="11" fill="currentColor">pre-v0.8</text> <rect x="568" y="56" width="14" height="10" fill="#2d6db5"> <text x="586" y="65" font-size="11" fill="currentColor">post-v0.8 (ADR-0042)</text></rect></rect></p>
+<!-- Plot area: x label column 0-150, bars start at 160, end at 700 (540px wide) -->
+<!-- Max value 1879; scale: 1px = 3.479 counts -->
+<!-- Pre and post bars stacked vertically per row (height 13 each, 2px gap) -->
+<!-- ===== Row 1: E9008 (55 → 33, decreased) ===== -->
+<p><text x="150" y="100" text-anchor="end" font-size="13" font-weight="600" fill="currentColor">E9008</text> <text x="150" y="116" text-anchor="end" font-size="10" fill="currentColor" opacity="0.65">sentinel</text> <rect x="160" y="92" width="15.81" height="13" fill="#9ca3af"> <text x="181" y="103" font-size="11" fill="currentColor">55</text> <rect x="160" y="107" width="9.49" height="13" fill="#2d6db5"> <text x="175" y="118" font-size="11" fill="currentColor">33 (–22)</text></rect></rect></p>
+<!-- ===== Row 2: E9009 (0 → 22, NEW) ===== -->
+<p><text x="150" y="158" text-anchor="end" font-size="13" font-weight="600" fill="currentColor">E9009</text> <text x="150" y="174" text-anchor="end" font-size="10" fill="currentColor" opacity="0.65">promotion</text> <text x="160" y="160" font-size="11" fill="currentColor" opacity="0.55">— (not implemented)</text> <rect x="160" y="165" width="6.32" height="13" fill="#2d6db5"> <text x="171" y="176" font-size="11" fill="currentColor">22 (new)</text></rect></p>
+<!-- ===== Row 3: E9070 (0 → 1879, NEW + dominant) ===== -->
+<p><text x="150" y="222" text-anchor="end" font-size="13" font-weight="600" fill="currentColor">E9070</text> <text x="150" y="238" text-anchor="end" font-size="10" fill="currentColor" opacity="0.65">cond. missing</text> <text x="160" y="222" font-size="11" fill="currentColor" opacity="0.55">— (silently never invoked)</text> <rect x="160" y="227" width="540" height="13" fill="#2d6db5"> <text x="694" y="238" text-anchor="end" font-size="12" font-weight="700" fill="#ffffff">1879 (new)</text></rect></p>
+<!-- X axis with scale reference -->
+<line x1="160" y1="263" x2="700" y2="263" stroke="currentColor" stroke-opacity="0.4"> <text x="160" y="276" font-size="10" text-anchor="middle" fill="currentColor">0</text> <text x="304" y="276" font-size="10" text-anchor="middle" fill="currentColor">500</text> <text x="448" y="276" font-size="10" text-anchor="middle" fill="currentColor">1000</text> <text x="592" y="276" font-size="10" text-anchor="middle" fill="currentColor">1500</text> <text x="700" y="276" font-size="10" text-anchor="end" fill="currentColor">≈1879</text> <text x="430" y="296" font-size="10" text-anchor="middle" fill="currentColor" opacity="0.65">findings (linear scale)</text>
+
+<figcaption style="text-align: center; font-size: 0.9em; opacity: 0.85; margin-top: 0.4em;" class="figure-caption">
+Three codes changed between v0.7 and v0.8. <strong>E9008</strong> (sentinel detection) drops from 55 to 33 as some <code>Str</code> columns get promoted to <code>Float</code> via the new <strong>E9009</strong> path (22 columns). <strong>E9070</strong> (conditional missingness) goes from <em>silently never invoked</em> to 1879 firings — every co-missing column pair contributes a finding in both directions. The visual dominance of E9070 in the chart is the dominance the gap fix actually surfaces.
+</figcaption>
+</line></figure>
+<p>The 22 columns the auto-promotion fires on:</p>
+<ul>
+<li><code>sec_app_*</code> (12 columns) — secondary applicant fields: <code>fico_range_high/low</code>, <code>mort_acc</code>, <code>num_rev_accts</code>, <code>open_acc</code>, <code>open_act_il</code>, <code>inq_last_6mths</code>, <code>chargeoff_within_12_mths</code>, <code>collections_12_mths_ex_med</code>, <code>mths_since_last_major_derog</code>, <code>revol_util</code></li>
+<li><code>hardship_*</code> (5 columns) — workout plan fields: <code>amount</code>, <code>dpd</code>, <code>length</code>, <code>payoff_balance_amount</code>, <code>last_payment_amount</code></li>
+<li><code>settlement_*</code> (3 columns) — debt settlement fields: <code>amount</code>, <code>percentage</code>, <code>term</code></li>
+<li><code>revol_bal_joint</code>, <code>orig_projected_additional_accrued_interest</code>, <code>mths_since_last_record</code></li>
+</ul>
+<p>E9070’s 1879 firings span ~54 unique columns. Most pairs are within the joint/secondary/hardship/settlement set: every co-missing pair fires twice (a→b and b→a are separate findings). For users who want a smaller set, raising <code>ConditionalMissingnessConfig::implication_threshold</code> above 0.95 or post-hoc filtering by column-pair is the right knob.</p>
+</section>
+<section id="gap-three-csv-quoted-string-handling-deferred" class="level3">
+<h3 class="anchored" data-anchor-id="gap-three-csv-quoted-string-handling-deferred">6.4 Gap three: CSV quoted-string handling (deferred)</h3>
+<p><code>annual_inc_joint</code>, <code>dti_joint</code>, <code>verification_status_joint</code> — the three columns the handoff originally named — are <em>NOT</em> in the v0.8 promotion set. Investigation:</p>
+<pre class="text"><code>Sampled 50000 rows of annual_inc_joint:
+  empty:     49290
+  parseable: 248
+  other:     462
+  non-parseable samples:
+    'Individual'
+    'Individual'
+    'Individual'
+    'Individual'
+    'Individual'</code></pre>
+<p>The non-sentinel rows split 248 parseable vs 462 “Other” — <code>parseable_fraction = 0.349</code>, well below the 0.80 threshold. So promotion correctly declines.</p>
+<p>The “Other” values are <code>'Individual'</code> — the string from the LC dataset’s <code>application_type</code> column. They’re bleeding into <code>annual_inc_joint</code> because <code>cjc-data::CsvReader</code> does NOT support RFC-4180 quoted strings. LC’s <code>desc</code> (free-text loan description) column contains embedded commas; without quote-handling, every cell after <code>desc</code> in such a row gets shifted left by however many commas the description contained. <code>application_type</code> (which sits after <code>desc</code> in column order) leaks into <code>annual_inc_joint</code>’s position.</p>
+<p>This is a real third gap, but it lives in <code>cjc-data</code>, not <code>cjc-locke</code>. ADR-0042 documents it as a known limitation and bounds it: the parseable-fraction guard correctly refuses to promote a column polluted by column-shift, which is the right defensive behavior. The upstream CSV fix is tracked separately. The right user workaround until then is to pre-clean the CSV with a parser that understands quoting (Python’s <code>csv</code> module, pandas) and pass the cleaned dict to Locke via the Python bridge or via <code>DataFrame::from_columns</code>.</p>
+</section>
+<section id="discovery-cascade-visualized" class="level3">
+<h3 class="anchored" data-anchor-id="discovery-cascade-visualized">6.5 Discovery cascade, visualized</h3>
+<div class="cell">
+<div class="cell-output-display">
+<div>
+<div>
+<pre class="mermaid mermaid-js">flowchart TD
+    A[Handoff: Project A = LC demo&lt;br/&gt;predicted top leakage = payment streams] --&gt;|build demo| B[E9061 fires on last_fico_range_*&lt;br/&gt;not on payment streams]
+    B --&gt;|honest-model AUC follow-up| C[Locke-filtered AUC = 0.9995&lt;br/&gt;Locke flags alone don't recover honesty]
+    C --&gt;|architectural response| D[ADR-0041:&lt;br/&gt;custom detector extension layer]
+    D --&gt;|LC re-measurement| E[Locke + custom AUC = 0.7388&lt;br/&gt;within 0.0006 of domain-honest 0.7394]
+    E --&gt;|prepare for Project B| F[Str-with-sentinels gap blocks&lt;br/&gt;NYC Taxi drift detection]
+    F --&gt;|investigate| G[Gap 1: CSV type inference from first row]
+    F --&gt;|investigate| H[Gap 2: E9070 was never invoked]
+    G --&gt; I[ADR-0042: auto_promote_str_columns]
+    H --&gt; I
+    I --&gt;|re-run LC demo| J[E9009 × 22, E9070 × 1879&lt;br/&gt;+ Gap 3 discovered: CSV quoted strings]
+    J --&gt;|out of scope for v0.8| K[Tracked as upstream cjc-data fix]
+    style B fill:#fff4d6
+    style C fill:#fff4d6
+    style F fill:#fff4d6
+    style J fill:#fff4d6
+</pre>
+</div>
+</div>
+</div>
+</div>
+<p>Each yellow node is a discovery that drove the next change. The brief at the top would have predicted A → I directly. The path through B, C, F is what actually happened.</p>
+</section>
+</section>
+<section id="the-release" class="level2">
+<h2 class="anchored" data-anchor-id="the-release">7. The release</h2>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Artifact</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>cjc-locke v0.1.11</code></td>
+<td><a href="https://crates.io/crates/cjc-locke/0.1.11" class="uri">https://crates.io/crates/cjc-locke/0.1.11</a></td>
+</tr>
+<tr class="even">
+<td>24 sibling crates at v0.1.11</td>
+<td>crates.io (<code>cjc-lang</code>, <code>cjc-data</code>, <code>cjc-runtime</code>, …, one workspace publish)</td>
+</tr>
+<tr class="odd">
+<td><code>cjc-locke v0.1.2</code> (Python)</td>
+<td><a href="https://pypi.org/project/cjc-locke/0.1.2/" class="uri">https://pypi.org/project/cjc-locke/0.1.2/</a></td>
+</tr>
+<tr class="even">
+<td>Source code</td>
+<td><a href="https://github.com/AdamEzzat1/CJC" class="uri">https://github.com/AdamEzzat1/CJC</a> (PR #18 merged on master)</td>
+</tr>
+<tr class="odd">
+<td>ADR-0041</td>
+<td><code>CJC-Lang_Obsidian_Vault/13_ADRs/ADR-0041 Locke v0.8 — Custom Detector Extension Layer.md</code></td>
+</tr>
+<tr class="even">
+<td>ADR-0042</td>
+<td><code>CJC-Lang_Obsidian_Vault/13_ADRs/ADR-0042 Locke v0.8 — Str-to-Float Auto-Promotion + E9070 Wiring.md</code></td>
+</tr>
+<tr class="odd">
+<td>LC demo</td>
+<td><code>demos/lendingclub/</code> (workspace member, <code>publish = false</code>)</td>
+</tr>
+</tbody>
+</table>
+<section id="quick-start-python" class="level3">
+<h3 class="anchored" data-anchor-id="quick-start-python">Quick-start (Python)</h3>
+<div class="sourceCode" id="cb24" style="background: #f1f3f5;"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb24-1"><span class="ex" style="color: null;
+background-color: null;
+font-style: inherit;">pip</span> install cjc-locke<span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">[</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">numpy</span><span class="pp" style="color: #AD0000;
+background-color: null;
+font-style: inherit;">]</span></span></code></pre></div>
+<div class="sourceCode" id="cb25" style="background: #f1f3f5;"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><span class="im" style="color: #00769E;
+background-color: null;
+font-style: inherit;">import</span> cjc_locke</span>
+<span id="cb25-2"></span>
+<span id="cb25-3"><span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">class</span> PostOriginationByName(cjc_locke.CustomDetector):</span>
+<span id="cb25-4">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">def</span> code(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span>:</span>
+<span id="cb25-5">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">return</span> <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"E9500"</span></span>
+<span id="cb25-6"></span>
+<span id="cb25-7">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">def</span> belief_axes(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> <span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">list</span>[<span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">str</span>]:</span>
+<span id="cb25-8">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">return</span> [<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"leakage"</span>]</span>
+<span id="cb25-9"></span>
+<span id="cb25-10">    <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">def</span> run(<span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">self</span>, df, sink) <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">-&gt;</span> <span class="va" style="color: #111111;
+background-color: null;
+font-style: inherit;">None</span>:</span>
+<span id="cb25-11">        <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">for</span> col <span class="kw" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">in</span> df.column_names():</span>
+<span id="cb25-12">            <span class="cf" style="color: #003B4F;
+background-color: null;
+font-style: inherit;">if</span> col.startswith((<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"total_"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"last_pymnt_"</span>, <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"recoveries"</span>)):</span>
+<span id="cb25-13">                sink.emit(<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"error"</span>,</span>
+<span id="cb25-14">                          <span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">f"`</span><span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">{</span>col<span class="sc" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">}</span><span class="ss" style="color: #20794D;
+background-color: null;
+font-style: inherit;">` matches a post-origination naming pattern"</span>,</span>
+<span id="cb25-15">                          column<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>col, sample_size<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>df.n_rows)</span>
+<span id="cb25-16"></span>
+<span id="cb25-17">report <span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span> cjc_locke.validate(</span>
+<span id="cb25-18">    {<span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"loan_amnt"</span>: [...], <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"total_pymnt"</span>: [...], <span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"dti"</span>: [...]},</span>
+<span id="cb25-19">    label<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span><span class="st" style="color: #20794D;
+background-color: null;
+font-style: inherit;">"my-loans"</span>,</span>
+<span id="cb25-20">    custom_detectors<span class="op" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;">=</span>[PostOriginationByName()],</span>
+<span id="cb25-21">)</span>
+<span id="cb25-22"></span>
+<span id="cb25-23"><span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(report.severity_counts)   <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># {'info': ..., 'notice': ..., 'warning': ..., 'error': ...}</span></span>
+<span id="cb25-24"><span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(report.finding_codes())   <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># ['E9001', 'E9500', ...]</span></span>
+<span id="cb25-25"><span class="bu" style="color: null;
+background-color: null;
+font-style: inherit;">print</span>(report.to_json())         <span class="co" style="color: #5E5E5E;
+background-color: null;
+font-style: inherit;"># canonical, byte-deterministic</span></span></code></pre></div>
+</section>
+<section id="known-follow-ups-for-v0.1.3-v0.9" class="level3">
+<h3 class="anchored" data-anchor-id="known-follow-ups-for-v0.1.3-v0.9">Known follow-ups for v0.1.3 / v0.9</h3>
+<p>Two cosmetic Python issues caught during post-publish verification:</p>
+<ol type="1">
+<li><strong>Stale <code>__version__</code> constant.</strong> <code>python/src/lib.rs</code> hardcodes <code>m.add("__version__", "0.1.0")?</code> — <code>cjc_locke.__version__</code> reports <code>"0.1.0"</code> regardless of the actual wheel version. The <code>__rust_crate_version__</code> field uses <code>env!("CARGO_PKG_VERSION")</code> and reports correctly. One-line fix.</li>
+<li><strong>NumPy probe panic</strong> when numpy isn’t installed. PyO3’s <code>value.extract::&lt;PyReadonlyArray1&lt;f64&gt;&gt;()</code> invokes numpy’s lazy init even for non-numpy inputs; the bridge needs either a hard dep on numpy or a <code>py.import("numpy").is_ok()</code> guard. The <code>[numpy]</code> extra in <code>pyproject.toml</code> works around this for typical use.</li>
+</ol>
+<p>And two <code>cjc-data</code> follow-ups that this session surfaced but didn’t fix:</p>
+<ol start="3" type="1">
+<li><strong>RFC-4180 quoted-string support</strong> in <code>cjc-data::CsvReader</code>. The third gap from §6.4 lives here.</li>
+<li><strong>A pre-existing <code>tests/test_cjc_v0_1_hardening.rs</code> path bug</strong> on Linux/macOS — inline <code>mod unit { #[path = "../..."] mod foo; }</code> resolves the relative path against the module name, not the file location. Master CI has been red on Linux/macOS Test Suite for some time as a result. Unrelated to v0.8 but worth fixing.</li>
+</ol>
+</section>
+<section id="total-session-footprint" class="level3">
+<h3 class="anchored" data-anchor-id="total-session-footprint">Total session footprint</h3>
+<table class="table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<tbody>
+<tr class="odd">
+<td>Commits on the PR</td>
+<td>5 (handoff + LC demo + AUC follow-up + ADR-0041 + ADR-0042 + release bump)</td>
+</tr>
+<tr class="even">
+<td>ADRs</td>
+<td>2</td>
+</tr>
+<tr class="odd">
+<td>Rust crates published</td>
+<td>25 (workspace <code>0.1.10 → 0.1.11</code>)</td>
+</tr>
+<tr class="even">
+<td>Python wheels published</td>
+<td>1 (<code>cjc-locke 0.1.2</code> on PyPI)</td>
+</tr>
+<tr class="odd">
+<td>New tests</td>
+<td>71 (45 from ADR-0041 + 26 from ADR-0042)</td>
+</tr>
+<tr class="even">
+<td><code>cjc-locke</code> lib tests</td>
+<td>408 → <strong>435</strong> (+27, zero regressions)</td>
+</tr>
+<tr class="odd">
+<td><code>tests/locke</code> integration</td>
+<td>277 → <strong>305</strong> (+28, zero regressions)</td>
+</tr>
+<tr class="even">
+<td>Python pytest</td>
+<td>0 → <strong>14</strong> new</td>
+</tr>
+<tr class="odd">
+<td>LC demo wall (full dataset)</td>
+<td>~9 minutes</td>
+</tr>
+<tr class="even">
+<td>LC demo determinism</td>
+<td>byte-identical JSON across runs</td>
+</tr>
+<tr class="odd">
+<td>Workspace test wall</td>
+<td>~13 seconds for the locke integration suite</td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="reflections-on-a-discovery-driven-session" class="level2">
+<h2 class="anchored" data-anchor-id="reflections-on-a-discovery-driven-session">8. Reflections on a discovery-driven session</h2>
+<p>Two patterns recurred, and they’re both worth banking for the next session.</p>
+<p><strong>The handoff was directionally right, magnitude-wrong, and the magnitude error was load-bearing.</strong> The handoff predicted payment streams would hit <code>|AUC| ≥ 0.95</code> (E9060). They hit <code>[0.5, 0.85)</code> instead — <em>individually</em>. Jointly, they’re still leaky, but Locke’s per-feature heuristic can’t see jointly-leaky-but-individually-modest signals. The handoff also predicted E9070 would fire on the joint columns — it would have, eventually, but the detector wasn’t actually wired in. Both of these gaps look superficially like “the tool failed”; both turned out to be “the tool surfaced the wrong magnitude, which forced an honest measurement, which forced an architectural response.” That cascade is the point.</p>
+<p><strong>Default-on backward-incompatible additions are the right call when the gap <em>is</em> the feature.</strong> Both ADR-0042 fixes default to ON (<code>auto_promote_str_to_float = true</code>, <code>detect_conditional_missingness</code> always invoked). v0.7 reports are no longer byte-identical to v0.8 reports for affected inputs. I considered defaulting OFF for backward compatibility; the argument that won was that <em>a flag that’s off by default doesn’t fix the gap for users who don’t know it exists</em>. The user with strict v0.7 byte-identity requirements can opt out; the user who didn’t realize their joint columns were silently bypassed gets the fix automatically. The structural defense — every existing snapshot test in the workspace passes with default-on enabled, because no test had constructed a “sentinel-rich-first-row” Str column — vindicated the choice.</p>
+<p>The deeper lesson is about what kind of tool Locke is becoming. It started as an <em>opinionated</em> validator with built-in detectors and a belief algebra. v0.8 turns it into a <em>configurable</em> validator where the opinionated baseline is still the default <em>and</em> the team’s domain knowledge composes with it on equal footing. The Python <code>CustomDetector</code> ABC is the surface analysts will touch most. The custom-detector findings sit in the same JSON, contribute to the same belief axes under the same meet-semilattice algebra, and survive the same byte-identity determinism contract. The discovery-cascade in this session is what shaped the API: I wouldn’t have designed <code>BeliefAxisSet</code>, <code>FindingSink</code>, the structural-determinism Python bridge, or the <code>working_df</code> pattern if I’d tried to specify them upfront.</p>
+<p>Project B (NYC Taxi) is queued next. With auto-promotion in place, the streaming numeric drift detectors should actually fire on Parquet-loaded data without manual type coercion. We’ll see what gaps <em>that</em> surfaces.</p>
+<hr>
+<p><em>The code, tests, ADRs, expected_findings fixture, and cross_validate measurements live in <a href="https://github.com/AdamEzzat1/CJC/pull/18">PR #18 on GitHub</a>. Pull <code>cjc-locke = "0.1.11"</code> from crates.io or <code>pip install cjc-locke==0.1.2</code> from PyPI to reproduce. Issues, design-decision pushback, and “Locke’s threshold should be X not Y on this dataset” findings are welcome.</em></p>
+
+
+</section>
+
+ ]]></description>
+  <category>CJC-Lang</category>
+  <category>Locke</category>
+  <category>data-quality</category>
+  <category>validation</category>
+  <category>leakage</category>
+  <category>LendingClub</category>
+  <category>credit-risk</category>
+  <category>determinism</category>
+  <category>Python</category>
+  <category>release</category>
+  <guid>https://adamezzat1.github.io/blog/posts/locke-v0.8-lendingclub-and-the-three-gaps/index.html</guid>
+  <pubDate>Tue, 02 Jun 2026 07:00:00 GMT</pubDate>
+</item>
 <item>
   <title>Validating UCI Adult with Three Tools: What Locke Catches Out-of-the-Box That Pandera and Great Expectations Don’t</title>
   <dc:creator>Adam Ezzat</dc:creator>
@@ -23526,301 +26143,6 @@ font-style: inherit;">cjcl</span> repl</span></code></pre></div>
   <category>scientific-computing</category>
   <guid>https://adamezzat1.github.io/blog/posts/cjc-v0.1-released/index.html</guid>
   <pubDate>Sat, 28 Mar 2026 07:00:00 GMT</pubDate>
-</item>
-<item>
-  <title>Neural Networks in CJC-Lang: From MLPs to Attention, Without a Framework</title>
-  <dc:creator>Adam Ezzat</dc:creator>
-  <link>https://adamezzat1.github.io/blog/posts/neural-networks-in-cjc/index.html</link>
-  <description><![CDATA[ 
-
-
-
-<div class="reading-time">
-🕑 ~15 min read
-</div>
-<p>In the <a href="../../../blog/posts/introducing-cjc/index.html">previous post</a>, I introduced CJC-Lang and the design decisions behind its determinism guarantees. This post goes deeper into one specific question: <strong>can you build real neural network architectures in a language with no ML framework?</strong></p>
-<p>The answer is yes — and the determinism makes verification straightforward. Every architecture below has been implemented in pure CJC-Lang, run through both execution engines, and verified with assertions. Same seed, same output, every time.</p>
-<hr>
-<section id="feedforward-mlp-multi-layer-perceptron" class="level2">
-<h2 class="anchored" data-anchor-id="feedforward-mlp-multi-layer-perceptron">Feedforward MLP (Multi-Layer Perceptron)</h2>
-<p>The most fundamental architecture — and the building block for everything else. CJC-Lang expresses neural networks as struct-based layers with explicit weight tensors:</p>
-<pre><code>struct Layer {
-    weights: Tensor,
-    bias: Tensor
-}
-
-fn forward(layer: Layer, input: Tensor) -&gt; Tensor {
-    matmul(input, layer.weights) |&gt; add_bias(layer.bias)
-}
-
-fn relu_scalar(x: f64) -&gt; f64 {
-    if x &gt; 0.0 { return x; }
-    return 0.0;
-}
-
-let x = Tensor.from_vec([1.0, 2.0, 3.0], [1, 3]);
-
-let layer1 = Layer {
-    weights: Tensor.from_vec(
-        [0.1, 0.2, -0.1, 0.3,
-         0.4, -0.2, 0.1, 0.5,
-        -0.3, 0.1, 0.2, -0.1], [3, 4]),
-    bias: Tensor.from_vec([0.1, -0.1, 0.05, 0.0], [1, 4])
-};
-
-let layer2 = Layer {
-    weights: Tensor.from_vec(
-        [0.2, -0.3, 0.1, 0.4,
-        -0.2, 0.1, 0.3, -0.1], [4, 2]),
-    bias: Tensor.from_vec([0.0, 0.1], [1, 2])
-};
-
-let h = forward(layer1, x);
-let h_relu = relu_1x4(h);
-let out = forward(layer2, h_relu);
-print("Network output:", out);</code></pre>
-<p>Every weight is a plain <code>Tensor</code> you can inspect, serialize with <code>snap_hash()</code>, and verify for bit-identity across runs. The pipe operator (<code>|&gt;</code>) makes the data flow explicit. There’s no hidden state behind a class — the math is transparent.</p>
-<p>The benchmarks push this further: a <strong>50-layer deep network</strong> (width 64, batch 4) and a <strong>10-layer wide network</strong> (width 256, batch 16) are tested with <code>snap_hash()</code> checkpoints every few layers. Both produce identical hashes across runs, verifying that even deep forward passes through random weight matrices stay deterministic.</p>
-<hr>
-</section>
-<section id="reinforce-policy-network-reinforcement-learning" class="level2">
-<h2 class="anchored" data-anchor-id="reinforce-policy-network-reinforcement-learning">REINFORCE Policy Network (Reinforcement Learning)</h2>
-<p>The chess RL benchmark implements a full policy gradient agent in pure CJC-Lang — not a toy example, but an agent that plays chess, selects moves via softmax sampling, and updates weights via REINFORCE.</p>
-<div class="cell" data-fig-width="7">
-<div class="cell-output-display">
-<div>
-<div>
-<pre class="mermaid mermaid-js">flowchart LR
-    B["Board 64sq\n+ Move from/to"] --&gt; F["Features\n[1, 66]"] --&gt; H["Hidden\nW₁ [66,16] + b₁\nReLU"] --&gt; S["Score\nW₂ [16,1]"] --&gt; A["Softmax\n→ Sample"]
-</pre>
-</div>
-<p>REINFORCE policy network for chess. Board state and move coordinates flow through a hidden layer to produce action probabilities.</p>
-</div>
-</div>
-</div>
-<div class="callout callout-style-simple callout-note no-icon callout-titled" title="Full REINFORCE forward pass and action selection code">
-<div class="callout-header d-flex align-content-center" data-bs-toggle="collapse" data-bs-target=".callout-1-contents" aria-controls="callout-1" aria-expanded="false" aria-label="Toggle callout">
-<div class="callout-icon-container">
-<i class="callout-icon no-icon"></i>
-</div>
-<div class="callout-title-container flex-fill">
-Full REINFORCE forward pass and action selection code
-</div>
-<div class="callout-btn-toggle d-inline-block border-0 py-1 ps-1 pe-0 float-end"><i class="callout-toggle"></i></div>
-</div>
-<div id="callout-1" class="callout-1-contents callout-collapse collapse">
-<div class="callout-body-container callout-body">
-<pre><code>fn forward_move(W1: Tensor, b1: Tensor, W2: Tensor,
-                board_features: Tensor, from_sq: i64, to_sq: i64) -&gt; Any {
-    let feat_data = [];
-    let i = 0;
-    while i &lt; 64 {
-        feat_data = array_push(feat_data, board_features.get([0, i]));
-        i = i + 1;
-    }
-    feat_data = array_push(feat_data, float(from_sq) / 63.0);
-    feat_data = array_push(feat_data, float(to_sq) / 63.0);
-    let input = Tensor.from_vec(feat_data, [1, 66]);
-
-    let hidden = (matmul(input, W1) + b1).relu();
-    let score_t = matmul(hidden, W2);
-    [score_t.get([0, 0])]
-}
-
-fn select_action(W1: Tensor, b1: Tensor, W2: Tensor,
-                 board_features: Tensor, moves: Any) -&gt; Any {
-    let num_moves = len(moves) / 2;
-    let scores = [];
-    let i = 0;
-    while i &lt; num_moves {
-        let result = forward_move(W1, b1, W2, board_features,
-                                  moves[i * 2], moves[i * 2 + 1]);
-        scores = array_push(scores, result[0]);
-        i = i + 1;
-    }
-    let scores_t = Tensor.from_vec(scores, [num_moves]);
-    let probs = scores_t.softmax();
-    let action_idx = categorical_sample(probs);
-    let log_prob = log(probs.get([action_idx]));
-    [float(action_idx), log_prob, float(num_moves)]
-}</code></pre>
-</div>
-</div>
-</div>
-<p>This is a complete RL pipeline — feature construction, forward pass, softmax action selection, log-probability tracking, and gradient computation — written entirely in CJC-Lang. The agent manually computes <code>d(log_prob)/d(theta)</code> through softmax, ReLU, and matmul.</p>
-<p>The key property: <code>categorical_sample()</code> uses CJC-Lang’s seeded SplitMix64 RNG, and the softmax goes through Kahan summation. Running <code>cjcl run chess_agent.cjcl --seed 42</code> produces the exact same game, moves, and weight updates every time. 69 tests verify the chess RL pipeline end-to-end.</p>
-<hr>
-</section>
-<section id="physics-informed-neural-network-pinn" class="level2">
-<h2 class="anchored" data-anchor-id="physics-informed-neural-network-pinn">Physics-Informed Neural Network (PINN)</h2>
-<p>CJC-Lang’s AD engine supports PINNs — neural networks that learn to satisfy differential equations, not just fit data. This is where determinism isn’t just convenient — it’s scientifically necessary.</p>
-<div class="cell" data-fig-width="7">
-<div class="cell-output-display">
-<div>
-<div>
-<pre class="mermaid mermaid-js">flowchart TB
-    X["Position x"] --&gt; N["MLP [1 → 32 → 32 → 1]\ntanh activation"] --&gt; U["Prediction u_hat"]
-    U --&gt; DL["Data Loss\nMSE"]
-    U --&gt; PL["Physics Loss\nu_xx + u ≈ 0"]
-    U --&gt; BL["Boundary Loss\nu(0)=0, u(pi)=0"]
-    DL --&gt; T["Total Loss"]
-    PL --&gt; T
-    BL --&gt; T
-    T -.-&gt;|"Adam optimizer"| N
-</pre>
-</div>
-<p>PINN for the harmonic oscillator. The composite loss combines data fitting, PDE residual, and boundary conditions.</p>
-</div>
-</div>
-</div>
-<p>The harmonic oscillator example uses a <code>[1, 32, 32, 1]</code> MLP with tanh activation trained to solve <code>u_xx + u = 0</code>:</p>
-<ul>
-<li><strong>Data loss</strong>: MSE against observed points (optionally noisy)</li>
-<li><strong>Physics loss</strong>: the PDE residual <code>u_xx + u</code> computed via finite differences through the network, penalized toward zero</li>
-<li><strong>Boundary loss</strong>: <code>u(0)</code> and <code>u(π)</code> enforced to match known boundary conditions</li>
-<li><strong>Optimizer</strong>: Adam with learning rate scheduling</li>
-</ul>
-<p>The exact solution is <code>sin(x)</code>, and the trained network converges to it with verified L2 error below tolerance.</p>
-<p>When you’re claiming a network satisfies a PDE, you need to reproduce the training run exactly to verify the claim. CJC-Lang’s deterministic AD engine, seeded RNG, and Kahan-summed loss computations mean the verification is airtight. The test suite trains the same PINN twice with seed 42 and asserts that every parameter is bit-identical using <code>to_bits()</code> comparison on the raw IEEE 754 representation. No other ML framework provides this guarantee without significant configuration overhead.</p>
-<hr>
-</section>
-<section id="physics-informed-ml-piml" class="level2">
-<h2 class="anchored" data-anchor-id="physics-informed-ml-piml">Physics-Informed ML (PIML)</h2>
-<p>A simpler but equally rigorous approach: polynomial regression with a physics residual penalty, applied to the 1D heat equation <code>u_xx = f(x)</code>.</p>
-<p>The model learns polynomial coefficients that simultaneously fit noisy observations and satisfy the PDE. Boundary conditions are enforced through weighted penalty terms. The exact solution is <code>sin(πx)</code>, and the optimized polynomial converges to it.</p>
-<hr>
-</section>
-<section id="convolutional-neural-networks-cnn" class="level2">
-<h2 class="anchored" data-anchor-id="convolutional-neural-networks-cnn">Convolutional Neural Networks (CNN)</h2>
-<p>CJC-Lang’s tensor runtime includes native 1D and 2D convolution, maxpooling, and the full pipeline for building convolutional architectures.</p>
-<div class="cell" data-fig-width="7">
-<div class="cell-output-display">
-<div>
-<div>
-<pre class="mermaid mermaid-js">flowchart LR
-    I["Input\n[4,3,28,28]"] --&gt; C["Conv2D\n32 filters 3x3"] --&gt; R["ReLU"] --&gt; BN["BatchNorm"] --&gt; MP["MaxPool2D\n2x2"] --&gt; O["Output\n[4,32,13,13]"]
-</pre>
-</div>
-<p>CNN pipeline in CJC-Lang. Native conv2d, ReLU, batch normalization, and maxpooling — all deterministic.</p>
-</div>
-</div>
-</div>
-<pre><code>// 2D convolution: batch of images through learned filters
-let input = Tensor.randn([4, 3, 28, 28]);   // batch=4, channels=3, 28x28
-let filters = Tensor.randn([32, 3, 3, 3]);  // 32 output channels, 3x3 kernel
-let bias = Tensor.zeros([32]);
-let conv_out = input.conv2d(filters, bias, 1);   // -&gt; [4, 32, 26, 26]
-
-// Activation + normalization + pooling
-let activated = conv_out.relu();
-let pooled = activated.maxpool2d(2, 2);          // -&gt; [4, 32, 13, 13]</code></pre>
-<p>CJC-Lang also supports 1D convolution with circular padding (<code>conv1d_circular</code>) for signal processing, and the full set of CNN building blocks: <code>batch_norm</code>, <code>dropout_mask</code>, arbitrary strides, and multi-channel operations.</p>
-<hr>
-</section>
-<section id="attention-mechanism-transformer-building-block" class="level2">
-<h2 class="anchored" data-anchor-id="attention-mechanism-transformer-building-block">Attention Mechanism (Transformer Building Block)</h2>
-<p>Scaled dot-product attention — the core primitive of transformer architectures — is implemented as a native tensor operation.</p>
-<div class="cell" data-fig-width="7">
-<div class="cell-output-display">
-<div>
-<div>
-<pre class="mermaid mermaid-js">flowchart LR
-    Q["Q [batch, seq, d_k]"] --&gt; MM["Q · K^T"]
-    K["K [batch, seq, d_k]"] --&gt; MM
-    MM --&gt; SC["÷ sqrt(d_k)"] --&gt; SM["Softmax"] --&gt; MV["× V"]
-    V["V [batch, seq, d_k]"] --&gt; MV
-    MV --&gt; O["Output\n[batch, seq, d_k]"]
-</pre>
-</div>
-<p>Scaled dot-product attention — softmax(QK^T / sqrt(d_k)) * V — as a single native CJC-Lang operation.</p>
-</div>
-</div>
-</div>
-<pre><code>// Scaled dot-product attention: softmax(Q @ K^T / sqrt(d_k)) @ V
-let Q = Tensor.randn([2, 8, 64]);   // [batch, seq_len, d_k]
-let K = Tensor.randn([2, 8, 64]);
-let V = Tensor.randn([2, 8, 64]);
-let output = attention(Q, K, V);      // -&gt; [2, 8, 64]</code></pre>
-<p>This computes <code>softmax(QK^T / sqrt(d_k)) * V</code> with batch matrix multiplication and deterministic softmax. It’s the core primitive you’d need to build transformer-style architectures.</p>
-<hr>
-</section>
-<section id="deep-network-stress-tests" class="level2">
-<h2 class="anchored" data-anchor-id="deep-network-stress-tests">Deep Network Stress Tests</h2>
-<p>Beyond the architecture-specific examples above, CJC-Lang includes benchmark programs that push forward passes to realistic scale:</p>
-<table class="table">
-<colgroup>
-<col style="width: 26%">
-<col style="width: 16%">
-<col style="width: 16%">
-<col style="width: 16%">
-<col style="width: 23%">
-</colgroup>
-<thead>
-<tr class="header">
-<th>Benchmark</th>
-<th>Depth</th>
-<th>Width</th>
-<th>Batch</th>
-<th>Verified</th>
-</tr>
-</thead>
-<tbody>
-<tr class="odd">
-<td><code>bench_nn_deep</code></td>
-<td>50 layers</td>
-<td>64</td>
-<td>4</td>
-<td>Bit-identical via <code>snap_hash</code></td>
-</tr>
-<tr class="even">
-<td><code>bench_nn_wide</code></td>
-<td>10 layers</td>
-<td>256</td>
-<td>16</td>
-<td>Bit-identical via <code>snap_hash</code></td>
-</tr>
-</tbody>
-</table>
-<p>Both benchmarks insert <code>snap_hash()</code> checkpoints every few layers, producing cryptographic hashes of intermediate activations. Running twice with <code>--seed 42</code> produces identical hashes at every checkpoint — proving that determinism holds through deep chains of matmul, bias, ReLU, and normalization.</p>
-<hr>
-</section>
-<section id="what-this-proves" class="level2">
-<h2 class="anchored" data-anchor-id="what-this-proves">What This Proves</h2>
-<p>These aren’t theoretical capabilities. Each architecture has been implemented, run through both execution engines, and verified with assertions:</p>
-<ul>
-<li>The <strong>REINFORCE agent</strong> plays chess (69 tests verify the full pipeline)</li>
-<li>The <strong>PINN</strong> converges to the analytical solution of a differential equation</li>
-<li>The <strong>CNN</strong> processes real 4D tensor shapes with convolution, pooling, and batch normalization</li>
-<li>The <strong>attention mechanism</strong> handles batched multi-sequence inputs</li>
-<li>The <strong>deep network benchmarks</strong> verify hash-level determinism through 50 sequential layers</li>
-</ul>
-<p>All of them produce identical results across runs. In CJC-Lang, that’s not an opt-in mode — it’s how computation works.</p>
-<hr>
-<p>If you haven’t read the introduction to CJC-Lang and the design decisions behind the language, start with <a href="../../../blog/posts/introducing-cjc/index.html">Introducing CJC-Lang</a>.</p>
-<p>Next up: I’ll write about what it took to build a dual-engine compiler pipeline in Rust — and the design decisions that made parity testing between an AST interpreter and a register machine actually tractable.</p>
-<div class="callout callout-style-simple callout-tip no-icon callout-titled">
-<div class="callout-header d-flex align-content-center">
-<div class="callout-icon-container">
-<i class="callout-icon no-icon"></i>
-</div>
-<div class="callout-title-container flex-fill">
-Follow the project
-</div>
-</div>
-<div class="callout-body-container callout-body">
-<p>CJC-Lang is open source and under active development. Follow <a href="https://linkedin.com/in/adamezzat"><span class="citation" data-cites="adamezzat">@adamezzat</span></a> for updates as new features land.</p>
-</div>
-</div>
-
-
-</section>
-
- ]]></description>
-  <category>CJC-Lang</category>
-  <category>neural-networks</category>
-  <category>scientific-computing</category>
-  <guid>https://adamezzat1.github.io/blog/posts/neural-networks-in-cjc/index.html</guid>
-  <pubDate>Sun, 22 Mar 2026 07:00:00 GMT</pubDate>
 </item>
 </channel>
 </rss>

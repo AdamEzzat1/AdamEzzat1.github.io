@@ -1,0 +1,901 @@
+---
+title: "Locke v0.8: A LendingClub Demo, an Honest Model, and the Three Gaps the Audit Found"
+subtitle: "Built the first real Locke demo on the full 2.26M-row LendingClub 2007–2018 dataset. The audit's surprises forced two ADRs — a custom-detector extension layer (ADR-0041) so analyst domain knowledge becomes composable Locke configuration, and a Str-to-Float auto-promotion + E9070 wiring fix (ADR-0042) that closes a silent-skip gap on numeric columns mis-typed by CSV readers. The 4-way honest-model AUC measurement is the headline: pre-Locke `|AUC| = 0.9993`, Locke-filtered `0.9995`, Locke + custom detector `0.7388`, hand-curated domain-honest `0.7394`. The custom detector closes the gap inside Locke configuration, within 0.0006 of the hand-curated baseline. Shipped as `cjc-locke v0.1.11` on crates.io and `cjc-locke v0.1.2` on PyPI."
+author: "Adam Ezzat"
+date: "2026-06-02"
+date-modified: "2026-06-02"
+categories: [CJC-Lang, Locke, data-quality, validation, leakage, LendingClub, credit-risk, determinism, Python, release]
+description: "A field report on building Locke's first end-to-end demo on real production-scale data. The LendingClub 2007–2018 leakage audit's honest-model AUC measurement (the 4-way logistic-regression comparison) revealed that Locke's built-in |AUC|≥0.85 leakage heuristic catches the strongest signals but not all of them. That finding drove two ADRs in the same session — a custom-detector extension layer that lets analysts encode domain knowledge as first-class Locke configuration with structural determinism that survives the Python boundary, and a Str-to-Float auto-promotion fix that unblocks three detector families on numeric columns CSV readers mis-type. Five commits, two ADRs, 71 new tests, 25 Rust crates + a Python wheel published. The discovery-driven nature of the work — each step uncovering the next gap — is the secondary headline."
+---
+
+<div class="reading-time">&#128337; ~38 min read</div>
+
+<div class="stats-row">
+<div class="stat"><span class="number">2.26M</span><span class="stat-label">rows audited</span></div>
+<div class="stat"><span class="number">0.7388</span><span class="stat-label">honest-model |AUC| with custom det.</span></div>
+<div class="stat"><span class="number">1879</span><span class="stat-label">E9070 firings after v0.8 wiring</span></div>
+<div class="stat"><span class="number">71</span><span class="stat-label">new tests, all passing</span></div>
+</div>
+
+::: {.callout-tip appearance="minimal"}
+## TL;DR
+A single session against the full Kaggle [`wordsforthewise/lending-club`](https://www.kaggle.com/datasets/wordsforthewise/lending-club) snapshot (~2.26M loans, 151 columns) produced:
+
+- **A working end-to-end LC demo** with byte-identical determinism — two 8-minute runs over the 1.6 GB decompressed CSV produce SHA-256-matching 469 KB JSON reports.
+- **An honest finding about Locke's own value**: the built-in `|AUC| ≥ 0.85` leakage heuristic (E9061) catches the strongest signals (`last_fico_range_low/high`, `total_rec_prncp` — *not* the columns the audit-design exercise predicted) but not all of them. A 3-way logistic regression on the binarized frame: removing only E9061-flagged columns leaves `|AUC| = 0.9995` essentially unchanged from the naive `0.9993`. Only removing the 12-column hand-curated domain post-origination list collapses AUC to `0.7394` — squarely in the Bao et al. (2019) credit-risk literature band.
+- **ADR-0041, the custom-detector extension layer**: a new `CustomDetector` trait + `FindingSink` + `BeliefAxisSet`, code namespace `E9500..=E9999`, belief-axis routing for the meet-semilattice algebra, plus a Python bridge whose determinism contract is **structural** rather than behavioural — proven by an emission-shuffle proptest. The LC re-measurement: a 30-LOC `PostOriginationByNameDetector` flags 39 columns by name pattern; the honest-model harness reads the report's `E9500 ∪ E9061` columns as exclusion set; resulting `|AUC| = 0.7388` lands **within 0.0006 of the hand-curated domain-honest baseline**.
+- **ADR-0042, Str-to-Float auto-promotion + E9070 wiring**: closes a silent-skip gap on numeric columns CSV readers mis-type as `Str`. The investigation revealed *two* gaps in one ADR — auto-promotion AND a missing call site for `detect_conditional_missingness`, which had been defined and unit-tested in v0.6.4 but never invoked from `validate_dataframe`. LC post-fix: `E9009 × 22` auto-promoted columns, `E9070 × 1879` firings (was zero pre-v0.8). A third gap (CSV quoted-string handling) was discovered, scoped, and deferred.
+- **A release**: `cjc-locke v0.1.11` on [crates.io](https://crates.io/crates/cjc-locke/0.1.11) (alongside 24 sibling crates), `cjc-locke v0.1.2` on [PyPI](https://pypi.org/project/cjc-locke/0.1.2/).
+
+The secondary headline is the discovery cascade: each step in the session surfaced the gap the next step closed. The handoff predicted X; Locke found Y; Y didn't match the honest model; the architectural response is ADR-0041; preparing for the *next* demo surfaced ADR-0042's gap; both shipped in the same release.
+:::
+
+::: {.callout-warning}
+## Prototype disclaimer
+Locke and CJC-Lang remain research-stage prototypes. The numbers below are one reproducible engineering campaign — five commits on a single PR, every chain head verifiable — not a validated benchmark, not deployed at production scale, not peer-reviewed. The four-way AUC comparison is on a 200K-row subsample with a single seed; full-dataset and multi-seed work is queued. Read as honest exploratory engineering on a real but bounded dataset.
+:::
+
+::: {.callout-note}
+## Where this sits in the Locke series
+- [Locke v0.1.10: An Epistemic Layer for Data Validation](../cjc-locke-v0.1-released/index.qmd) — the framing post. Determinism, content-addressed findings, belief-score algebra, side-by-side with Great Expectations.
+- [Diabetes-130 Revisited with Locke](../abng-diabetes-revisited-with-locke/index.qmd) — Locke + ABNG on medical data. The handoff's "Locke prune → AUC up" hypothesis falsified itself; Locke's contribution turned out to be structural (a patient-encounter leakage hole, a `?`-sentinel detector gap proposal).
+- **This post** — Locke against real consumer-credit data at scale, the audit's honest-model AUC test, and the two ADRs the audit forced into the v0.8 release.
+:::
+
+## 1. The brief
+
+The session started with a handoff document I'd drafted earlier under a different worktree. The document specified two demos to ship — **Project A**: LendingClub leakage audit (the "fits in RAM, 2-minute iteration loop" demo); **Project B**: NYC Taxi 2019–2020 pandemic drift (the "streaming, 30-minute sweep, thermal observability" demo). The intent was that together they'd cover all four Locke value claims: numerical rigor, determinism, thermal control, memory efficiency. Separately each covers two.
+
+This post is exclusively about Project A — but the *reason* we hit two ADRs is that Project A's findings made Project B's blockers visible.
+
+The Project A spec, condensed:
+
+| Field                  | Value                                                     |
+| ---------------------- | --------------------------------------------------------- |
+| Dataset                | Kaggle `wordsforthewise/lending-club`, accepted-loans CSV |
+| Size                   | ~600 MB compressed → ~1.6 GB raw → 2.26M rows × 151 cols  |
+| Source target          | `loan_status` (multi-class)                               |
+| Derived binary target  | `target_default` (Charged Off ∪ Default = 1; Fully Paid = 0; other rows dropped) |
+| Locke entry point      | `cjc-locke::api::validate` + `detect_target_leakage` + `detect_id_like_columns` |
+| Determinism contract   | Two runs → byte-identical JSON output                     |
+| Compute budget         | <2 min per iteration (laptop)                             |
+
+The handoff itself was opinionated about what would fire. From handoff §3.3, "E-codes expected to fire":
+
+> **E9060** | Error | `total_pymnt`, `total_rec_int`, `last_pymnt_amnt`, `recoveries`, `collection_recovery_fee` | AUC ≥ 0.95 against `loan_status` (`charged_off` vs `fully_paid`)
+>
+> **E9061** | Warning | `out_prncp`, `total_pymnt_inv` | AUC in [0.85, 0.95]
+
+That prediction is the first thing the demo would refute.
+
+## 2. Building the demo: the boring parts that have to work
+
+I'll keep this short because the audit findings are the interesting bit, but the foundation deserves a note. Three engineering decisions in the demo scaffolding compounded:
+
+**Workspace member, not standalone.** `demos/lendingclub/` is a workspace member with `publish = false`. Three workspace deps (`cjc-data`, `cjc-locke`, `flate2`) plus standard Cargo conventions. The crate has both a `[lib]` (testable helpers) and two `[[bin]]` entries (the main demo and an `honest_model` evaluator I'll describe below).
+
+**Library + thin binary split.** `src/lib.rs` exposes `load_csv_gz`, `binarize_loan_status`, `run_locke_audit`, and the helper types. `src/main.rs` is a CLI argument parser around them. The integration test in `tests/expected_findings.rs` and the unit tests in `src/lib.rs` exercise the helpers without ever touching the 600 MB CSV. Eight library unit tests passed before I downloaded any data.
+
+**Binarization as a row filter + new column.** `binarize_loan_status` classifies each `loan_status` string via:
+
+```rust
+pub fn classify_status(raw: &str) -> Option<bool> {
+    match raw.trim() {
+        "Charged Off" | "Default" => Some(true),
+        "Fully Paid" => Some(false),
+        _ => None,
+    }
+}
+```
+
+`None` drops the row. `Some(b)` is appended to a new `Column::Bool` named `target_default`. This makes `cjc-locke::leakage::detect_target_leakage`'s binary-target requirement satisfied without modifying Locke's contract. The function's signature is also a contract: any future status not in the match drops out cleanly. Out of 2.26M rows loaded, **1,325,938 reach a terminal outcome** — 58.7% of the dataset.
+
+**Determinism verified by hash, not by intuition.** Two demo runs of `cargo run -p lendingclub-demo` over the identical CSV produce identical 469 KB JSON reports. SHA-256 match across runs. The Rust side has it from construction; the demo is the integration verification.
+
+The total scaffolding came in at ~290 lines of library code + ~150 lines of CLI binary + ~270 lines of unit + integration tests. The tests caught two mistakes during writing — an `ImpossibleValueRule` constructor I assumed existed that didn't (it's an enum variant, not a function), and a non-exhaustive `Column` match (I forgot `Categorical { .. }`, `CategoricalAdaptive(_)`, and `DateTime(_)` exist). Compile-fail discipline is its own dividend.
+
+## 3. The audit, and the first surprise
+
+A full-dataset audit produces an 8-9 minute wall time, dominated by the Locke audit phase (~437 s on 1.32M binarized rows × 152 cols). The summary the demo's CLI prints:
+
+```
+[load] 1597.5 MB decompressed, 2260701 rows × 151 cols, 52.2s
+[derive] kept 1325938 rows × 152 cols, 27.50s
+[locke] running validate() + detect_target_leakage + detect_id_like_columns
+[locke] 577 findings (40 error, 104 warning, 289 notice, 144 info), 437.90s
+[locke] findings by code:
+        E9001 × 55
+        E9002 × 10
+        E9007 × 47
+        E9008 × 55
+        ...
+        E9061 × 3
+        E9072 × 2
+        ...
+```
+
+The headline result wasn't the run time. It was the E9061 column set.
+
+### The handoff said X. The data said Y.
+
+I'd told the handoff E9061 (suspicious target leakage, `|AUC|` in `[0.85, 0.95]`) would fire on `out_prncp` and `total_pymnt_inv` — *partial* signals of the payment streams. E9060 (the strong-leakage code, `|AUC| ≥ 0.95`) would fire on the payment streams proper.
+
+What actually fired:
+
+| Code  | Column                  | `\|AUC\|` |
+| ----- | ----------------------- | ------- |
+| E9061 | `last_fico_range_high`  | 0.9162  |
+| E9061 | `last_fico_range_low`   | 0.9284  |
+| E9061 | `total_rec_prncp`       | 0.8675  |
+
+`E9060` — the "near-deterministic" leakage code at the `|AUC| ≥ 0.95` threshold — **fired zero times**. Every post-origination column the handoff named landed *below* the 0.85 threshold and produced no finding at all (E9061 is `continue` in the loop, not an `Info`-severity ack).
+
+The top two signals were `last_fico_range_high` and `last_fico_range_low` — the borrower's last credit-bureau refresh, recorded *after* the loan exists. The handoff hadn't predicted those columns. It had predicted total payment amounts.
+
+The retrospective interpretation is sensible: payment amounts are dominated by loan size and term duration; their distributional spread under both terminal outcomes overlaps significantly, dragging AUC down to the sub-threshold band. The borrower's *post-loan* FICO score, by contrast, collapses sharply when the loan is charged off (delinquency reports update the bureau record), so the FICO refresh column carries a much cleaner separation signal.
+
+**Locke disagreed with the analyst, and Locke was right.** This is the first finding worth banking: not "Locke caught what the analyst predicted" but "Locke surfaced something the analyst's reasoning missed." A tool that updates the analyst's priors is more valuable than one that confirms them.
+
+### Other useful surprises in the same run
+
+- `E9072` (ID-like cardinality, `distinct / n_rows ≥ 0.95`) fired on `id` (the loan key, expected) AND on `url` (unexpected, but the LC URL embeds the loan ID — so it inherits the cardinality). `member_id` did *not* fire because the same member can hold multiple loans.
+- `E9001` (high missingness) fired on the joint-application column set (`annual_inc_joint`, `dti_joint`, `verification_status_joint`) at ~85% missingness, matching the empirical ratio of individual-to-joint loans.
+- `E9008` (auto-detected string sentinel) fired on `emp_length` for `"n/a"` and on the joint columns for `""`.
+
+But it also under-fired in two ways the handoff *had* anticipated, and getting those right matters for the rest of the post:
+
+- `E9008` did **not** fire on `term` despite its leading-space `" 36 months"` format. The detector matches against `BUILTIN_STRING_SENTINELS` exactly (`""`, `"?"`, `"NA"`, etc.) — leading whitespace on a domain-meaningful value isn't a sentinel by Locke's definition. The handoff's prediction here conflated "sentinel" with "formatting artifact."
+- `E9070` (conditional missingness on `(A, B)` pairs) did **not** fire on the joint columns — a real gap that would later turn out to be *two* gaps. We come back to this in §5.
+
+The empirical fixture I committed (`expected_findings.json`) was calibrated against measured reality, not the handoff's predictions. The doc-vs-data divergence is itself the artifact: a future contributor reading the fixture sees the predictions that didn't pan out and the empirical replacement.
+
+## 4. The honest-model AUC follow-up: the gut punch
+
+The cross-validation file (`cross_validate.md`) in the demo had a `TBD` row labeled "honest-model AUC". The literature for similar credit-risk feature spaces (Tsai & Wu 2008, Bao et al. 2019, FICO score in isolation) puts the achievable AUC on pre-origination features in the **0.69 – 0.74** band. The optional follow-up was to actually measure it: train a logistic regression on the binarized frame with and without leakage columns, and confirm the post-Locke variant lands in the literature band.
+
+### What was available in cjc-runtime
+
+This is one of the moments where having the underlying language stack pays off. The four primitives needed already existed:
+
+```rust
+// From cjc-runtime
+pub fn logistic_regression(x_flat: &[f64], y: &[f64], n: usize, p: usize) -> Result<LogisticResult, String>;
+pub fn auc_roc(scores: &[f64], labels: &[bool]) -> Result<f64, String>;
+pub fn train_test_split(n: usize, test_fraction: f64, seed: u64) -> (Vec<usize>, Vec<usize>);
+pub fn z_score(data: &[f64]) -> Result<Vec<f64>, String>;
+```
+
+`logistic_regression` is IRLS (Iteratively Reweighted Least Squares) with the intercept auto-added. `auc_roc` is the trapezoidal ROC integration with `f64::total_cmp` tie-breaking — deterministic. `train_test_split` uses a seeded Fisher-Yates shuffle. `z_score` does Kahan-summed mean + standard deviation.
+
+That covers everything needed for a deterministic tabular-ML evaluator. The demo's `honest_model` binary is ~300 LOC of Rust orchestrating these primitives:
+
+```rust
+// Pseudocode, not the actual source.
+let (raw_df, _) = load_csv_gz(input, Some(load_cap))?;
+let df = binarize_loan_status(raw_df)?;
+let sample_indices: Vec<usize> = (0..actual_sample).collect();
+let (train_local, test_local) = train_test_split(sample_indices.len(), test_fraction, seed);
+
+for (label, exclusion_set) in [
+    ("pre-Locke (naive)", vec![]),                                  // 87 cols
+    ("Locke-filtered",     LOCKE_E9061_COLUMNS.to_vec()),           // 84 cols (–3)
+    ("domain-honest",      DOMAIN_POST_ORIGINATION_COLUMNS.to_vec()), // 75 cols (–12)
+] {
+    let (names, columns) = select_numeric_columns(&df, &full_excludes);
+    let (names, columns) = drop_useless_columns(names, columns);
+    // Per-column: fit mean/std on train only; apply to train + test.
+    // No information leak across the split.
+    let logreg = logistic_regression(&x_train_flat, &y_train, n_train, p)?;
+    let eta = score_logistic(&logreg.coefficients, &x_test_flat, n_test, p);
+    let auc = auc_roc(&eta, &y_test_bool)?;
+    // ...
+}
+```
+
+The deliberate constraints: 200K-row stratified subsample (because IRLS at full n × p² is slow), seed = 42 fixed, 70/30 train/test split, z-score normalization fit on train only.
+
+### The three-way comparison
+
+```text
+=== Summary ===
+variant                     |AUC|    n_train     n_test          p
+pre-Locke (naive)          0.9993     140000      60000         87
+Locke-filtered             0.9995     140000      60000         84
+domain-honest              0.7394     140000      60000         75
+```
+
+**Pre-Locke (the naive model).** 87 numeric columns; only the target column itself and the two ID columns excluded. Test `|AUC| = 0.9993`. IRLS hits the iteration cap of 100 without converging. The model is catastrophically over-fit via leakage — but more interestingly, the *exact* form of catastrophe is the post-origination columns moving together as a multicollinear cluster. The `X^T W X` matrix in IRLS becomes near-singular; Newton steps stop converging.
+
+**Locke-filtered (E9061 only).** Same setup minus `last_fico_range_high`, `last_fico_range_low`, `total_rec_prncp` — the three columns Locke flagged at `|AUC| ≥ 0.85`. Test `|AUC| = 0.9995`. *Essentially unchanged* from naive. IRLS still hits the iteration cap.
+
+**Domain-honest (data dictionary).** Same setup minus the full handoff §3.3 post-origination list: 12 columns covering payment streams, recoveries, outstanding principal, and the last-refreshed FICO. Test `|AUC| = 0.7394`. IRLS converges cleanly in 14 iterations.
+
+The headline three-way table prints in the binary's CLI output and lands in `cross_validate.md` §3.1.
+
+### The finding
+
+Locke's `|AUC| ≥ 0.85` heuristic catches the *strongest* leakage but not all of it. The columns that survive the Locke filter (`total_pymnt`, `out_prncp`, `total_pymnt_inv`, `last_pymnt_amnt`, `recoveries`, etc.) carry enough leakage signal *jointly* to keep the model's AUC inflated. Removing them — via the domain-knowledge list — is what actually collapses AUC into the honest band.
+
+**This is not a bug in Locke.** Locke's per-feature ROC AUC computation is correct. The post-origination columns are leaky; their individual AUCs are merely in `[0.5, 0.85)` because each carries a noisy signal that happens to align with a sibling column. The detector's threshold is doing what it was designed to do — fire on individually-strong signals. The architectural question is whether Locke should also detect *jointly*-strong-but-individually-weak leakage. v0.8 doesn't change that.
+
+What v0.8 *does* change is the framing of Locke's value claim.
+
+The naive framing is "Locke catches leakage." That doesn't survive contact with the LC follow-up. The Locke-filtered AUC stays at 0.9995. A reviewer who tried this would conclude the tool failed.
+
+The honest framing is "**Locke shows you where to look; the analyst applies domain triage**." That survives the LC follow-up because the data shows exactly that. `last_fico_range_high` jumping out at `|AUC| 0.94` is the analyst's cue to ask: *is this column recorded before or after the loan?* The answer (after) implies a fuller exclusion list — the kind of list `DOMAIN_POST_ORIGINATION_COLUMNS` encodes. Without Locke, the analyst might never have realized the last-refreshed FICO range was post-origination at all.
+
+But that framing implies a missing piece: the analyst's domain triage has nowhere to live *inside* Locke. It lives in their own code, as a separate exclusion list maintained per project. The triage doesn't compose with the belief algebra, doesn't get fingerprinted, doesn't show up in the canonical JSON, doesn't get caught by regression gates if the domain knowledge changes.
+
+That gap is what ADR-0041 closes.
+
+## 5. ADR-0041: The Custom Detector Extension Layer
+
+The architectural decision is in [`ADR-0041`](https://github.com/AdamEzzat1/CJC/blob/master/CJC-Lang_Obsidian_Vault/13_ADRs/ADR-0041%20Locke%20v0.8%20%E2%80%94%20Custom%20Detector%20Extension%20Layer.md). The brief is:
+
+::: {.callout-note appearance="minimal"}
+**Goal.** Let analysts encode domain checks as first-class Locke detectors that share the same finding format, belief composition, and determinism guarantees as the built-ins — without diluting the opinionated baseline or opening the determinism contract.
+
+**Non-goal.** Become Great Expectations. Locke is a determinism-first belief-aware auditor; GE is a test framework. The custom-detector layer extends Locke's vocabulary, not its identity.
+:::
+
+The trait shape, after several iterations:
+
+```rust
+pub trait CustomDetector: Send + Sync + std::fmt::Debug {
+    /// E-code in E9500..=E9999. Validated at registration; codes
+    /// outside this range produce a CustomDetectorError and the
+    /// detector is silently skipped at run.
+    fn code(&self) -> &'static str;
+
+    /// Which belief axes this detector's findings affect.
+    fn belief_axes(&self) -> BeliefAxisSet;
+
+    fn name(&self) -> &str { self.code() }
+
+    fn run(&self, df: &DataFrame, sink: &mut FindingSink);
+}
+```
+
+Three architectural decisions deserve unpacking.
+
+### 5.1 Code namespace `E9500..=E9999`
+
+Locke's built-in codes occupy `E9001..=E9112`. The custom range starts safely above them and leaves 500 slots, with the upper 4000 reserved for future framework use. Reading a report, you can always tell which findings came from Locke's opinionated baseline (E9xxx with `xxx < 9500`) versus a team's custom rules (`xxx >= 9500`).
+
+The validator `validate_custom_code(&str) -> Result<u32, CustomDetectorError>` is the single point of truth. Both the Rust-side registration and the Python bridge call it, so error messages are uniform. Codes outside the namespace are rejected at registration time (not at run time, which would be a footgun) with a clear `CustomDetectorError::CodeOutOfNamespace { code, reason }`. The result type is exposed so callers can inspect rejection reasons without trying to parse error strings.
+
+### 5.2 `FindingSink` as the only emission surface
+
+The sink is the restricted finding-emission surface. `emit()` is the only mutation method:
+
+```rust
+pub fn emit(
+    &mut self,
+    severity: FindingSeverity,
+    message: impl Into<String>,
+    column: Option<String>,
+    row_range: Option<(usize, usize)>,
+    evidence: Vec<FindingEvidence>,
+    sample_size: u64,
+) -> usize;
+```
+
+All canonicalization (fingerprint composition, byte ordering) happens inside `emit`. The detector cannot construct findings directly. This is what makes determinism a *structural* guarantee rather than a *trust* contract — you can't write a non-deterministic custom detector that produces non-deterministic output, even if you try. The sink also rejects two cases:
+
+- **Empty message.** A finding without a message is unhelpful; rejected with `CustomDetectorError::EmptyMessage`.
+- **Non-`Info` severity from an axes-empty detector.** A detector that declared `BeliefAxisSet::NONE` produces findings that affect no belief score (advisory-only). Allowing it to emit Warning- or Error-severity findings would be a self-contradiction — the finding would appear in the report but couldn't drag the score. Rejected with `CustomDetectorError::NonAdvisoryAxesEmpty`.
+
+Both errors are *recorded*, not raised. The detector's `run()` continues; the framework drains the errors after `run()` returns and surfaces them in `LockeReport.assumptions`.
+
+### 5.3 Belief-axis routing via `BeliefAxisSet`
+
+The 8 Locke belief axes (schema, missingness, drift, leakage, lineage, sample, duplication, constraint) are represented as a `u16` bitset:
+
+```rust
+pub struct BeliefAxisSet(pub u16);
+
+impl BeliefAxisSet {
+    pub const SCHEMA: Self      = Self(1 << 0);
+    pub const MISSINGNESS: Self = Self(1 << 1);
+    pub const DRIFT: Self       = Self(1 << 2);
+    pub const LEAKAGE: Self     = Self(1 << 3);
+    // ...
+    pub const NONE: Self        = Self(0);
+}
+```
+
+When the framework runs a custom detector, it records the detector's declared axes in a new field on `LockeReport`:
+
+```rust
+pub struct LockeReport {
+    // ... existing fields ...
+    pub custom_axis_assignments: BTreeMap<String, BeliefAxisSet>,
+}
+```
+
+The belief composition (the meet-semilattice algebra over `(BeliefScore, meet, ⊤=[1,...,1])` from [ADR-0036](../cjc-locke-v0.1-released/index.qmd#composing-evidence-across-stages-v07)) gets one new closure:
+
+```rust
+let custom_contains = |code: &str, axis: BeliefAxisSet| -> bool {
+    report.custom_axis_assignments
+        .get(code)
+        .map(|axes| axes.contains(axis))
+        .unwrap_or(false)
+};
+```
+
+Then each per-axis filter ORs the existing built-in code matchers with a `custom_contains(code, AXIS)` check. Built-in codes still match by name; custom codes match by their declared axes. No restructuring of the algebra was needed — the closure-based filter pattern in `penalty_from_findings_with_model` extends cleanly.
+
+The empty-map default is byte-identical to pre-v0.8 belief composition when no custom detectors are registered.
+
+### 5.4 The Python bridge: structural determinism across the FFI boundary
+
+The most architecturally interesting piece is the Python side. The naive PyO3 approach — give Python a mutable reference to the Rust `FindingSink` — runs into lifetime restrictions (`#[pyclass]` can't hold borrowed references that might outlive the Python object). The path I took is a two-staged collector:
+
+```rust
+#[pyclass(name = "CustomDetectorSink", module = "cjc_locke")]
+struct PyDetectorSink {
+    pending: Vec<PyEmittedFinding>,
+    code: String,
+    axes_empty: bool,
+    last_error: Option<String>,
+}
+```
+
+The Python detector's `run(df, sink)` receives a `PyDetectorSink` it can call `emit(...)` on; the `emit` pushes into `pending` but does NOT yet construct a canonical `ValidationFinding`. After Python's `run()` returns, the Rust adapter drains `pending` into the real Rust `FindingSink`:
+
+```rust
+impl CustomDetector for PyCustomDetectorAdapter {
+    fn run(&self, df: &DataFrame, sink: &mut FindingSink) {
+        Python::with_gil(|py| {
+            let view = Py::new(py, PyDetectorDataFrame { inner: Arc::new(df.clone()) })?;
+            let py_sink = Py::new(py, PyDetectorSink { /* ... */ })?;
+            self.instance.bind(py).call_method1("run", (view, py_sink.clone_ref(py)))?;
+            // Drain pending emissions into the Rust sink. Canonicalization
+            // happens at the Rust-side emit call.
+            for emission in py_sink.bind(py).borrow().pending.clone() {
+                sink.emit(emission.severity, emission.message, emission.column, /* ... */);
+            }
+        });
+    }
+}
+```
+
+This is the architectural sleight-of-hand: **the framework canonicalizes the Python detector's findings on the Rust side after Python returns**. The user-supplied Python code can be as non-deterministic as it wants — `random.shuffle`, `set` iteration, `dict` order from `PYTHONHASHSEED` — and the framework still produces byte-identical reports across runs as long as the *set* of findings is the same.
+
+This is provable. The pytest in `python/tests/test_custom_detectors.py`:
+
+```python
+class _ShuffleEmissionDetector(cjc_locke.CustomDetector):
+    """Emits findings in a randomised order each run."""
+    def __init__(self, seed: int):
+        self._rng = random.Random(seed)
+
+    def code(self): return "E9502"
+    def belief_axes(self): return ["leakage"]
+
+    def run(self, df, sink):
+        names = list(df.column_names())
+        self._rng.shuffle(names)            # explicit non-determinism
+        for n in names:
+            sink.emit("warning", f"shuffle finding on `{n}`",
+                      column=n, sample_size=df.n_rows)
+
+
+def test_determinism_under_emission_shuffle(lc_like_data):
+    d1 = _ShuffleEmissionDetector(seed=1)
+    d2 = _ShuffleEmissionDetector(seed=2)   # different shuffle seed
+    r1 = cjc_locke.validate(lc_like_data, custom_detectors=[d1])
+    r2 = cjc_locke.validate(lc_like_data, custom_detectors=[d2])
+    assert r1.to_json() == r2.to_json()     # byte-identical
+```
+
+This is the credibility-anchor test for the whole Python bridge. The detector emits findings in a `random.Random`-shuffled order each call — two different shuffle seeds in two different runs — and the resulting JSON output is byte-identical. The framework's canonical sort on the Rust side masks Python's emission order entirely.
+
+Without this property, "Locke determinism survives the Python boundary" would be a brittle promise. With it, it's a structural guarantee.
+
+The data path that makes that work:
+
+```{mermaid}
+sequenceDiagram
+    autonumber
+    participant Py as Python user code
+    participant Sink as PyDetectorSink<br/>(collector)
+    participant Adapter as PyCustomDetectorAdapter<br/>(implements Rust trait)
+    participant Rust as Rust FindingSink
+    participant Report as LockeReport JSON
+
+    Note over Py: Free to use random.shuffle,<br/>set iter, dict order
+    Py->>Sink: sink.emit("warning", msg₁, ...)
+    Py->>Sink: sink.emit("warning", msg₃, ...)
+    Py->>Sink: sink.emit("warning", msg₂, ...)
+    Note over Sink: pending = [f₁, f₃, f₂]<br/>non-canonical order
+    Py-->>Adapter: run() returns
+    Adapter->>Rust: drain pending → emit each
+    Note over Rust: canonical fingerprint<br/>per finding
+    Rust->>Report: findings.sort_by(sort_key)
+    Note over Report: byte-identical across runs,<br/>regardless of Python order
+```
+
+The "non-canonical order" → "canonical sort" transition is the structural fix. The user is free to emit in whatever order they like; the framework reorders before the bytes leave Rust.
+
+### 5.5 The Python ABC
+
+The Python facade is intentionally small. Three methods, no metaclass magic:
+
+```python
+class CustomDetector:
+    """Base class for user-defined Locke detectors (ADR-0041)."""
+
+    def code(self) -> str:
+        raise NotImplementedError(...)
+
+    def belief_axes(self) -> List[str]:
+        # Names from {schema, missingness, drift, leakage, lineage,
+        # sample, duplication, constraint}. Empty list = advisory-only.
+        raise NotImplementedError(...)
+
+    def run(self, df, sink) -> None:
+        raise NotImplementedError(...)
+```
+
+A working detector subclass is ~10 lines:
+
+```python
+class PostOriginationByName(cjc_locke.CustomDetector):
+    def code(self) -> str:
+        return "E9500"
+
+    def belief_axes(self) -> list[str]:
+        return ["leakage"]
+
+    def run(self, df, sink) -> None:
+        for col in df.column_names():
+            if col.startswith(("total_", "last_pymnt_", "recoveries")):
+                sink.emit("error",
+                          f"`{col}` matches a post-origination naming pattern",
+                          column=col, sample_size=df.n_rows)
+```
+
+Wiring it into a validate call:
+
+```python
+report = cjc_locke.validate(
+    data,
+    label="lc",
+    custom_detectors=[PostOriginationByName()],
+)
+```
+
+Axis names cross the boundary as strings. Unknown names (e.g. `"nonsense"`) raise `ValueError` at registration — the underlying `BeliefAxisSet::from_names` returns a structured `Err` which the bridge converts to a `PyValueError`.
+
+### 5.6 The 4-way LC re-measurement
+
+The reason the layer exists is to close the LC gap. The Rust-side reference implementation is in the demo crate itself (`demos/lendingclub/src/lib.rs`):
+
+```rust
+#[derive(Debug, Default)]
+pub struct PostOriginationByNameDetector;
+
+impl PostOriginationByNameDetector {
+    pub fn is_post_origination(name: &str) -> bool {
+        const PREFIX_PATTERNS: &[&str] = &[
+            "total_", "last_pymnt_", "last_fico_range_",
+            "out_prncp", "debt_settlement_",
+            "hardship_", "settlement_",
+        ];
+        const EXACT_PATTERNS: &[&str] = &[
+            "recoveries", "collection_recovery_fee", "debt_settlement_flag",
+        ];
+        EXACT_PATTERNS.iter().any(|p| *p == name)
+            || PREFIX_PATTERNS.iter().any(|p| name.starts_with(p))
+    }
+}
+
+impl cjc_locke::custom_detector::CustomDetector for PostOriginationByNameDetector {
+    fn code(&self) -> &'static str { "E9500" }
+    fn belief_axes(&self) -> BeliefAxisSet { BeliefAxisSet::LEAKAGE }
+    fn run(&self, df: &DataFrame, sink: &mut FindingSink) {
+        for (name, _col) in &df.columns {
+            if Self::is_post_origination(name) {
+                sink.emit(
+                    FindingSeverity::Error,
+                    format!("column `{}` matches a known post-origination naming pattern", name),
+                    Some(name.clone()),
+                    None,
+                    vec![],
+                    df.nrows() as u64,
+                );
+            }
+        }
+    }
+}
+```
+
+The CLI gets a `--use-custom-detectors` flag that wires this detector into `ValidateOptions::custom_detectors`. On the full LC dataset:
+
+> `E9500 × 39` — the custom detector fires 39 times, flagging 39 columns by name.
+
+The honest-model harness gets a `--from-report <path>` flag that reads the report JSON, extracts every column with an E9500 *or* E9061 finding, and uses that as the exclusion set for a fourth model variant.
+
+The four-way result, same 200K-row sample, same seed=42:
+
+```text
+=== Summary ===
+variant                     |AUC|    n_train     n_test          p   iter
+pre-Locke (naive)          0.9993     140000      60000         87    100
+Locke-filtered             0.9995     140000      60000         84    100
+Locke + custom det.        0.7388     140000      60000         68     17  ← closes the gap inside Locke
+domain-honest              0.7394     140000      60000         75     14
+```
+
+<figure style="margin: 2em 0;">
+<svg viewBox="0 0 720 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Bar chart of the four-way honest-model AUC results">
+  <!-- Title -->
+  <text x="360" y="22" text-anchor="middle" font-size="15" font-weight="600" fill="currentColor">Honest-model |AUC| — four-way comparison</text>
+  <text x="360" y="40" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.7">200K-row LendingClub sample, seed=42, test fraction 0.3</text>
+
+  <!-- Plot area: x 80-700, y 70-310 (height 240 = AUC of 1.0) -->
+  <!-- Literature band 0.69–0.74 → y 226.4 to 238.4 -->
+  <rect x="80" y="226.4" width="620" height="12" fill="#2d8b50" opacity="0.12"/>
+  <text x="694" y="234" text-anchor="end" font-size="10" fill="currentColor" opacity="0.65">literature band 0.69–0.74</text>
+
+  <!-- Y axis ticks at 0.0, 0.2, 0.4, 0.6, 0.8, 1.0 -->
+  <line x1="80" y1="70" x2="80" y2="310" stroke="currentColor" stroke-opacity="0.4"/>
+  <line x1="80" y1="310" x2="700" y2="310" stroke="currentColor" stroke-opacity="0.4"/>
+  <line x1="75" y1="70" x2="80" y2="70" stroke="currentColor" stroke-opacity="0.4"/>
+  <text x="70" y="74" text-anchor="end" font-size="10" fill="currentColor">1.0</text>
+  <line x1="75" y1="118" x2="80" y2="118" stroke="currentColor" stroke-opacity="0.4"/>
+  <text x="70" y="122" text-anchor="end" font-size="10" fill="currentColor">0.8</text>
+  <line x1="75" y1="166" x2="80" y2="166" stroke="currentColor" stroke-opacity="0.4"/>
+  <text x="70" y="170" text-anchor="end" font-size="10" fill="currentColor">0.6</text>
+  <line x1="75" y1="214" x2="80" y2="214" stroke="currentColor" stroke-opacity="0.4"/>
+  <text x="70" y="218" text-anchor="end" font-size="10" fill="currentColor">0.4</text>
+  <line x1="75" y1="262" x2="80" y2="262" stroke="currentColor" stroke-opacity="0.4"/>
+  <text x="70" y="266" text-anchor="end" font-size="10" fill="currentColor">0.2</text>
+  <line x1="75" y1="310" x2="80" y2="310" stroke="currentColor" stroke-opacity="0.4"/>
+  <text x="70" y="314" text-anchor="end" font-size="10" fill="currentColor">0.0</text>
+
+  <!-- Bars: width 110, x positions 110, 270, 430, 590; bar height = AUC * 240 -->
+  <!-- Pre-Locke 0.9993 → height 239.83 → y 70.17 -->
+  <rect x="110" y="70.17" width="110" height="239.83" fill="#c1432d"/>
+  <text x="165" y="62" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor">0.9993</text>
+  <text x="165" y="332" text-anchor="middle" font-size="11" fill="currentColor">Pre-Locke (naive)</text>
+  <text x="165" y="346" text-anchor="middle" font-size="9" fill="currentColor" opacity="0.7">p=87, iter=100 cap</text>
+
+  <!-- Locke-filtered 0.9995 → height 239.88 → y 70.12 -->
+  <rect x="270" y="70.12" width="110" height="239.88" fill="#c1432d"/>
+  <text x="325" y="62" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor">0.9995</text>
+  <text x="325" y="332" text-anchor="middle" font-size="11" fill="currentColor">Locke-filtered</text>
+  <text x="325" y="346" text-anchor="middle" font-size="9" fill="currentColor" opacity="0.7">E9061 only, p=84</text>
+
+  <!-- Locke + custom 0.7388 → height 177.31 → y 132.69 -->
+  <rect x="430" y="132.69" width="110" height="177.31" fill="#2d8b50"/>
+  <text x="485" y="125" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor">0.7388</text>
+  <text x="485" y="332" text-anchor="middle" font-size="11" fill="currentColor">Locke + custom det.</text>
+  <text x="485" y="346" text-anchor="middle" font-size="9" fill="currentColor" opacity="0.7">E9500 ∪ E9061, p=68</text>
+
+  <!-- Domain-honest 0.7394 → height 177.46 → y 132.54 -->
+  <rect x="590" y="132.54" width="110" height="177.46" fill="#2d8b50"/>
+  <text x="645" y="125" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor">0.7394</text>
+  <text x="645" y="332" text-anchor="middle" font-size="11" fill="currentColor">Domain-honest</text>
+  <text x="645" y="346" text-anchor="middle" font-size="9" fill="currentColor" opacity="0.7">hand-curated, p=75</text>
+
+  <!-- Bracket connecting bars 3 and 4 with the "0.0006 gap" annotation -->
+  <line x1="485" y1="115" x2="485" y2="105" stroke="currentColor" stroke-opacity="0.5"/>
+  <line x1="485" y1="105" x2="645" y2="105" stroke="currentColor" stroke-opacity="0.5"/>
+  <line x1="645" y1="105" x2="645" y2="115" stroke="currentColor" stroke-opacity="0.5"/>
+  <text x="565" y="98" text-anchor="middle" font-size="10" fill="currentColor" opacity="0.8" font-style="italic">|Δ| = 0.0006</text>
+</svg>
+<figcaption style="text-align: center; font-size: 0.9em; opacity: 0.85; margin-top: 0.4em;">
+The custom detector (bar #3) recovers the honest credit-risk baseline (bar #4) inside Locke configuration. Bars #1 and #2 are inflated by leakage; bars #3 and #4 land within 0.0006 of each other, both inside the published credit-risk literature band of 0.69–0.74.
+</figcaption>
+</figure>
+
+**`Locke + custom det.` at `|AUC| = 0.7388` lands within 0.0006 of the hand-curated `domain-honest` baseline at `0.7394`.** The custom detector recovered honest credit-risk performance entirely *inside* Locke configuration — using a ~30-LOC detector to encode the same domain knowledge that previously lived as a separate hard-coded exclusion list in the modeling code.
+
+Two further notes on this table:
+
+- **The custom-detector variant uses FEWER features (68 vs 75).** It's *more* aggressive about exclusion (39 columns flagged vs the handoff's 12, because the custom detector catches `sec_app_*`, `hardship_*`, `settlement_*` etc. that the handoff's list didn't anticipate). And yet it achieves essentially the same AUC. That's empirical evidence the extra exclusions weren't carrying useful signal — the custom detector is at least as conservative as expert curation.
+- **IRLS convergence speed is a real diagnostic.** The leaky models hit the 100-iter cap because the multicollinear post-origination cluster makes `X^T W X` near-singular. The honest variants both converge in 14–17 iterations because removing that cluster conditions the matrix well. Convergence speed is a proxy for "how well did the exclusion set capture the multicollinear leakage subspace" — and Locke + custom converged in 17 iters, comparable to domain-honest's 14.
+
+### 5.7 Tests, in three columns
+
+| Layer                  | File                                                  | Tests | Kind                                        |
+| ---------------------- | ----------------------------------------------------- | ----- | ------------------------------------------- |
+| Rust unit              | `crates/cjc-locke/src/custom_detector.rs`             | 15    | Trait, sink, namespace, axis set            |
+| Rust integration       | `tests/locke/custom_detector_tests.rs`                | 14    | End-to-end + 3 proptest + 3 bolero fuzz     |
+| Python end-to-end      | `python/tests/test_custom_detectors.py`               | 14    | Registration, sink contract, emission shuffle |
+| Demo                   | `demos/lendingclub/src/lib.rs` (in-module)            | 2     | Pattern detector smoke tests                |
+| **Total new**          |                                                       | **45** |                                            |
+
+The integration test file leans on a `NameMatchDetector` helper plus `ProptestDetector` plus `ShuffleEmissionDetector` — three detector subclasses that exercise different aspects of the trait. Three of the integration tests are bolero fuzz tests that exercise the registration namespace validator (`validate_custom_code`) and the emit input validation under arbitrary byte sequences. None of the fuzz inputs panic; either the input is valid (no error recorded) or it's invalid (error recorded, no finding constructed). Determinism is also exercised in the Rust proptest: random axes + emit count + arbitrary DataFrame → byte-identical JSON across runs.
+
+Workspace test totals after ADR-0041 alone: `cjc-locke` lib passes 423 (was 408, +15); `tests/locke` integration passes 291 (was 277, +14); zero regressions in pre-existing tests.
+
+## 6. ADR-0042: The Str-with-sentinels gap (which turned out to be two gaps)
+
+The ADR-0041 retrospective in `cross_validate.md` ended with a "Suggested Locke adjustments" section. The first item:
+
+> **Str-with-sentinels columns silently bypass three detectors** (E9070 conditional missingness, E9039 numeric drift, E9050+ temporal). The CSV reader infers a column as `Str` if the first row has empty/sentinel values. Once typed `Str`, the column carries the sentinel string instead of NaN, and the Float-only detectors skip it. `annual_inc_joint` is the canonical example — logically numeric, but the reader sees `""` in row 1 and types it `Str`.
+
+The intent was to address it before Project B (NYC Taxi), where every drift-detection scenario depends on Float typing. The investigation surfaced something the brief hadn't anticipated.
+
+### 6.1 Gap one: type inference from the first data row
+
+`cjc-data::CsvReader` types each column from its first data row only. For `annual_inc_joint`, the first row's value is `""` (empty string — the loan was an individual application, not joint). `infer_type("")` returns `InferredType::Str`. Once the column is `Str`, every subsequent numeric value (`"100000"`, `"50000.0"`, etc.) gets stored as a string. Downstream Float-only detectors skip the column.
+
+The fix lives in a new module `crates/cjc-locke/src/auto_promote.rs`. Each `Str` column is scanned and each value classified as:
+
+- **Sentinel** — matches the existing `BUILTIN_STRING_SENTINELS` (`""`, `"?"`, `"NA"`, `"N/A"`, `"NULL"`, `"null"`, `"nan"`, `"NaN"`, `"None"`, `"-"`) or `cfg.additional_sentinels`.
+- **Parseable** — `str::parse::<f64>()` succeeds. Accepts integer and float literals, including scientific notation (`1.5e-3`).
+- **Other** — text, malformed numbers, anything else.
+
+A column is **promoted** when:
+
+- `non_sentinel_rows >= cfg.min_non_sentinel_rows_for_promotion` (default 10), AND
+- `n_parseable / non_sentinel >= cfg.min_parseable_fraction_for_promotion` (default 0.80).
+
+Promoted columns are rebuilt as `Column::Float` where sentinels and unparseable values become `NaN`. Each emits one `E9009` (`Info` severity) finding with full evidence (counts, fraction).
+
+```rust
+pub fn auto_promote_str_columns(
+    df: &DataFrame,
+    cfg: &ValidationConfig,
+) -> (Option<DataFrame>, Vec<ValidationFinding>);
+```
+
+The `Option<DataFrame>` return is the zero-allocation no-op path: if no column qualifies, returns `None` and the caller uses the original DataFrame without any clone cost. The wiring in `api::validate` is the `working_df` pattern:
+
+```rust
+let (maybe_promoted_df, promo_findings) =
+    crate::auto_promote::auto_promote_str_columns(df, &opts.config);
+let working_df: &DataFrame = maybe_promoted_df.as_ref().unwrap_or(df);
+
+let mut findings = validate_dataframe(working_df, ...);
+findings.extend(promo_findings);
+// All downstream detectors + column reports + custom detectors use working_df.
+```
+
+The report's `input.column_types` reflects post-promotion types, so JSON consumers see the right view. The default `auto_promote_str_to_float = true` was the deliberate choice — a flag that's off by default doesn't fix the gap for users who don't know it exists.
+
+### 6.2 Gap two: E9070 was defined but never invoked
+
+Here's where the investigation got interesting. After adding the auto-promotion, I ran the LC demo with promotion enabled. E9070 (conditional missingness) didn't fire. Promotion was working — column types changed, joint columns were `Float`, NaN positions were correct — but E9070 stayed at zero.
+
+The cause was simpler and more embarrassing than the typing fix:
+
+```bash
+$ grep -n "detect_conditional_missingness\b" crates/cjc-locke/src/validation.rs
+1425:pub fn detect_conditional_missingness(
+2398:    let r = detect_conditional_missingness(&df, ...);  # inside a unit test
+2420:    let r = detect_conditional_missingness(&df, ...);  # inside a unit test
+2771:    let r = detect_conditional_missingness(            # inside a unit test
+```
+
+`detect_conditional_missingness` was defined, exported, unit-tested. But the call site inside `validate_dataframe` — the function that orchestrates the actual validation pipeline — never invoked it. The detector had been silently zero-firing for everyone, on every input, since v0.6.4. The unit tests that exercised it caught the function's own behavior; they didn't catch the missing wire.
+
+The fix is one `out.extend(...)` line:
+
+```rust
+out.extend(detect_missingness(df, cfg, &effective_masks));
+out.extend(detect_conditional_missingness(   // <-- new
+    df,
+    &ConditionalMissingnessConfig::default(),
+    &effective_masks,
+));
+out.extend(detect_duplicates_full_row(df, cfg));
+```
+
+The detector honors `effective_masks` (the merged caller + auto-sentinel mask map), so it works for both Float-NaN columns and Str-with-mask columns. The opt-out path — disable auto-promotion via `ValidationConfig::auto_promote_str_to_float = false` — still fires E9070 via the sentinel-mask path. Both code paths produce findings; the auto-promotion makes them more numerous and the per-column missingness rates cleaner.
+
+### 6.3 The real LC measurement post-fix
+
+Re-running `lendingclub_demo` on the full 2.26M-row CSV with v0.8 enabled:
+
+| Code   | Pre-v0.8 (2026-06-01)     | Post-v0.8 (2026-06-02)    | What changed |
+| ------ | ------------------------- | ------------------------- | ------------ |
+| E9008  | 55                        | 33                        | Some Str cols promoted; E9009 supersedes E9008 for those |
+| E9009  | not implemented           | **22**                    | Auto-promoted columns |
+| E9070  | **0** (silently never invoked) | **1879**             | Now fires across ~54 unique columns |
+| E9001  | 55                        | 55                        | unchanged |
+| E9061  | 3                         | 3                         | unchanged |
+| E9072  | 2                         | 2                         | unchanged |
+| total  | 577                       | 2421                      | mostly E9070 + a few E9009 + E9024/E9040 ticks |
+
+<figure style="margin: 2em 0;">
+<svg viewBox="0 0 720 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Horizontal bar chart of LC finding counts that changed between pre-v0.8 and post-v0.8">
+  <!-- Title -->
+  <text x="360" y="22" text-anchor="middle" font-size="15" font-weight="600" fill="currentColor">LC finding counts that changed across v0.7 → v0.8</text>
+  <text x="360" y="40" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.7">Full 2.26M-row dataset; codes unchanged across the release omitted</text>
+
+  <!-- Legend -->
+  <rect x="480" y="56" width="14" height="10" fill="#9ca3af"/>
+  <text x="498" y="65" font-size="11" fill="currentColor">pre-v0.8</text>
+  <rect x="568" y="56" width="14" height="10" fill="#2d6db5"/>
+  <text x="586" y="65" font-size="11" fill="currentColor">post-v0.8 (ADR-0042)</text>
+
+  <!-- Plot area: x label column 0-150, bars start at 160, end at 700 (540px wide) -->
+  <!-- Max value 1879; scale: 1px = 3.479 counts -->
+  <!-- Pre and post bars stacked vertically per row (height 13 each, 2px gap) -->
+
+  <!-- ===== Row 1: E9008 (55 → 33, decreased) ===== -->
+  <text x="150" y="100" text-anchor="end" font-size="13" font-weight="600" fill="currentColor">E9008</text>
+  <text x="150" y="116" text-anchor="end" font-size="10" fill="currentColor" opacity="0.65">sentinel</text>
+  <rect x="160" y="92" width="15.81" height="13" fill="#9ca3af"/>
+  <text x="181" y="103" font-size="11" fill="currentColor">55</text>
+  <rect x="160" y="107" width="9.49" height="13" fill="#2d6db5"/>
+  <text x="175" y="118" font-size="11" fill="currentColor">33 (–22)</text>
+
+  <!-- ===== Row 2: E9009 (0 → 22, NEW) ===== -->
+  <text x="150" y="158" text-anchor="end" font-size="13" font-weight="600" fill="currentColor">E9009</text>
+  <text x="150" y="174" text-anchor="end" font-size="10" fill="currentColor" opacity="0.65">promotion</text>
+  <text x="160" y="160" font-size="11" fill="currentColor" opacity="0.55">— (not implemented)</text>
+  <rect x="160" y="165" width="6.32" height="13" fill="#2d6db5"/>
+  <text x="171" y="176" font-size="11" fill="currentColor">22 (new)</text>
+
+  <!-- ===== Row 3: E9070 (0 → 1879, NEW + dominant) ===== -->
+  <text x="150" y="222" text-anchor="end" font-size="13" font-weight="600" fill="currentColor">E9070</text>
+  <text x="150" y="238" text-anchor="end" font-size="10" fill="currentColor" opacity="0.65">cond. missing</text>
+  <text x="160" y="222" font-size="11" fill="currentColor" opacity="0.55">— (silently never invoked)</text>
+  <rect x="160" y="227" width="540" height="13" fill="#2d6db5"/>
+  <text x="694" y="238" text-anchor="end" font-size="12" font-weight="700" fill="#ffffff">1879 (new)</text>
+
+  <!-- X axis with scale reference -->
+  <line x1="160" y1="263" x2="700" y2="263" stroke="currentColor" stroke-opacity="0.4"/>
+  <text x="160" y="276" font-size="10" text-anchor="middle" fill="currentColor">0</text>
+  <text x="304" y="276" font-size="10" text-anchor="middle" fill="currentColor">500</text>
+  <text x="448" y="276" font-size="10" text-anchor="middle" fill="currentColor">1000</text>
+  <text x="592" y="276" font-size="10" text-anchor="middle" fill="currentColor">1500</text>
+  <text x="700" y="276" font-size="10" text-anchor="end" fill="currentColor">≈1879</text>
+  <text x="430" y="296" font-size="10" text-anchor="middle" fill="currentColor" opacity="0.65">findings (linear scale)</text>
+</svg>
+<figcaption style="text-align: center; font-size: 0.9em; opacity: 0.85; margin-top: 0.4em;">
+Three codes changed between v0.7 and v0.8. <strong>E9008</strong> (sentinel detection) drops from 55 to 33 as some <code>Str</code> columns get promoted to <code>Float</code> via the new <strong>E9009</strong> path (22 columns). <strong>E9070</strong> (conditional missingness) goes from <em>silently never invoked</em> to 1879 firings — every co-missing column pair contributes a finding in both directions. The visual dominance of E9070 in the chart is the dominance the gap fix actually surfaces.
+</figcaption>
+</figure>
+
+The 22 columns the auto-promotion fires on:
+
+- `sec_app_*` (12 columns) — secondary applicant fields: `fico_range_high/low`, `mort_acc`, `num_rev_accts`, `open_acc`, `open_act_il`, `inq_last_6mths`, `chargeoff_within_12_mths`, `collections_12_mths_ex_med`, `mths_since_last_major_derog`, `revol_util`
+- `hardship_*` (5 columns) — workout plan fields: `amount`, `dpd`, `length`, `payoff_balance_amount`, `last_payment_amount`
+- `settlement_*` (3 columns) — debt settlement fields: `amount`, `percentage`, `term`
+- `revol_bal_joint`, `orig_projected_additional_accrued_interest`, `mths_since_last_record`
+
+E9070's 1879 firings span ~54 unique columns. Most pairs are within the joint/secondary/hardship/settlement set: every co-missing pair fires twice (a→b and b→a are separate findings). For users who want a smaller set, raising `ConditionalMissingnessConfig::implication_threshold` above 0.95 or post-hoc filtering by column-pair is the right knob.
+
+### 6.4 Gap three: CSV quoted-string handling (deferred)
+
+`annual_inc_joint`, `dti_joint`, `verification_status_joint` — the three columns the handoff originally named — are *NOT* in the v0.8 promotion set. Investigation:
+
+```text
+Sampled 50000 rows of annual_inc_joint:
+  empty:     49290
+  parseable: 248
+  other:     462
+  non-parseable samples:
+    'Individual'
+    'Individual'
+    'Individual'
+    'Individual'
+    'Individual'
+```
+
+The non-sentinel rows split 248 parseable vs 462 "Other" — `parseable_fraction = 0.349`, well below the 0.80 threshold. So promotion correctly declines.
+
+The "Other" values are `'Individual'` — the string from the LC dataset's `application_type` column. They're bleeding into `annual_inc_joint` because `cjc-data::CsvReader` does NOT support RFC-4180 quoted strings. LC's `desc` (free-text loan description) column contains embedded commas; without quote-handling, every cell after `desc` in such a row gets shifted left by however many commas the description contained. `application_type` (which sits after `desc` in column order) leaks into `annual_inc_joint`'s position.
+
+This is a real third gap, but it lives in `cjc-data`, not `cjc-locke`. ADR-0042 documents it as a known limitation and bounds it: the parseable-fraction guard correctly refuses to promote a column polluted by column-shift, which is the right defensive behavior. The upstream CSV fix is tracked separately. The right user workaround until then is to pre-clean the CSV with a parser that understands quoting (Python's `csv` module, pandas) and pass the cleaned dict to Locke via the Python bridge or via `DataFrame::from_columns`.
+
+### 6.5 Discovery cascade, visualized
+
+```{mermaid}
+flowchart TD
+    A[Handoff: Project A = LC demo<br/>predicted top leakage = payment streams] -->|build demo| B[E9061 fires on last_fico_range_*<br/>not on payment streams]
+    B -->|honest-model AUC follow-up| C[Locke-filtered AUC = 0.9995<br/>Locke flags alone don't recover honesty]
+    C -->|architectural response| D[ADR-0041:<br/>custom detector extension layer]
+    D -->|LC re-measurement| E[Locke + custom AUC = 0.7388<br/>within 0.0006 of domain-honest 0.7394]
+    E -->|prepare for Project B| F[Str-with-sentinels gap blocks<br/>NYC Taxi drift detection]
+    F -->|investigate| G[Gap 1: CSV type inference from first row]
+    F -->|investigate| H[Gap 2: E9070 was never invoked]
+    G --> I[ADR-0042: auto_promote_str_columns]
+    H --> I
+    I -->|re-run LC demo| J[E9009 × 22, E9070 × 1879<br/>+ Gap 3 discovered: CSV quoted strings]
+    J -->|out of scope for v0.8| K[Tracked as upstream cjc-data fix]
+    style B fill:#fff4d6
+    style C fill:#fff4d6
+    style F fill:#fff4d6
+    style J fill:#fff4d6
+```
+
+Each yellow node is a discovery that drove the next change. The brief at the top would have predicted A → I directly. The path through B, C, F is what actually happened.
+
+## 7. The release
+
+| Artifact                     | Where                                                              |
+| ---------------------------- | ------------------------------------------------------------------ |
+| `cjc-locke v0.1.11`          | <https://crates.io/crates/cjc-locke/0.1.11>                        |
+| 24 sibling crates at v0.1.11 | crates.io (`cjc-lang`, `cjc-data`, `cjc-runtime`, ..., one workspace publish) |
+| `cjc-locke v0.1.2` (Python)  | <https://pypi.org/project/cjc-locke/0.1.2/>                        |
+| Source code                  | <https://github.com/AdamEzzat1/CJC> (PR #18 merged on master)      |
+| ADR-0041                     | `CJC-Lang_Obsidian_Vault/13_ADRs/ADR-0041 Locke v0.8 — Custom Detector Extension Layer.md` |
+| ADR-0042                     | `CJC-Lang_Obsidian_Vault/13_ADRs/ADR-0042 Locke v0.8 — Str-to-Float Auto-Promotion + E9070 Wiring.md` |
+| LC demo                      | `demos/lendingclub/` (workspace member, `publish = false`)          |
+
+### Quick-start (Python)
+
+```bash
+pip install cjc-locke[numpy]
+```
+
+```python
+import cjc_locke
+
+class PostOriginationByName(cjc_locke.CustomDetector):
+    def code(self) -> str:
+        return "E9500"
+
+    def belief_axes(self) -> list[str]:
+        return ["leakage"]
+
+    def run(self, df, sink) -> None:
+        for col in df.column_names():
+            if col.startswith(("total_", "last_pymnt_", "recoveries")):
+                sink.emit("error",
+                          f"`{col}` matches a post-origination naming pattern",
+                          column=col, sample_size=df.n_rows)
+
+report = cjc_locke.validate(
+    {"loan_amnt": [...], "total_pymnt": [...], "dti": [...]},
+    label="my-loans",
+    custom_detectors=[PostOriginationByName()],
+)
+
+print(report.severity_counts)   # {'info': ..., 'notice': ..., 'warning': ..., 'error': ...}
+print(report.finding_codes())   # ['E9001', 'E9500', ...]
+print(report.to_json())         # canonical, byte-deterministic
+```
+
+### Known follow-ups for v0.1.3 / v0.9
+
+Two cosmetic Python issues caught during post-publish verification:
+
+1. **Stale `__version__` constant.** `python/src/lib.rs` hardcodes `m.add("__version__", "0.1.0")?` — `cjc_locke.__version__` reports `"0.1.0"` regardless of the actual wheel version. The `__rust_crate_version__` field uses `env!("CARGO_PKG_VERSION")` and reports correctly. One-line fix.
+2. **NumPy probe panic** when numpy isn't installed. PyO3's `value.extract::<PyReadonlyArray1<f64>>()` invokes numpy's lazy init even for non-numpy inputs; the bridge needs either a hard dep on numpy or a `py.import("numpy").is_ok()` guard. The `[numpy]` extra in `pyproject.toml` works around this for typical use.
+
+And two `cjc-data` follow-ups that this session surfaced but didn't fix:
+
+3. **RFC-4180 quoted-string support** in `cjc-data::CsvReader`. The third gap from §6.4 lives here.
+4. **A pre-existing `tests/test_cjc_v0_1_hardening.rs` path bug** on Linux/macOS — inline `mod unit { #[path = "../..."] mod foo; }` resolves the relative path against the module name, not the file location. Master CI has been red on Linux/macOS Test Suite for some time as a result. Unrelated to v0.8 but worth fixing.
+
+### Total session footprint
+
+| | |
+| --- | --- |
+| Commits on the PR | 5 (handoff + LC demo + AUC follow-up + ADR-0041 + ADR-0042 + release bump) |
+| ADRs | 2 |
+| Rust crates published | 25 (workspace `0.1.10 → 0.1.11`) |
+| Python wheels published | 1 (`cjc-locke 0.1.2` on PyPI) |
+| New tests | 71 (45 from ADR-0041 + 26 from ADR-0042) |
+| `cjc-locke` lib tests | 408 → **435** (+27, zero regressions) |
+| `tests/locke` integration | 277 → **305** (+28, zero regressions) |
+| Python pytest | 0 → **14** new |
+| LC demo wall (full dataset) | ~9 minutes |
+| LC demo determinism | byte-identical JSON across runs |
+| Workspace test wall | ~13 seconds for the locke integration suite |
+
+## 8. Reflections on a discovery-driven session
+
+Two patterns recurred, and they're both worth banking for the next session.
+
+**The handoff was directionally right, magnitude-wrong, and the magnitude error was load-bearing.** The handoff predicted payment streams would hit `|AUC| ≥ 0.95` (E9060). They hit `[0.5, 0.85)` instead — *individually*. Jointly, they're still leaky, but Locke's per-feature heuristic can't see jointly-leaky-but-individually-modest signals. The handoff also predicted E9070 would fire on the joint columns — it would have, eventually, but the detector wasn't actually wired in. Both of these gaps look superficially like "the tool failed"; both turned out to be "the tool surfaced the wrong magnitude, which forced an honest measurement, which forced an architectural response." That cascade is the point.
+
+**Default-on backward-incompatible additions are the right call when the gap *is* the feature.** Both ADR-0042 fixes default to ON (`auto_promote_str_to_float = true`, `detect_conditional_missingness` always invoked). v0.7 reports are no longer byte-identical to v0.8 reports for affected inputs. I considered defaulting OFF for backward compatibility; the argument that won was that *a flag that's off by default doesn't fix the gap for users who don't know it exists*. The user with strict v0.7 byte-identity requirements can opt out; the user who didn't realize their joint columns were silently bypassed gets the fix automatically. The structural defense — every existing snapshot test in the workspace passes with default-on enabled, because no test had constructed a "sentinel-rich-first-row" Str column — vindicated the choice.
+
+The deeper lesson is about what kind of tool Locke is becoming. It started as an *opinionated* validator with built-in detectors and a belief algebra. v0.8 turns it into a *configurable* validator where the opinionated baseline is still the default *and* the team's domain knowledge composes with it on equal footing. The Python `CustomDetector` ABC is the surface analysts will touch most. The custom-detector findings sit in the same JSON, contribute to the same belief axes under the same meet-semilattice algebra, and survive the same byte-identity determinism contract. The discovery-cascade in this session is what shaped the API: I wouldn't have designed `BeliefAxisSet`, `FindingSink`, the structural-determinism Python bridge, or the `working_df` pattern if I'd tried to specify them upfront.
+
+Project B (NYC Taxi) is queued next. With auto-promotion in place, the streaming numeric drift detectors should actually fire on Parquet-loaded data without manual type coercion. We'll see what gaps *that* surfaces.
+
+---
+
+*The code, tests, ADRs, expected_findings fixture, and cross_validate measurements live in [PR #18 on GitHub](https://github.com/AdamEzzat1/CJC/pull/18). Pull `cjc-locke = "0.1.11"` from crates.io or `pip install cjc-locke==0.1.2` from PyPI to reproduce. Issues, design-decision pushback, and "Locke's threshold should be X not Y on this dataset" findings are welcome.*

@@ -1,0 +1,1579 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.3.340">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Adam Ezzat">
+<meta name="dcterms.date" content="2026-06-02">
+<meta name="description" content="A field report on building Locke’s first end-to-end demo on real production-scale data. The LendingClub 2007–2018 leakage audit’s honest-model AUC measurement (the 4-way logistic-regression comparison) revealed that Locke’s built-in |AUC|≥0.85 leakage heuristic catches the strongest signals but not all of them. That finding drove two ADRs in the same session — a custom-detector extension layer that lets analysts encode domain knowledge as first-class Locke configuration with structural determinism that survives the Python boundary, and a Str-to-Float auto-promotion fix that unblocks three detector families on numeric columns CSV readers mis-type. Five commits, two ADRs, 71 new tests, 25 Rust crates + a Python wheel published. The discovery-driven nature of the work — each step uncovering the next gap — is the secondary headline.">
+
+<title>Adam Ezzat - Locke v0.8: A LendingClub Demo, an Honest Model, and the Three Gaps the Audit Found</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../../">
+<script src="../../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<script src="../../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-dark.min.css" rel="prefetch" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+<style>html{ scroll-behavior: smooth; }</style>
+<script src="../../../site_libs/quarto-diagram/mermaid.min.js"></script>
+<script src="../../../site_libs/quarto-diagram/mermaid-init.js"></script>
+<link href="../../../site_libs/quarto-diagram/mermaid.css" rel="stylesheet">
+
+
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../../index.html">
+    <span class="navbar-title">Adam Ezzat</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../../index.html" rel="" target="">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../about.html" rel="" target="">
+ <span class="menu-text">About</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../projects.html" rel="" target="">
+ <span class="menu-text">Projects</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../blog/index.html" rel="" target="">
+ <span class="menu-text">Blog</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/AdamEzzat1" rel="" target=""><i class="bi bi-github" role="img" aria-label="GitHub">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://linkedin.com/in/adamezzat" rel="" target=""><i class="bi bi-linkedin" role="img" aria-label="LinkedIn">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+            <div class="quarto-navbar-tools">
+  <a href="" class="quarto-color-scheme-toggle quarto-navigation-tool  px-1" onclick="window.quartoToggleColorScheme(); return false;" title="Toggle dark mode"><i class="bi"></i></a>
+</div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#the-brief" id="toc-the-brief" class="nav-link active" data-scroll-target="#the-brief">1. The brief</a></li>
+  <li><a href="#building-the-demo-the-boring-parts-that-have-to-work" id="toc-building-the-demo-the-boring-parts-that-have-to-work" class="nav-link" data-scroll-target="#building-the-demo-the-boring-parts-that-have-to-work">2. Building the demo: the boring parts that have to work</a></li>
+  <li><a href="#the-audit-and-the-first-surprise" id="toc-the-audit-and-the-first-surprise" class="nav-link" data-scroll-target="#the-audit-and-the-first-surprise">3. The audit, and the first surprise</a>
+  <ul class="collapse">
+  <li><a href="#the-handoff-said-x.-the-data-said-y." id="toc-the-handoff-said-x.-the-data-said-y." class="nav-link" data-scroll-target="#the-handoff-said-x.-the-data-said-y.">The handoff said X. The data said Y.</a></li>
+  <li><a href="#other-useful-surprises-in-the-same-run" id="toc-other-useful-surprises-in-the-same-run" class="nav-link" data-scroll-target="#other-useful-surprises-in-the-same-run">Other useful surprises in the same run</a></li>
+  </ul></li>
+  <li><a href="#the-honest-model-auc-follow-up-the-gut-punch" id="toc-the-honest-model-auc-follow-up-the-gut-punch" class="nav-link" data-scroll-target="#the-honest-model-auc-follow-up-the-gut-punch">4. The honest-model AUC follow-up: the gut punch</a>
+  <ul class="collapse">
+  <li><a href="#what-was-available-in-cjc-runtime" id="toc-what-was-available-in-cjc-runtime" class="nav-link" data-scroll-target="#what-was-available-in-cjc-runtime">What was available in cjc-runtime</a></li>
+  <li><a href="#the-three-way-comparison" id="toc-the-three-way-comparison" class="nav-link" data-scroll-target="#the-three-way-comparison">The three-way comparison</a></li>
+  <li><a href="#the-finding" id="toc-the-finding" class="nav-link" data-scroll-target="#the-finding">The finding</a></li>
+  </ul></li>
+  <li><a href="#adr-0041-the-custom-detector-extension-layer" id="toc-adr-0041-the-custom-detector-extension-layer" class="nav-link" data-scroll-target="#adr-0041-the-custom-detector-extension-layer">5. ADR-0041: The Custom Detector Extension Layer</a>
+  <ul class="collapse">
+  <li><a href="#code-namespace-e9500..e9999" id="toc-code-namespace-e9500..e9999" class="nav-link" data-scroll-target="#code-namespace-e9500..e9999">5.1 Code namespace <code>E9500..=E9999</code></a></li>
+  <li><a href="#findingsink-as-the-only-emission-surface" id="toc-findingsink-as-the-only-emission-surface" class="nav-link" data-scroll-target="#findingsink-as-the-only-emission-surface">5.2 <code>FindingSink</code> as the only emission surface</a></li>
+  <li><a href="#belief-axis-routing-via-beliefaxisset" id="toc-belief-axis-routing-via-beliefaxisset" class="nav-link" data-scroll-target="#belief-axis-routing-via-beliefaxisset">5.3 Belief-axis routing via <code>BeliefAxisSet</code></a></li>
+  <li><a href="#the-python-bridge-structural-determinism-across-the-ffi-boundary" id="toc-the-python-bridge-structural-determinism-across-the-ffi-boundary" class="nav-link" data-scroll-target="#the-python-bridge-structural-determinism-across-the-ffi-boundary">5.4 The Python bridge: structural determinism across the FFI boundary</a></li>
+  <li><a href="#the-python-abc" id="toc-the-python-abc" class="nav-link" data-scroll-target="#the-python-abc">5.5 The Python ABC</a></li>
+  <li><a href="#the-4-way-lc-re-measurement" id="toc-the-4-way-lc-re-measurement" class="nav-link" data-scroll-target="#the-4-way-lc-re-measurement">5.6 The 4-way LC re-measurement</a></li>
+  <li><a href="#tests-in-three-columns" id="toc-tests-in-three-columns" class="nav-link" data-scroll-target="#tests-in-three-columns">5.7 Tests, in three columns</a></li>
+  </ul></li>
+  <li><a href="#adr-0042-the-str-with-sentinels-gap-which-turned-out-to-be-two-gaps" id="toc-adr-0042-the-str-with-sentinels-gap-which-turned-out-to-be-two-gaps" class="nav-link" data-scroll-target="#adr-0042-the-str-with-sentinels-gap-which-turned-out-to-be-two-gaps">6. ADR-0042: The Str-with-sentinels gap (which turned out to be two gaps)</a>
+  <ul class="collapse">
+  <li><a href="#gap-one-type-inference-from-the-first-data-row" id="toc-gap-one-type-inference-from-the-first-data-row" class="nav-link" data-scroll-target="#gap-one-type-inference-from-the-first-data-row">6.1 Gap one: type inference from the first data row</a></li>
+  <li><a href="#gap-two-e9070-was-defined-but-never-invoked" id="toc-gap-two-e9070-was-defined-but-never-invoked" class="nav-link" data-scroll-target="#gap-two-e9070-was-defined-but-never-invoked">6.2 Gap two: E9070 was defined but never invoked</a></li>
+  <li><a href="#the-real-lc-measurement-post-fix" id="toc-the-real-lc-measurement-post-fix" class="nav-link" data-scroll-target="#the-real-lc-measurement-post-fix">6.3 The real LC measurement post-fix</a></li>
+  <li><a href="#gap-three-csv-quoted-string-handling-deferred" id="toc-gap-three-csv-quoted-string-handling-deferred" class="nav-link" data-scroll-target="#gap-three-csv-quoted-string-handling-deferred">6.4 Gap three: CSV quoted-string handling (deferred)</a></li>
+  <li><a href="#discovery-cascade-visualized" id="toc-discovery-cascade-visualized" class="nav-link" data-scroll-target="#discovery-cascade-visualized">6.5 Discovery cascade, visualized</a></li>
+  </ul></li>
+  <li><a href="#the-release" id="toc-the-release" class="nav-link" data-scroll-target="#the-release">7. The release</a>
+  <ul class="collapse">
+  <li><a href="#quick-start-python" id="toc-quick-start-python" class="nav-link" data-scroll-target="#quick-start-python">Quick-start (Python)</a></li>
+  <li><a href="#known-follow-ups-for-v0.1.3-v0.9" id="toc-known-follow-ups-for-v0.1.3-v0.9" class="nav-link" data-scroll-target="#known-follow-ups-for-v0.1.3-v0.9">Known follow-ups for v0.1.3 / v0.9</a></li>
+  <li><a href="#total-session-footprint" id="toc-total-session-footprint" class="nav-link" data-scroll-target="#total-session-footprint">Total session footprint</a></li>
+  </ul></li>
+  <li><a href="#reflections-on-a-discovery-driven-session" id="toc-reflections-on-a-discovery-driven-session" class="nav-link" data-scroll-target="#reflections-on-a-discovery-driven-session">8. Reflections on a discovery-driven session</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">Locke v0.8: A LendingClub Demo, an Honest Model, and the Three Gaps the Audit Found</h1>
+<p class="subtitle lead">Built the first real Locke demo on the full 2.26M-row LendingClub 2007–2018 dataset. The audit’s surprises forced two ADRs — a custom-detector extension layer (ADR-0041) so analyst domain knowledge becomes composable Locke configuration, and a Str-to-Float auto-promotion + E9070 wiring fix (ADR-0042) that closes a silent-skip gap on numeric columns mis-typed by CSV readers. The 4-way honest-model AUC measurement is the headline: pre-Locke <code>|AUC| = 0.9993</code>, Locke-filtered <code>0.9995</code>, Locke + custom detector <code>0.7388</code>, hand-curated domain-honest <code>0.7394</code>. The custom detector closes the gap inside Locke configuration, within 0.0006 of the hand-curated baseline. Shipped as <code>cjc-locke v0.1.11</code> on crates.io and <code>cjc-locke v0.1.2</code> on PyPI.</p>
+  <div class="quarto-categories">
+    <div class="quarto-category">CJC-Lang</div>
+    <div class="quarto-category">Locke</div>
+    <div class="quarto-category">data-quality</div>
+    <div class="quarto-category">validation</div>
+    <div class="quarto-category">leakage</div>
+    <div class="quarto-category">LendingClub</div>
+    <div class="quarto-category">credit-risk</div>
+    <div class="quarto-category">determinism</div>
+    <div class="quarto-category">Python</div>
+    <div class="quarto-category">release</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    A field report on building Locke’s first end-to-end demo on real production-scale data. The LendingClub 2007–2018 leakage audit’s honest-model AUC measurement (the 4-way logistic-regression comparison) revealed that Locke’s built-in |AUC|≥0.85 leakage heuristic catches the strongest signals but not all of them. That finding drove two ADRs in the same session — a custom-detector extension layer that lets analysts encode domain knowledge as first-class Locke configuration with structural determinism that survives the Python boundary, and a Str-to-Float auto-promotion fix that unblocks three detector families on numeric columns CSV readers mis-type. Five commits, two ADRs, 71 new tests, 25 Rust crates + a Python wheel published. The discovery-driven nature of the work — each step uncovering the next gap — is the secondary headline.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Adam Ezzat </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">June 2, 2026</p>
+    </div>
+  </div>
+  
+    <div>
+    <div class="quarto-title-meta-heading">Modified</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date-modified">June 2, 2026</p>
+    </div>
+  </div>
+    
+  </div>
+  
+
+</header>
+
+<div class="reading-time">
+🕑 ~38 min read
+</div>
+<div class="stats-row">
+<div class="stat">
+<span class="number">2.26M</span><span class="stat-label">rows audited</span>
+</div>
+<div class="stat">
+<span class="number">0.7388</span><span class="stat-label">honest-model |AUC| with custom det.</span>
+</div>
+<div class="stat">
+<span class="number">1879</span><span class="stat-label">E9070 firings after v0.8 wiring</span>
+</div>
+<div class="stat">
+<span class="number">71</span><span class="stat-label">new tests, all passing</span>
+</div>
+</div>
+<div class="callout callout-style-simple callout-tip no-icon callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+TL;DR
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>A single session against the full Kaggle <a href="https://www.kaggle.com/datasets/wordsforthewise/lending-club"><code>wordsforthewise/lending-club</code></a> snapshot (~2.26M loans, 151 columns) produced:</p>
+<ul>
+<li><strong>A working end-to-end LC demo</strong> with byte-identical determinism — two 8-minute runs over the 1.6 GB decompressed CSV produce SHA-256-matching 469 KB JSON reports.</li>
+<li><strong>An honest finding about Locke’s own value</strong>: the built-in <code>|AUC| ≥ 0.85</code> leakage heuristic (E9061) catches the strongest signals (<code>last_fico_range_low/high</code>, <code>total_rec_prncp</code> — <em>not</em> the columns the audit-design exercise predicted) but not all of them. A 3-way logistic regression on the binarized frame: removing only E9061-flagged columns leaves <code>|AUC| = 0.9995</code> essentially unchanged from the naive <code>0.9993</code>. Only removing the 12-column hand-curated domain post-origination list collapses AUC to <code>0.7394</code> — squarely in the Bao et al.&nbsp;(2019) credit-risk literature band.</li>
+<li><strong>ADR-0041, the custom-detector extension layer</strong>: a new <code>CustomDetector</code> trait + <code>FindingSink</code> + <code>BeliefAxisSet</code>, code namespace <code>E9500..=E9999</code>, belief-axis routing for the meet-semilattice algebra, plus a Python bridge whose determinism contract is <strong>structural</strong> rather than behavioural — proven by an emission-shuffle proptest. The LC re-measurement: a 30-LOC <code>PostOriginationByNameDetector</code> flags 39 columns by name pattern; the honest-model harness reads the report’s <code>E9500 ∪ E9061</code> columns as exclusion set; resulting <code>|AUC| = 0.7388</code> lands <strong>within 0.0006 of the hand-curated domain-honest baseline</strong>.</li>
+<li><strong>ADR-0042, Str-to-Float auto-promotion + E9070 wiring</strong>: closes a silent-skip gap on numeric columns CSV readers mis-type as <code>Str</code>. The investigation revealed <em>two</em> gaps in one ADR — auto-promotion AND a missing call site for <code>detect_conditional_missingness</code>, which had been defined and unit-tested in v0.6.4 but never invoked from <code>validate_dataframe</code>. LC post-fix: <code>E9009 × 22</code> auto-promoted columns, <code>E9070 × 1879</code> firings (was zero pre-v0.8). A third gap (CSV quoted-string handling) was discovered, scoped, and deferred.</li>
+<li><strong>A release</strong>: <code>cjc-locke v0.1.11</code> on <a href="https://crates.io/crates/cjc-locke/0.1.11">crates.io</a> (alongside 24 sibling crates), <code>cjc-locke v0.1.2</code> on <a href="https://pypi.org/project/cjc-locke/0.1.2/">PyPI</a>.</li>
+</ul>
+<p>The secondary headline is the discovery cascade: each step in the session surfaced the gap the next step closed. The handoff predicted X; Locke found Y; Y didn’t match the honest model; the architectural response is ADR-0041; preparing for the <em>next</em> demo surfaced ADR-0042’s gap; both shipped in the same release.</p>
+</div>
+</div>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Prototype disclaimer
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>Locke and CJC-Lang remain research-stage prototypes. The numbers below are one reproducible engineering campaign — five commits on a single PR, every chain head verifiable — not a validated benchmark, not deployed at production scale, not peer-reviewed. The four-way AUC comparison is on a 200K-row subsample with a single seed; full-dataset and multi-seed work is queued. Read as honest exploratory engineering on a real but bounded dataset.</p>
+</div>
+</div>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Where this sits in the Locke series
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<ul>
+<li><a href="../../../blog/posts/cjc-locke-v0.1-released/index.html">Locke v0.1.10: An Epistemic Layer for Data Validation</a> — the framing post. Determinism, content-addressed findings, belief-score algebra, side-by-side with Great Expectations.</li>
+<li><a href="../../../blog/posts/abng-diabetes-revisited-with-locke/index.html">Diabetes-130 Revisited with Locke</a> — Locke + ABNG on medical data. The handoff’s “Locke prune → AUC up” hypothesis falsified itself; Locke’s contribution turned out to be structural (a patient-encounter leakage hole, a <code>?</code>-sentinel detector gap proposal).</li>
+<li><strong>This post</strong> — Locke against real consumer-credit data at scale, the audit’s honest-model AUC test, and the two ADRs the audit forced into the v0.8 release.</li>
+</ul>
+</div>
+</div>
+<section id="the-brief" class="level2">
+<h2 class="anchored" data-anchor-id="the-brief">1. The brief</h2>
+<p>The session started with a handoff document I’d drafted earlier under a different worktree. The document specified two demos to ship — <strong>Project A</strong>: LendingClub leakage audit (the “fits in RAM, 2-minute iteration loop” demo); <strong>Project B</strong>: NYC Taxi 2019–2020 pandemic drift (the “streaming, 30-minute sweep, thermal observability” demo). The intent was that together they’d cover all four Locke value claims: numerical rigor, determinism, thermal control, memory efficiency. Separately each covers two.</p>
+<p>This post is exclusively about Project A — but the <em>reason</em> we hit two ADRs is that Project A’s findings made Project B’s blockers visible.</p>
+<p>The Project A spec, condensed:</p>
+<table class="table">
+<colgroup>
+<col style="width: 27%">
+<col style="width: 72%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Field</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Dataset</td>
+<td>Kaggle <code>wordsforthewise/lending-club</code>, accepted-loans CSV</td>
+</tr>
+<tr class="even">
+<td>Size</td>
+<td>~600 MB compressed → ~1.6 GB raw → 2.26M rows × 151 cols</td>
+</tr>
+<tr class="odd">
+<td>Source target</td>
+<td><code>loan_status</code> (multi-class)</td>
+</tr>
+<tr class="even">
+<td>Derived binary target</td>
+<td><code>target_default</code> (Charged Off ∪ Default = 1; Fully Paid = 0; other rows dropped)</td>
+</tr>
+<tr class="odd">
+<td>Locke entry point</td>
+<td><code>cjc-locke::api::validate</code> + <code>detect_target_leakage</code> + <code>detect_id_like_columns</code></td>
+</tr>
+<tr class="even">
+<td>Determinism contract</td>
+<td>Two runs → byte-identical JSON output</td>
+</tr>
+<tr class="odd">
+<td>Compute budget</td>
+<td>&lt;2 min per iteration (laptop)</td>
+</tr>
+</tbody>
+</table>
+<p>The handoff itself was opinionated about what would fire. From handoff §3.3, “E-codes expected to fire”:</p>
+<blockquote class="blockquote">
+<p><strong>E9060</strong> | Error | <code>total_pymnt</code>, <code>total_rec_int</code>, <code>last_pymnt_amnt</code>, <code>recoveries</code>, <code>collection_recovery_fee</code> | AUC ≥ 0.95 against <code>loan_status</code> (<code>charged_off</code> vs <code>fully_paid</code>)</p>
+<p><strong>E9061</strong> | Warning | <code>out_prncp</code>, <code>total_pymnt_inv</code> | AUC in [0.85, 0.95]</p>
+</blockquote>
+<p>That prediction is the first thing the demo would refute.</p>
+</section>
+<section id="building-the-demo-the-boring-parts-that-have-to-work" class="level2">
+<h2 class="anchored" data-anchor-id="building-the-demo-the-boring-parts-that-have-to-work">2. Building the demo: the boring parts that have to work</h2>
+<p>I’ll keep this short because the audit findings are the interesting bit, but the foundation deserves a note. Three engineering decisions in the demo scaffolding compounded:</p>
+<p><strong>Workspace member, not standalone.</strong> <code>demos/lendingclub/</code> is a workspace member with <code>publish = false</code>. Three workspace deps (<code>cjc-data</code>, <code>cjc-locke</code>, <code>flate2</code>) plus standard Cargo conventions. The crate has both a <code>[lib]</code> (testable helpers) and two <code>[[bin]]</code> entries (the main demo and an <code>honest_model</code> evaluator I’ll describe below).</p>
+<p><strong>Library + thin binary split.</strong> <code>src/lib.rs</code> exposes <code>load_csv_gz</code>, <code>binarize_loan_status</code>, <code>run_locke_audit</code>, and the helper types. <code>src/main.rs</code> is a CLI argument parser around them. The integration test in <code>tests/expected_findings.rs</code> and the unit tests in <code>src/lib.rs</code> exercise the helpers without ever touching the 600 MB CSV. Eight library unit tests passed before I downloaded any data.</p>
+<p><strong>Binarization as a row filter + new column.</strong> <code>binarize_loan_status</code> classifies each <code>loan_status</code> string via:</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="kw">pub</span> <span class="kw">fn</span> classify_status(raw<span class="op">:</span> <span class="op">&amp;</span><span class="dt">str</span>) <span class="op">-&gt;</span> <span class="dt">Option</span><span class="op">&lt;</span><span class="dt">bool</span><span class="op">&gt;</span> <span class="op">{</span></span>
+<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>    <span class="cf">match</span> raw<span class="op">.</span>trim() <span class="op">{</span></span>
+<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Charged Off"</span> <span class="op">|</span> <span class="st">"Default"</span> <span class="op">=&gt;</span> <span class="cn">Some</span>(<span class="cn">true</span>)<span class="op">,</span></span>
+<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>        <span class="st">"Fully Paid"</span> <span class="op">=&gt;</span> <span class="cn">Some</span>(<span class="cn">false</span>)<span class="op">,</span></span>
+<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>        _ <span class="op">=&gt;</span> <span class="cn">None</span><span class="op">,</span></span>
+<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb1-7"><a href="#cb1-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><code>None</code> drops the row. <code>Some(b)</code> is appended to a new <code>Column::Bool</code> named <code>target_default</code>. This makes <code>cjc-locke::leakage::detect_target_leakage</code>’s binary-target requirement satisfied without modifying Locke’s contract. The function’s signature is also a contract: any future status not in the match drops out cleanly. Out of 2.26M rows loaded, <strong>1,325,938 reach a terminal outcome</strong> — 58.7% of the dataset.</p>
+<p><strong>Determinism verified by hash, not by intuition.</strong> Two demo runs of <code>cargo run -p lendingclub-demo</code> over the identical CSV produce identical 469 KB JSON reports. SHA-256 match across runs. The Rust side has it from construction; the demo is the integration verification.</p>
+<p>The total scaffolding came in at ~290 lines of library code + ~150 lines of CLI binary + ~270 lines of unit + integration tests. The tests caught two mistakes during writing — an <code>ImpossibleValueRule</code> constructor I assumed existed that didn’t (it’s an enum variant, not a function), and a non-exhaustive <code>Column</code> match (I forgot <code>Categorical { .. }</code>, <code>CategoricalAdaptive(_)</code>, and <code>DateTime(_)</code> exist). Compile-fail discipline is its own dividend.</p>
+</section>
+<section id="the-audit-and-the-first-surprise" class="level2">
+<h2 class="anchored" data-anchor-id="the-audit-and-the-first-surprise">3. The audit, and the first surprise</h2>
+<p>A full-dataset audit produces an 8-9 minute wall time, dominated by the Locke audit phase (~437 s on 1.32M binarized rows × 152 cols). The summary the demo’s CLI prints:</p>
+<pre><code>[load] 1597.5 MB decompressed, 2260701 rows × 151 cols, 52.2s
+[derive] kept 1325938 rows × 152 cols, 27.50s
+[locke] running validate() + detect_target_leakage + detect_id_like_columns
+[locke] 577 findings (40 error, 104 warning, 289 notice, 144 info), 437.90s
+[locke] findings by code:
+        E9001 × 55
+        E9002 × 10
+        E9007 × 47
+        E9008 × 55
+        ...
+        E9061 × 3
+        E9072 × 2
+        ...</code></pre>
+<p>The headline result wasn’t the run time. It was the E9061 column set.</p>
+<section id="the-handoff-said-x.-the-data-said-y." class="level3">
+<h3 class="anchored" data-anchor-id="the-handoff-said-x.-the-data-said-y.">The handoff said X. The data said Y.</h3>
+<p>I’d told the handoff E9061 (suspicious target leakage, <code>|AUC|</code> in <code>[0.85, 0.95]</code>) would fire on <code>out_prncp</code> and <code>total_pymnt_inv</code> — <em>partial</em> signals of the payment streams. E9060 (the strong-leakage code, <code>|AUC| ≥ 0.95</code>) would fire on the payment streams proper.</p>
+<p>What actually fired:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Code</th>
+<th>Column</th>
+<th><code>\|AUC\|</code></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>E9061</td>
+<td><code>last_fico_range_high</code></td>
+<td>0.9162</td>
+</tr>
+<tr class="even">
+<td>E9061</td>
+<td><code>last_fico_range_low</code></td>
+<td>0.9284</td>
+</tr>
+<tr class="odd">
+<td>E9061</td>
+<td><code>total_rec_prncp</code></td>
+<td>0.8675</td>
+</tr>
+</tbody>
+</table>
+<p><code>E9060</code> — the “near-deterministic” leakage code at the <code>|AUC| ≥ 0.95</code> threshold — <strong>fired zero times</strong>. Every post-origination column the handoff named landed <em>below</em> the 0.85 threshold and produced no finding at all (E9061 is <code>continue</code> in the loop, not an <code>Info</code>-severity ack).</p>
+<p>The top two signals were <code>last_fico_range_high</code> and <code>last_fico_range_low</code> — the borrower’s last credit-bureau refresh, recorded <em>after</em> the loan exists. The handoff hadn’t predicted those columns. It had predicted total payment amounts.</p>
+<p>The retrospective interpretation is sensible: payment amounts are dominated by loan size and term duration; their distributional spread under both terminal outcomes overlaps significantly, dragging AUC down to the sub-threshold band. The borrower’s <em>post-loan</em> FICO score, by contrast, collapses sharply when the loan is charged off (delinquency reports update the bureau record), so the FICO refresh column carries a much cleaner separation signal.</p>
+<p><strong>Locke disagreed with the analyst, and Locke was right.</strong> This is the first finding worth banking: not “Locke caught what the analyst predicted” but “Locke surfaced something the analyst’s reasoning missed.” A tool that updates the analyst’s priors is more valuable than one that confirms them.</p>
+</section>
+<section id="other-useful-surprises-in-the-same-run" class="level3">
+<h3 class="anchored" data-anchor-id="other-useful-surprises-in-the-same-run">Other useful surprises in the same run</h3>
+<ul>
+<li><code>E9072</code> (ID-like cardinality, <code>distinct / n_rows ≥ 0.95</code>) fired on <code>id</code> (the loan key, expected) AND on <code>url</code> (unexpected, but the LC URL embeds the loan ID — so it inherits the cardinality). <code>member_id</code> did <em>not</em> fire because the same member can hold multiple loans.</li>
+<li><code>E9001</code> (high missingness) fired on the joint-application column set (<code>annual_inc_joint</code>, <code>dti_joint</code>, <code>verification_status_joint</code>) at ~85% missingness, matching the empirical ratio of individual-to-joint loans.</li>
+<li><code>E9008</code> (auto-detected string sentinel) fired on <code>emp_length</code> for <code>"n/a"</code> and on the joint columns for <code>""</code>.</li>
+</ul>
+<p>But it also under-fired in two ways the handoff <em>had</em> anticipated, and getting those right matters for the rest of the post:</p>
+<ul>
+<li><code>E9008</code> did <strong>not</strong> fire on <code>term</code> despite its leading-space <code>" 36 months"</code> format. The detector matches against <code>BUILTIN_STRING_SENTINELS</code> exactly (<code>""</code>, <code>"?"</code>, <code>"NA"</code>, etc.) — leading whitespace on a domain-meaningful value isn’t a sentinel by Locke’s definition. The handoff’s prediction here conflated “sentinel” with “formatting artifact.”</li>
+<li><code>E9070</code> (conditional missingness on <code>(A, B)</code> pairs) did <strong>not</strong> fire on the joint columns — a real gap that would later turn out to be <em>two</em> gaps. We come back to this in §5.</li>
+</ul>
+<p>The empirical fixture I committed (<code>expected_findings.json</code>) was calibrated against measured reality, not the handoff’s predictions. The doc-vs-data divergence is itself the artifact: a future contributor reading the fixture sees the predictions that didn’t pan out and the empirical replacement.</p>
+</section>
+</section>
+<section id="the-honest-model-auc-follow-up-the-gut-punch" class="level2">
+<h2 class="anchored" data-anchor-id="the-honest-model-auc-follow-up-the-gut-punch">4. The honest-model AUC follow-up: the gut punch</h2>
+<p>The cross-validation file (<code>cross_validate.md</code>) in the demo had a <code>TBD</code> row labeled “honest-model AUC”. The literature for similar credit-risk feature spaces (Tsai &amp; Wu 2008, Bao et al.&nbsp;2019, FICO score in isolation) puts the achievable AUC on pre-origination features in the <strong>0.69 – 0.74</strong> band. The optional follow-up was to actually measure it: train a logistic regression on the binarized frame with and without leakage columns, and confirm the post-Locke variant lands in the literature band.</p>
+<section id="what-was-available-in-cjc-runtime" class="level3">
+<h3 class="anchored" data-anchor-id="what-was-available-in-cjc-runtime">What was available in cjc-runtime</h3>
+<p>This is one of the moments where having the underlying language stack pays off. The four primitives needed already existed:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="co">// From cjc-runtime</span></span>
+<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="kw">pub</span> <span class="kw">fn</span> logistic_regression(x_flat<span class="op">:</span> <span class="op">&amp;</span>[<span class="dt">f64</span>]<span class="op">,</span> y<span class="op">:</span> <span class="op">&amp;</span>[<span class="dt">f64</span>]<span class="op">,</span> n<span class="op">:</span> <span class="dt">usize</span><span class="op">,</span> p<span class="op">:</span> <span class="dt">usize</span>) <span class="op">-&gt;</span> <span class="dt">Result</span><span class="op">&lt;</span>LogisticResult<span class="op">,</span> <span class="dt">String</span><span class="op">&gt;;</span></span>
+<span id="cb3-3"><a href="#cb3-3" aria-hidden="true" tabindex="-1"></a><span class="kw">pub</span> <span class="kw">fn</span> auc_roc(scores<span class="op">:</span> <span class="op">&amp;</span>[<span class="dt">f64</span>]<span class="op">,</span> labels<span class="op">:</span> <span class="op">&amp;</span>[<span class="dt">bool</span>]) <span class="op">-&gt;</span> <span class="dt">Result</span><span class="op">&lt;</span><span class="dt">f64</span><span class="op">,</span> <span class="dt">String</span><span class="op">&gt;;</span></span>
+<span id="cb3-4"><a href="#cb3-4" aria-hidden="true" tabindex="-1"></a><span class="kw">pub</span> <span class="kw">fn</span> train_test_split(n<span class="op">:</span> <span class="dt">usize</span><span class="op">,</span> test_fraction<span class="op">:</span> <span class="dt">f64</span><span class="op">,</span> seed<span class="op">:</span> <span class="dt">u64</span>) <span class="op">-&gt;</span> (<span class="dt">Vec</span><span class="op">&lt;</span><span class="dt">usize</span><span class="op">&gt;,</span> <span class="dt">Vec</span><span class="op">&lt;</span><span class="dt">usize</span><span class="op">&gt;</span>)<span class="op">;</span></span>
+<span id="cb3-5"><a href="#cb3-5" aria-hidden="true" tabindex="-1"></a><span class="kw">pub</span> <span class="kw">fn</span> z_score(data<span class="op">:</span> <span class="op">&amp;</span>[<span class="dt">f64</span>]) <span class="op">-&gt;</span> <span class="dt">Result</span><span class="op">&lt;</span><span class="dt">Vec</span><span class="op">&lt;</span><span class="dt">f64</span><span class="op">&gt;,</span> <span class="dt">String</span><span class="op">&gt;;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><code>logistic_regression</code> is IRLS (Iteratively Reweighted Least Squares) with the intercept auto-added. <code>auc_roc</code> is the trapezoidal ROC integration with <code>f64::total_cmp</code> tie-breaking — deterministic. <code>train_test_split</code> uses a seeded Fisher-Yates shuffle. <code>z_score</code> does Kahan-summed mean + standard deviation.</p>
+<p>That covers everything needed for a deterministic tabular-ML evaluator. The demo’s <code>honest_model</code> binary is ~300 LOC of Rust orchestrating these primitives:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a><span class="co">// Pseudocode, not the actual source.</span></span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> (raw_df<span class="op">,</span> _) <span class="op">=</span> load_csv_gz(input<span class="op">,</span> <span class="cn">Some</span>(load_cap))<span class="op">?;</span></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> df <span class="op">=</span> binarize_loan_status(raw_df)<span class="op">?;</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> sample_indices<span class="op">:</span> <span class="dt">Vec</span><span class="op">&lt;</span><span class="dt">usize</span><span class="op">&gt;</span> <span class="op">=</span> (<span class="dv">0</span><span class="op">..</span>actual_sample)<span class="op">.</span>collect()<span class="op">;</span></span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> (train_local<span class="op">,</span> test_local) <span class="op">=</span> train_test_split(sample_indices<span class="op">.</span>len()<span class="op">,</span> test_fraction<span class="op">,</span> seed)<span class="op">;</span></span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (label<span class="op">,</span> exclusion_set) <span class="kw">in</span> [</span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>    (<span class="st">"pre-Locke (naive)"</span><span class="op">,</span> <span class="pp">vec!</span>[])<span class="op">,</span>                                  <span class="co">// 87 cols</span></span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>    (<span class="st">"Locke-filtered"</span><span class="op">,</span>     LOCKE_E9061_COLUMNS<span class="op">.</span>to_vec())<span class="op">,</span>           <span class="co">// 84 cols (–3)</span></span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a>    (<span class="st">"domain-honest"</span><span class="op">,</span>      DOMAIN_POST_ORIGINATION_COLUMNS<span class="op">.</span>to_vec())<span class="op">,</span> <span class="co">// 75 cols (–12)</span></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a>] <span class="op">{</span></span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> (names<span class="op">,</span> columns) <span class="op">=</span> select_numeric_columns(<span class="op">&amp;</span>df<span class="op">,</span> <span class="op">&amp;</span>full_excludes)<span class="op">;</span></span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> (names<span class="op">,</span> columns) <span class="op">=</span> drop_useless_columns(names<span class="op">,</span> columns)<span class="op">;</span></span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Per-column: fit mean/std on train only; apply to train + test.</span></span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a>    <span class="co">// No information leak across the split.</span></span>
+<span id="cb4-16"><a href="#cb4-16" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> logreg <span class="op">=</span> logistic_regression(<span class="op">&amp;</span>x_train_flat<span class="op">,</span> <span class="op">&amp;</span>y_train<span class="op">,</span> n_train<span class="op">,</span> p)<span class="op">?;</span></span>
+<span id="cb4-17"><a href="#cb4-17" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> eta <span class="op">=</span> score_logistic(<span class="op">&amp;</span>logreg<span class="op">.</span>coefficients<span class="op">,</span> <span class="op">&amp;</span>x_test_flat<span class="op">,</span> n_test<span class="op">,</span> p)<span class="op">;</span></span>
+<span id="cb4-18"><a href="#cb4-18" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> auc <span class="op">=</span> auc_roc(<span class="op">&amp;</span>eta<span class="op">,</span> <span class="op">&amp;</span>y_test_bool)<span class="op">?;</span></span>
+<span id="cb4-19"><a href="#cb4-19" aria-hidden="true" tabindex="-1"></a>    <span class="co">// ...</span></span>
+<span id="cb4-20"><a href="#cb4-20" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The deliberate constraints: 200K-row stratified subsample (because IRLS at full n × p² is slow), seed = 42 fixed, 70/30 train/test split, z-score normalization fit on train only.</p>
+</section>
+<section id="the-three-way-comparison" class="level3">
+<h3 class="anchored" data-anchor-id="the-three-way-comparison">The three-way comparison</h3>
+<pre class="text"><code>=== Summary ===
+variant                     |AUC|    n_train     n_test          p
+pre-Locke (naive)          0.9993     140000      60000         87
+Locke-filtered             0.9995     140000      60000         84
+domain-honest              0.7394     140000      60000         75</code></pre>
+<p><strong>Pre-Locke (the naive model).</strong> 87 numeric columns; only the target column itself and the two ID columns excluded. Test <code>|AUC| = 0.9993</code>. IRLS hits the iteration cap of 100 without converging. The model is catastrophically over-fit via leakage — but more interestingly, the <em>exact</em> form of catastrophe is the post-origination columns moving together as a multicollinear cluster. The <code>X^T W X</code> matrix in IRLS becomes near-singular; Newton steps stop converging.</p>
+<p><strong>Locke-filtered (E9061 only).</strong> Same setup minus <code>last_fico_range_high</code>, <code>last_fico_range_low</code>, <code>total_rec_prncp</code> — the three columns Locke flagged at <code>|AUC| ≥ 0.85</code>. Test <code>|AUC| = 0.9995</code>. <em>Essentially unchanged</em> from naive. IRLS still hits the iteration cap.</p>
+<p><strong>Domain-honest (data dictionary).</strong> Same setup minus the full handoff §3.3 post-origination list: 12 columns covering payment streams, recoveries, outstanding principal, and the last-refreshed FICO. Test <code>|AUC| = 0.7394</code>. IRLS converges cleanly in 14 iterations.</p>
+<p>The headline three-way table prints in the binary’s CLI output and lands in <code>cross_validate.md</code> §3.1.</p>
+</section>
+<section id="the-finding" class="level3">
+<h3 class="anchored" data-anchor-id="the-finding">The finding</h3>
+<p>Locke’s <code>|AUC| ≥ 0.85</code> heuristic catches the <em>strongest</em> leakage but not all of it. The columns that survive the Locke filter (<code>total_pymnt</code>, <code>out_prncp</code>, <code>total_pymnt_inv</code>, <code>last_pymnt_amnt</code>, <code>recoveries</code>, etc.) carry enough leakage signal <em>jointly</em> to keep the model’s AUC inflated. Removing them — via the domain-knowledge list — is what actually collapses AUC into the honest band.</p>
+<p><strong>This is not a bug in Locke.</strong> Locke’s per-feature ROC AUC computation is correct. The post-origination columns are leaky; their individual AUCs are merely in <code>[0.5, 0.85)</code> because each carries a noisy signal that happens to align with a sibling column. The detector’s threshold is doing what it was designed to do — fire on individually-strong signals. The architectural question is whether Locke should also detect <em>jointly</em>-strong-but-individually-weak leakage. v0.8 doesn’t change that.</p>
+<p>What v0.8 <em>does</em> change is the framing of Locke’s value claim.</p>
+<p>The naive framing is “Locke catches leakage.” That doesn’t survive contact with the LC follow-up. The Locke-filtered AUC stays at 0.9995. A reviewer who tried this would conclude the tool failed.</p>
+<p>The honest framing is “<strong>Locke shows you where to look; the analyst applies domain triage</strong>.” That survives the LC follow-up because the data shows exactly that. <code>last_fico_range_high</code> jumping out at <code>|AUC| 0.94</code> is the analyst’s cue to ask: <em>is this column recorded before or after the loan?</em> The answer (after) implies a fuller exclusion list — the kind of list <code>DOMAIN_POST_ORIGINATION_COLUMNS</code> encodes. Without Locke, the analyst might never have realized the last-refreshed FICO range was post-origination at all.</p>
+<p>But that framing implies a missing piece: the analyst’s domain triage has nowhere to live <em>inside</em> Locke. It lives in their own code, as a separate exclusion list maintained per project. The triage doesn’t compose with the belief algebra, doesn’t get fingerprinted, doesn’t show up in the canonical JSON, doesn’t get caught by regression gates if the domain knowledge changes.</p>
+<p>That gap is what ADR-0041 closes.</p>
+</section>
+</section>
+<section id="adr-0041-the-custom-detector-extension-layer" class="level2">
+<h2 class="anchored" data-anchor-id="adr-0041-the-custom-detector-extension-layer">5. ADR-0041: The Custom Detector Extension Layer</h2>
+<p>The architectural decision is in <a href="https://github.com/AdamEzzat1/CJC/blob/master/CJC-Lang_Obsidian_Vault/13_ADRs/ADR-0041%20Locke%20v0.8%20%E2%80%94%20Custom%20Detector%20Extension%20Layer.md"><code>ADR-0041</code></a>. The brief is:</p>
+<div class="callout callout-style-simple callout-note no-icon">
+<div class="callout-body d-flex">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-body-container">
+<p><strong>Goal.</strong> Let analysts encode domain checks as first-class Locke detectors that share the same finding format, belief composition, and determinism guarantees as the built-ins — without diluting the opinionated baseline or opening the determinism contract.</p>
+<p><strong>Non-goal.</strong> Become Great Expectations. Locke is a determinism-first belief-aware auditor; GE is a test framework. The custom-detector layer extends Locke’s vocabulary, not its identity.</p>
+</div>
+</div>
+</div>
+<p>The trait shape, after several iterations:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb6-1"><a href="#cb6-1" aria-hidden="true" tabindex="-1"></a><span class="kw">pub</span> <span class="kw">trait</span> CustomDetector<span class="op">:</span> <span class="bu">Send</span> <span class="op">+</span> <span class="bu">Sync</span> <span class="op">+</span> <span class="pp">std::fmt::</span><span class="bu">Debug</span> <span class="op">{</span></span>
+<span id="cb6-2"><a href="#cb6-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">/// E-code in E9500..=E9999. Validated at registration; codes</span></span>
+<span id="cb6-3"><a href="#cb6-3" aria-hidden="true" tabindex="-1"></a>    <span class="co">/// outside this range produce a CustomDetectorError and the</span></span>
+<span id="cb6-4"><a href="#cb6-4" aria-hidden="true" tabindex="-1"></a>    <span class="co">/// detector is silently skipped at run.</span></span>
+<span id="cb6-5"><a href="#cb6-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">fn</span> code(<span class="op">&amp;</span><span class="kw">self</span>) <span class="op">-&gt;</span> <span class="op">&amp;</span><span class="ot">'static</span> <span class="dt">str</span><span class="op">;</span></span>
+<span id="cb6-6"><a href="#cb6-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-7"><a href="#cb6-7" aria-hidden="true" tabindex="-1"></a>    <span class="co">/// Which belief axes this detector's findings affect.</span></span>
+<span id="cb6-8"><a href="#cb6-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">fn</span> belief_axes(<span class="op">&amp;</span><span class="kw">self</span>) <span class="op">-&gt;</span> BeliefAxisSet<span class="op">;</span></span>
+<span id="cb6-9"><a href="#cb6-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-10"><a href="#cb6-10" aria-hidden="true" tabindex="-1"></a>    <span class="kw">fn</span> name(<span class="op">&amp;</span><span class="kw">self</span>) <span class="op">-&gt;</span> <span class="op">&amp;</span><span class="dt">str</span> <span class="op">{</span> <span class="kw">self</span><span class="op">.</span>code() <span class="op">}</span></span>
+<span id="cb6-11"><a href="#cb6-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-12"><a href="#cb6-12" aria-hidden="true" tabindex="-1"></a>    <span class="kw">fn</span> run(<span class="op">&amp;</span><span class="kw">self</span><span class="op">,</span> df<span class="op">:</span> <span class="op">&amp;</span>DataFrame<span class="op">,</span> sink<span class="op">:</span> <span class="op">&amp;</span><span class="kw">mut</span> FindingSink)<span class="op">;</span></span>
+<span id="cb6-13"><a href="#cb6-13" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Three architectural decisions deserve unpacking.</p>
+<section id="code-namespace-e9500..e9999" class="level3">
+<h3 class="anchored" data-anchor-id="code-namespace-e9500..e9999">5.1 Code namespace <code>E9500..=E9999</code></h3>
+<p>Locke’s built-in codes occupy <code>E9001..=E9112</code>. The custom range starts safely above them and leaves 500 slots, with the upper 4000 reserved for future framework use. Reading a report, you can always tell which findings came from Locke’s opinionated baseline (E9xxx with <code>xxx &lt; 9500</code>) versus a team’s custom rules (<code>xxx &gt;= 9500</code>).</p>
+<p>The validator <code>validate_custom_code(&amp;str) -&gt; Result&lt;u32, CustomDetectorError&gt;</code> is the single point of truth. Both the Rust-side registration and the Python bridge call it, so error messages are uniform. Codes outside the namespace are rejected at registration time (not at run time, which would be a footgun) with a clear <code>CustomDetectorError::CodeOutOfNamespace { code, reason }</code>. The result type is exposed so callers can inspect rejection reasons without trying to parse error strings.</p>
+</section>
+<section id="findingsink-as-the-only-emission-surface" class="level3">
+<h3 class="anchored" data-anchor-id="findingsink-as-the-only-emission-surface">5.2 <code>FindingSink</code> as the only emission surface</h3>
+<p>The sink is the restricted finding-emission surface. <code>emit()</code> is the only mutation method:</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="kw">pub</span> <span class="kw">fn</span> emit(</span>
+<span id="cb7-2"><a href="#cb7-2" aria-hidden="true" tabindex="-1"></a>    <span class="op">&amp;</span><span class="kw">mut</span> <span class="kw">self</span><span class="op">,</span></span>
+<span id="cb7-3"><a href="#cb7-3" aria-hidden="true" tabindex="-1"></a>    severity<span class="op">:</span> FindingSeverity<span class="op">,</span></span>
+<span id="cb7-4"><a href="#cb7-4" aria-hidden="true" tabindex="-1"></a>    message<span class="op">:</span> <span class="kw">impl</span> <span class="bu">Into</span><span class="op">&lt;</span><span class="dt">String</span><span class="op">&gt;,</span></span>
+<span id="cb7-5"><a href="#cb7-5" aria-hidden="true" tabindex="-1"></a>    column<span class="op">:</span> <span class="dt">Option</span><span class="op">&lt;</span><span class="dt">String</span><span class="op">&gt;,</span></span>
+<span id="cb7-6"><a href="#cb7-6" aria-hidden="true" tabindex="-1"></a>    row_range<span class="op">:</span> <span class="dt">Option</span><span class="op">&lt;</span>(<span class="dt">usize</span><span class="op">,</span> <span class="dt">usize</span>)<span class="op">&gt;,</span></span>
+<span id="cb7-7"><a href="#cb7-7" aria-hidden="true" tabindex="-1"></a>    evidence<span class="op">:</span> <span class="dt">Vec</span><span class="op">&lt;</span>FindingEvidence<span class="op">&gt;,</span></span>
+<span id="cb7-8"><a href="#cb7-8" aria-hidden="true" tabindex="-1"></a>    sample_size<span class="op">:</span> <span class="dt">u64</span><span class="op">,</span></span>
+<span id="cb7-9"><a href="#cb7-9" aria-hidden="true" tabindex="-1"></a>) <span class="op">-&gt;</span> <span class="dt">usize</span><span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>All canonicalization (fingerprint composition, byte ordering) happens inside <code>emit</code>. The detector cannot construct findings directly. This is what makes determinism a <em>structural</em> guarantee rather than a <em>trust</em> contract — you can’t write a non-deterministic custom detector that produces non-deterministic output, even if you try. The sink also rejects two cases:</p>
+<ul>
+<li><strong>Empty message.</strong> A finding without a message is unhelpful; rejected with <code>CustomDetectorError::EmptyMessage</code>.</li>
+<li><strong>Non-<code>Info</code> severity from an axes-empty detector.</strong> A detector that declared <code>BeliefAxisSet::NONE</code> produces findings that affect no belief score (advisory-only). Allowing it to emit Warning- or Error-severity findings would be a self-contradiction — the finding would appear in the report but couldn’t drag the score. Rejected with <code>CustomDetectorError::NonAdvisoryAxesEmpty</code>.</li>
+</ul>
+<p>Both errors are <em>recorded</em>, not raised. The detector’s <code>run()</code> continues; the framework drains the errors after <code>run()</code> returns and surfaces them in <code>LockeReport.assumptions</code>.</p>
+</section>
+<section id="belief-axis-routing-via-beliefaxisset" class="level3">
+<h3 class="anchored" data-anchor-id="belief-axis-routing-via-beliefaxisset">5.3 Belief-axis routing via <code>BeliefAxisSet</code></h3>
+<p>The 8 Locke belief axes (schema, missingness, drift, leakage, lineage, sample, duplication, constraint) are represented as a <code>u16</code> bitset:</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">pub</span> <span class="kw">struct</span> BeliefAxisSet(<span class="kw">pub</span> <span class="dt">u16</span>)<span class="op">;</span></span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="kw">impl</span> BeliefAxisSet <span class="op">{</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> <span class="kw">const</span> SCHEMA<span class="op">:</span> <span class="dt">Self</span>      <span class="op">=</span> <span class="dt">Self</span>(<span class="dv">1</span> <span class="op">&lt;&lt;</span> <span class="dv">0</span>)<span class="op">;</span></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> <span class="kw">const</span> MISSINGNESS<span class="op">:</span> <span class="dt">Self</span> <span class="op">=</span> <span class="dt">Self</span>(<span class="dv">1</span> <span class="op">&lt;&lt;</span> <span class="dv">1</span>)<span class="op">;</span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> <span class="kw">const</span> DRIFT<span class="op">:</span> <span class="dt">Self</span>       <span class="op">=</span> <span class="dt">Self</span>(<span class="dv">1</span> <span class="op">&lt;&lt;</span> <span class="dv">2</span>)<span class="op">;</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> <span class="kw">const</span> LEAKAGE<span class="op">:</span> <span class="dt">Self</span>     <span class="op">=</span> <span class="dt">Self</span>(<span class="dv">1</span> <span class="op">&lt;&lt;</span> <span class="dv">3</span>)<span class="op">;</span></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    <span class="co">// ...</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> <span class="kw">const</span> NONE<span class="op">:</span> <span class="dt">Self</span>        <span class="op">=</span> <span class="dt">Self</span>(<span class="dv">0</span>)<span class="op">;</span></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>When the framework runs a custom detector, it records the detector’s declared axes in a new field on <code>LockeReport</code>:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">pub</span> <span class="kw">struct</span> LockeReport <span class="op">{</span></span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">// ... existing fields ...</span></span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> custom_axis_assignments<span class="op">:</span> BTreeMap<span class="op">&lt;</span><span class="dt">String</span><span class="op">,</span> BeliefAxisSet<span class="op">&gt;,</span></span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The belief composition (the meet-semilattice algebra over <code>(BeliefScore, meet, ⊤=[1,...,1])</code> from <a href="../../../blog/posts/cjc-locke-v0.1-released/index.html#composing-evidence-across-stages-v07">ADR-0036</a>) gets one new closure:</p>
+<div class="sourceCode" id="cb10"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> custom_contains <span class="op">=</span> <span class="op">|</span>code<span class="op">:</span> <span class="op">&amp;</span><span class="dt">str</span><span class="op">,</span> axis<span class="op">:</span> BeliefAxisSet<span class="op">|</span> <span class="op">-&gt;</span> <span class="dt">bool</span> <span class="op">{</span></span>
+<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a>    report<span class="op">.</span>custom_axis_assignments</span>
+<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a>        <span class="op">.</span>get(code)</span>
+<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a>        <span class="op">.</span>map(<span class="op">|</span>axes<span class="op">|</span> axes<span class="op">.</span>contains(axis))</span>
+<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a>        <span class="op">.</span>unwrap_or(<span class="cn">false</span>)</span>
+<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a><span class="op">};</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Then each per-axis filter ORs the existing built-in code matchers with a <code>custom_contains(code, AXIS)</code> check. Built-in codes still match by name; custom codes match by their declared axes. No restructuring of the algebra was needed — the closure-based filter pattern in <code>penalty_from_findings_with_model</code> extends cleanly.</p>
+<p>The empty-map default is byte-identical to pre-v0.8 belief composition when no custom detectors are registered.</p>
+</section>
+<section id="the-python-bridge-structural-determinism-across-the-ffi-boundary" class="level3">
+<h3 class="anchored" data-anchor-id="the-python-bridge-structural-determinism-across-the-ffi-boundary">5.4 The Python bridge: structural determinism across the FFI boundary</h3>
+<p>The most architecturally interesting piece is the Python side. The naive PyO3 approach — give Python a mutable reference to the Rust <code>FindingSink</code> — runs into lifetime restrictions (<code>#[pyclass]</code> can’t hold borrowed references that might outlive the Python object). The path I took is a two-staged collector:</p>
+<div class="sourceCode" id="cb11"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="at">#[</span>pyclass<span class="at">(</span>name <span class="op">=</span> <span class="st">"CustomDetectorSink"</span><span class="op">,</span> module <span class="op">=</span> <span class="st">"cjc_locke"</span><span class="at">)]</span></span>
+<span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a><span class="kw">struct</span> PyDetectorSink <span class="op">{</span></span>
+<span id="cb11-3"><a href="#cb11-3" aria-hidden="true" tabindex="-1"></a>    pending<span class="op">:</span> <span class="dt">Vec</span><span class="op">&lt;</span>PyEmittedFinding<span class="op">&gt;,</span></span>
+<span id="cb11-4"><a href="#cb11-4" aria-hidden="true" tabindex="-1"></a>    code<span class="op">:</span> <span class="dt">String</span><span class="op">,</span></span>
+<span id="cb11-5"><a href="#cb11-5" aria-hidden="true" tabindex="-1"></a>    axes_empty<span class="op">:</span> <span class="dt">bool</span><span class="op">,</span></span>
+<span id="cb11-6"><a href="#cb11-6" aria-hidden="true" tabindex="-1"></a>    last_error<span class="op">:</span> <span class="dt">Option</span><span class="op">&lt;</span><span class="dt">String</span><span class="op">&gt;,</span></span>
+<span id="cb11-7"><a href="#cb11-7" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The Python detector’s <code>run(df, sink)</code> receives a <code>PyDetectorSink</code> it can call <code>emit(...)</code> on; the <code>emit</code> pushes into <code>pending</code> but does NOT yet construct a canonical <code>ValidationFinding</code>. After Python’s <code>run()</code> returns, the Rust adapter drains <code>pending</code> into the real Rust <code>FindingSink</code>:</p>
+<div class="sourceCode" id="cb12"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb12-1"><a href="#cb12-1" aria-hidden="true" tabindex="-1"></a><span class="kw">impl</span> CustomDetector <span class="cf">for</span> PyCustomDetectorAdapter <span class="op">{</span></span>
+<span id="cb12-2"><a href="#cb12-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">fn</span> run(<span class="op">&amp;</span><span class="kw">self</span><span class="op">,</span> df<span class="op">:</span> <span class="op">&amp;</span>DataFrame<span class="op">,</span> sink<span class="op">:</span> <span class="op">&amp;</span><span class="kw">mut</span> FindingSink) <span class="op">{</span></span>
+<span id="cb12-3"><a href="#cb12-3" aria-hidden="true" tabindex="-1"></a>        <span class="pp">Python::</span>with_gil(<span class="op">|</span>py<span class="op">|</span> <span class="op">{</span></span>
+<span id="cb12-4"><a href="#cb12-4" aria-hidden="true" tabindex="-1"></a>            <span class="kw">let</span> view <span class="op">=</span> <span class="pp">Py::</span>new(py<span class="op">,</span> PyDetectorDataFrame <span class="op">{</span> inner<span class="op">:</span> <span class="pp">Arc::</span>new(df<span class="op">.</span>clone()) <span class="op">}</span>)<span class="op">?;</span></span>
+<span id="cb12-5"><a href="#cb12-5" aria-hidden="true" tabindex="-1"></a>            <span class="kw">let</span> py_sink <span class="op">=</span> <span class="pp">Py::</span>new(py<span class="op">,</span> PyDetectorSink <span class="op">{</span> <span class="co">/* ... */</span> <span class="op">}</span>)<span class="op">?;</span></span>
+<span id="cb12-6"><a href="#cb12-6" aria-hidden="true" tabindex="-1"></a>            <span class="kw">self</span><span class="op">.</span>instance<span class="op">.</span>bind(py)<span class="op">.</span>call_method1(<span class="st">"run"</span><span class="op">,</span> (view<span class="op">,</span> py_sink<span class="op">.</span>clone_ref(py)))<span class="op">?;</span></span>
+<span id="cb12-7"><a href="#cb12-7" aria-hidden="true" tabindex="-1"></a>            <span class="co">// Drain pending emissions into the Rust sink. Canonicalization</span></span>
+<span id="cb12-8"><a href="#cb12-8" aria-hidden="true" tabindex="-1"></a>            <span class="co">// happens at the Rust-side emit call.</span></span>
+<span id="cb12-9"><a href="#cb12-9" aria-hidden="true" tabindex="-1"></a>            <span class="cf">for</span> emission <span class="kw">in</span> py_sink<span class="op">.</span>bind(py)<span class="op">.</span>borrow()<span class="op">.</span>pending<span class="op">.</span>clone() <span class="op">{</span></span>
+<span id="cb12-10"><a href="#cb12-10" aria-hidden="true" tabindex="-1"></a>                sink<span class="op">.</span>emit(emission<span class="op">.</span>severity<span class="op">,</span> emission<span class="op">.</span>message<span class="op">,</span> emission<span class="op">.</span>column<span class="op">,</span> <span class="co">/* ... */</span>)<span class="op">;</span></span>
+<span id="cb12-11"><a href="#cb12-11" aria-hidden="true" tabindex="-1"></a>            <span class="op">}</span></span>
+<span id="cb12-12"><a href="#cb12-12" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span>)<span class="op">;</span></span>
+<span id="cb12-13"><a href="#cb12-13" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb12-14"><a href="#cb12-14" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>This is the architectural sleight-of-hand: <strong>the framework canonicalizes the Python detector’s findings on the Rust side after Python returns</strong>. The user-supplied Python code can be as non-deterministic as it wants — <code>random.shuffle</code>, <code>set</code> iteration, <code>dict</code> order from <code>PYTHONHASHSEED</code> — and the framework still produces byte-identical reports across runs as long as the <em>set</em> of findings is the same.</p>
+<p>This is provable. The pytest in <code>python/tests/test_custom_detectors.py</code>:</p>
+<div class="sourceCode" id="cb13"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> _ShuffleEmissionDetector(cjc_locke.CustomDetector):</span>
+<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Emits findings in a randomised order each run."""</span></span>
+<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> <span class="fu">__init__</span>(<span class="va">self</span>, seed: <span class="bu">int</span>):</span>
+<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._rng <span class="op">=</span> random.Random(seed)</span>
+<span id="cb13-5"><a href="#cb13-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-6"><a href="#cb13-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> code(<span class="va">self</span>): <span class="cf">return</span> <span class="st">"E9502"</span></span>
+<span id="cb13-7"><a href="#cb13-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> belief_axes(<span class="va">self</span>): <span class="cf">return</span> [<span class="st">"leakage"</span>]</span>
+<span id="cb13-8"><a href="#cb13-8" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-9"><a href="#cb13-9" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> run(<span class="va">self</span>, df, sink):</span>
+<span id="cb13-10"><a href="#cb13-10" aria-hidden="true" tabindex="-1"></a>        names <span class="op">=</span> <span class="bu">list</span>(df.column_names())</span>
+<span id="cb13-11"><a href="#cb13-11" aria-hidden="true" tabindex="-1"></a>        <span class="va">self</span>._rng.shuffle(names)            <span class="co"># explicit non-determinism</span></span>
+<span id="cb13-12"><a href="#cb13-12" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> n <span class="kw">in</span> names:</span>
+<span id="cb13-13"><a href="#cb13-13" aria-hidden="true" tabindex="-1"></a>            sink.emit(<span class="st">"warning"</span>, <span class="ss">f"shuffle finding on `</span><span class="sc">{</span>n<span class="sc">}</span><span class="ss">`"</span>,</span>
+<span id="cb13-14"><a href="#cb13-14" aria-hidden="true" tabindex="-1"></a>                      column<span class="op">=</span>n, sample_size<span class="op">=</span>df.n_rows)</span>
+<span id="cb13-15"><a href="#cb13-15" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-16"><a href="#cb13-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb13-17"><a href="#cb13-17" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> test_determinism_under_emission_shuffle(lc_like_data):</span>
+<span id="cb13-18"><a href="#cb13-18" aria-hidden="true" tabindex="-1"></a>    d1 <span class="op">=</span> _ShuffleEmissionDetector(seed<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb13-19"><a href="#cb13-19" aria-hidden="true" tabindex="-1"></a>    d2 <span class="op">=</span> _ShuffleEmissionDetector(seed<span class="op">=</span><span class="dv">2</span>)   <span class="co"># different shuffle seed</span></span>
+<span id="cb13-20"><a href="#cb13-20" aria-hidden="true" tabindex="-1"></a>    r1 <span class="op">=</span> cjc_locke.validate(lc_like_data, custom_detectors<span class="op">=</span>[d1])</span>
+<span id="cb13-21"><a href="#cb13-21" aria-hidden="true" tabindex="-1"></a>    r2 <span class="op">=</span> cjc_locke.validate(lc_like_data, custom_detectors<span class="op">=</span>[d2])</span>
+<span id="cb13-22"><a href="#cb13-22" aria-hidden="true" tabindex="-1"></a>    <span class="cf">assert</span> r1.to_json() <span class="op">==</span> r2.to_json()     <span class="co"># byte-identical</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>This is the credibility-anchor test for the whole Python bridge. The detector emits findings in a <code>random.Random</code>-shuffled order each call — two different shuffle seeds in two different runs — and the resulting JSON output is byte-identical. The framework’s canonical sort on the Rust side masks Python’s emission order entirely.</p>
+<p>Without this property, “Locke determinism survives the Python boundary” would be a brittle promise. With it, it’s a structural guarantee.</p>
+<p>The data path that makes that work:</p>
+<div class="cell">
+<div class="cell-output-display">
+<div>
+<div>
+<pre class="mermaid mermaid-js">sequenceDiagram
+    autonumber
+    participant Py as Python user code
+    participant Sink as PyDetectorSink&lt;br/&gt;(collector)
+    participant Adapter as PyCustomDetectorAdapter&lt;br/&gt;(implements Rust trait)
+    participant Rust as Rust FindingSink
+    participant Report as LockeReport JSON
+
+    Note over Py: Free to use random.shuffle,&lt;br/&gt;set iter, dict order
+    Py-&gt;&gt;Sink: sink.emit("warning", msg₁, ...)
+    Py-&gt;&gt;Sink: sink.emit("warning", msg₃, ...)
+    Py-&gt;&gt;Sink: sink.emit("warning", msg₂, ...)
+    Note over Sink: pending = [f₁, f₃, f₂]&lt;br/&gt;non-canonical order
+    Py--&gt;&gt;Adapter: run() returns
+    Adapter-&gt;&gt;Rust: drain pending → emit each
+    Note over Rust: canonical fingerprint&lt;br/&gt;per finding
+    Rust-&gt;&gt;Report: findings.sort_by(sort_key)
+    Note over Report: byte-identical across runs,&lt;br/&gt;regardless of Python order
+</pre>
+</div>
+</div>
+</div>
+</div>
+<p>The “non-canonical order” → “canonical sort” transition is the structural fix. The user is free to emit in whatever order they like; the framework reorders before the bytes leave Rust.</p>
+</section>
+<section id="the-python-abc" class="level3">
+<h3 class="anchored" data-anchor-id="the-python-abc">5.5 The Python ABC</h3>
+<p>The Python facade is intentionally small. Three methods, no metaclass magic:</p>
+<div class="sourceCode" id="cb14"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> CustomDetector:</span>
+<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>    <span class="co">"""Base class for user-defined Locke detectors (ADR-0041)."""</span></span>
+<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-4"><a href="#cb14-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> code(<span class="va">self</span>) <span class="op">-&gt;</span> <span class="bu">str</span>:</span>
+<span id="cb14-5"><a href="#cb14-5" aria-hidden="true" tabindex="-1"></a>        <span class="cf">raise</span> <span class="pp">NotImplementedError</span>(...)</span>
+<span id="cb14-6"><a href="#cb14-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-7"><a href="#cb14-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> belief_axes(<span class="va">self</span>) <span class="op">-&gt;</span> List[<span class="bu">str</span>]:</span>
+<span id="cb14-8"><a href="#cb14-8" aria-hidden="true" tabindex="-1"></a>        <span class="co"># Names from {schema, missingness, drift, leakage, lineage,</span></span>
+<span id="cb14-9"><a href="#cb14-9" aria-hidden="true" tabindex="-1"></a>        <span class="co"># sample, duplication, constraint}. Empty list = advisory-only.</span></span>
+<span id="cb14-10"><a href="#cb14-10" aria-hidden="true" tabindex="-1"></a>        <span class="cf">raise</span> <span class="pp">NotImplementedError</span>(...)</span>
+<span id="cb14-11"><a href="#cb14-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb14-12"><a href="#cb14-12" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> run(<span class="va">self</span>, df, sink) <span class="op">-&gt;</span> <span class="va">None</span>:</span>
+<span id="cb14-13"><a href="#cb14-13" aria-hidden="true" tabindex="-1"></a>        <span class="cf">raise</span> <span class="pp">NotImplementedError</span>(...)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>A working detector subclass is ~10 lines:</p>
+<div class="sourceCode" id="cb15"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb15-1"><a href="#cb15-1" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> PostOriginationByName(cjc_locke.CustomDetector):</span>
+<span id="cb15-2"><a href="#cb15-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> code(<span class="va">self</span>) <span class="op">-&gt;</span> <span class="bu">str</span>:</span>
+<span id="cb15-3"><a href="#cb15-3" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">"E9500"</span></span>
+<span id="cb15-4"><a href="#cb15-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-5"><a href="#cb15-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> belief_axes(<span class="va">self</span>) <span class="op">-&gt;</span> <span class="bu">list</span>[<span class="bu">str</span>]:</span>
+<span id="cb15-6"><a href="#cb15-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> [<span class="st">"leakage"</span>]</span>
+<span id="cb15-7"><a href="#cb15-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb15-8"><a href="#cb15-8" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> run(<span class="va">self</span>, df, sink) <span class="op">-&gt;</span> <span class="va">None</span>:</span>
+<span id="cb15-9"><a href="#cb15-9" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> col <span class="kw">in</span> df.column_names():</span>
+<span id="cb15-10"><a href="#cb15-10" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> col.startswith((<span class="st">"total_"</span>, <span class="st">"last_pymnt_"</span>, <span class="st">"recoveries"</span>)):</span>
+<span id="cb15-11"><a href="#cb15-11" aria-hidden="true" tabindex="-1"></a>                sink.emit(<span class="st">"error"</span>,</span>
+<span id="cb15-12"><a href="#cb15-12" aria-hidden="true" tabindex="-1"></a>                          <span class="ss">f"`</span><span class="sc">{</span>col<span class="sc">}</span><span class="ss">` matches a post-origination naming pattern"</span>,</span>
+<span id="cb15-13"><a href="#cb15-13" aria-hidden="true" tabindex="-1"></a>                          column<span class="op">=</span>col, sample_size<span class="op">=</span>df.n_rows)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Wiring it into a validate call:</p>
+<div class="sourceCode" id="cb16"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a>report <span class="op">=</span> cjc_locke.validate(</span>
+<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>    data,</span>
+<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>    label<span class="op">=</span><span class="st">"lc"</span>,</span>
+<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>    custom_detectors<span class="op">=</span>[PostOriginationByName()],</span>
+<span id="cb16-5"><a href="#cb16-5" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>Axis names cross the boundary as strings. Unknown names (e.g.&nbsp;<code>"nonsense"</code>) raise <code>ValueError</code> at registration — the underlying <code>BeliefAxisSet::from_names</code> returns a structured <code>Err</code> which the bridge converts to a <code>PyValueError</code>.</p>
+</section>
+<section id="the-4-way-lc-re-measurement" class="level3">
+<h3 class="anchored" data-anchor-id="the-4-way-lc-re-measurement">5.6 The 4-way LC re-measurement</h3>
+<p>The reason the layer exists is to close the LC gap. The Rust-side reference implementation is in the demo crate itself (<code>demos/lendingclub/src/lib.rs</code>):</p>
+<div class="sourceCode" id="cb17"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb17-1"><a href="#cb17-1" aria-hidden="true" tabindex="-1"></a><span class="at">#[</span>derive<span class="at">(</span><span class="bu">Debug</span><span class="op">,</span> <span class="bu">Default</span><span class="at">)]</span></span>
+<span id="cb17-2"><a href="#cb17-2" aria-hidden="true" tabindex="-1"></a><span class="kw">pub</span> <span class="kw">struct</span> PostOriginationByNameDetector<span class="op">;</span></span>
+<span id="cb17-3"><a href="#cb17-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-4"><a href="#cb17-4" aria-hidden="true" tabindex="-1"></a><span class="kw">impl</span> PostOriginationByNameDetector <span class="op">{</span></span>
+<span id="cb17-5"><a href="#cb17-5" aria-hidden="true" tabindex="-1"></a>    <span class="kw">pub</span> <span class="kw">fn</span> is_post_origination(name<span class="op">:</span> <span class="op">&amp;</span><span class="dt">str</span>) <span class="op">-&gt;</span> <span class="dt">bool</span> <span class="op">{</span></span>
+<span id="cb17-6"><a href="#cb17-6" aria-hidden="true" tabindex="-1"></a>        <span class="kw">const</span> PREFIX_PATTERNS<span class="op">:</span> <span class="op">&amp;</span>[<span class="op">&amp;</span><span class="dt">str</span>] <span class="op">=</span> <span class="op">&amp;</span>[</span>
+<span id="cb17-7"><a href="#cb17-7" aria-hidden="true" tabindex="-1"></a>            <span class="st">"total_"</span><span class="op">,</span> <span class="st">"last_pymnt_"</span><span class="op">,</span> <span class="st">"last_fico_range_"</span><span class="op">,</span></span>
+<span id="cb17-8"><a href="#cb17-8" aria-hidden="true" tabindex="-1"></a>            <span class="st">"out_prncp"</span><span class="op">,</span> <span class="st">"debt_settlement_"</span><span class="op">,</span></span>
+<span id="cb17-9"><a href="#cb17-9" aria-hidden="true" tabindex="-1"></a>            <span class="st">"hardship_"</span><span class="op">,</span> <span class="st">"settlement_"</span><span class="op">,</span></span>
+<span id="cb17-10"><a href="#cb17-10" aria-hidden="true" tabindex="-1"></a>        ]<span class="op">;</span></span>
+<span id="cb17-11"><a href="#cb17-11" aria-hidden="true" tabindex="-1"></a>        <span class="kw">const</span> EXACT_PATTERNS<span class="op">:</span> <span class="op">&amp;</span>[<span class="op">&amp;</span><span class="dt">str</span>] <span class="op">=</span> <span class="op">&amp;</span>[</span>
+<span id="cb17-12"><a href="#cb17-12" aria-hidden="true" tabindex="-1"></a>            <span class="st">"recoveries"</span><span class="op">,</span> <span class="st">"collection_recovery_fee"</span><span class="op">,</span> <span class="st">"debt_settlement_flag"</span><span class="op">,</span></span>
+<span id="cb17-13"><a href="#cb17-13" aria-hidden="true" tabindex="-1"></a>        ]<span class="op">;</span></span>
+<span id="cb17-14"><a href="#cb17-14" aria-hidden="true" tabindex="-1"></a>        EXACT_PATTERNS<span class="op">.</span>iter()<span class="op">.</span>any(<span class="op">|</span>p<span class="op">|</span> <span class="op">*</span>p <span class="op">==</span> name)</span>
+<span id="cb17-15"><a href="#cb17-15" aria-hidden="true" tabindex="-1"></a>            <span class="op">||</span> PREFIX_PATTERNS<span class="op">.</span>iter()<span class="op">.</span>any(<span class="op">|</span>p<span class="op">|</span> name<span class="op">.</span>starts_with(p))</span>
+<span id="cb17-16"><a href="#cb17-16" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb17-17"><a href="#cb17-17" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span>
+<span id="cb17-18"><a href="#cb17-18" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb17-19"><a href="#cb17-19" aria-hidden="true" tabindex="-1"></a><span class="kw">impl</span> <span class="pp">cjc_locke::custom_detector::</span>CustomDetector <span class="cf">for</span> PostOriginationByNameDetector <span class="op">{</span></span>
+<span id="cb17-20"><a href="#cb17-20" aria-hidden="true" tabindex="-1"></a>    <span class="kw">fn</span> code(<span class="op">&amp;</span><span class="kw">self</span>) <span class="op">-&gt;</span> <span class="op">&amp;</span><span class="ot">'static</span> <span class="dt">str</span> <span class="op">{</span> <span class="st">"E9500"</span> <span class="op">}</span></span>
+<span id="cb17-21"><a href="#cb17-21" aria-hidden="true" tabindex="-1"></a>    <span class="kw">fn</span> belief_axes(<span class="op">&amp;</span><span class="kw">self</span>) <span class="op">-&gt;</span> BeliefAxisSet <span class="op">{</span> <span class="pp">BeliefAxisSet::</span>LEAKAGE <span class="op">}</span></span>
+<span id="cb17-22"><a href="#cb17-22" aria-hidden="true" tabindex="-1"></a>    <span class="kw">fn</span> run(<span class="op">&amp;</span><span class="kw">self</span><span class="op">,</span> df<span class="op">:</span> <span class="op">&amp;</span>DataFrame<span class="op">,</span> sink<span class="op">:</span> <span class="op">&amp;</span><span class="kw">mut</span> FindingSink) <span class="op">{</span></span>
+<span id="cb17-23"><a href="#cb17-23" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> (name<span class="op">,</span> _col) <span class="kw">in</span> <span class="op">&amp;</span>df<span class="op">.</span>columns <span class="op">{</span></span>
+<span id="cb17-24"><a href="#cb17-24" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> <span class="dt">Self</span><span class="pp">::</span>is_post_origination(name) <span class="op">{</span></span>
+<span id="cb17-25"><a href="#cb17-25" aria-hidden="true" tabindex="-1"></a>                sink<span class="op">.</span>emit(</span>
+<span id="cb17-26"><a href="#cb17-26" aria-hidden="true" tabindex="-1"></a>                    <span class="pp">FindingSeverity::</span><span class="bu">Error</span><span class="op">,</span></span>
+<span id="cb17-27"><a href="#cb17-27" aria-hidden="true" tabindex="-1"></a>                    <span class="pp">format!</span>(<span class="st">"column `{}` matches a known post-origination naming pattern"</span><span class="op">,</span> name)<span class="op">,</span></span>
+<span id="cb17-28"><a href="#cb17-28" aria-hidden="true" tabindex="-1"></a>                    <span class="cn">Some</span>(name<span class="op">.</span>clone())<span class="op">,</span></span>
+<span id="cb17-29"><a href="#cb17-29" aria-hidden="true" tabindex="-1"></a>                    <span class="cn">None</span><span class="op">,</span></span>
+<span id="cb17-30"><a href="#cb17-30" aria-hidden="true" tabindex="-1"></a>                    <span class="pp">vec!</span>[]<span class="op">,</span></span>
+<span id="cb17-31"><a href="#cb17-31" aria-hidden="true" tabindex="-1"></a>                    df<span class="op">.</span>nrows() <span class="kw">as</span> <span class="dt">u64</span><span class="op">,</span></span>
+<span id="cb17-32"><a href="#cb17-32" aria-hidden="true" tabindex="-1"></a>                )<span class="op">;</span></span>
+<span id="cb17-33"><a href="#cb17-33" aria-hidden="true" tabindex="-1"></a>            <span class="op">}</span></span>
+<span id="cb17-34"><a href="#cb17-34" aria-hidden="true" tabindex="-1"></a>        <span class="op">}</span></span>
+<span id="cb17-35"><a href="#cb17-35" aria-hidden="true" tabindex="-1"></a>    <span class="op">}</span></span>
+<span id="cb17-36"><a href="#cb17-36" aria-hidden="true" tabindex="-1"></a><span class="op">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The CLI gets a <code>--use-custom-detectors</code> flag that wires this detector into <code>ValidateOptions::custom_detectors</code>. On the full LC dataset:</p>
+<blockquote class="blockquote">
+<p><code>E9500 × 39</code> — the custom detector fires 39 times, flagging 39 columns by name.</p>
+</blockquote>
+<p>The honest-model harness gets a <code>--from-report &lt;path&gt;</code> flag that reads the report JSON, extracts every column with an E9500 <em>or</em> E9061 finding, and uses that as the exclusion set for a fourth model variant.</p>
+<p>The four-way result, same 200K-row sample, same seed=42:</p>
+<pre class="text"><code>=== Summary ===
+variant                     |AUC|    n_train     n_test          p   iter
+pre-Locke (naive)          0.9993     140000      60000         87    100
+Locke-filtered             0.9995     140000      60000         84    100
+Locke + custom det.        0.7388     140000      60000         68     17  ← closes the gap inside Locke
+domain-honest              0.7394     140000      60000         75     14</code></pre>
+<figure style="margin: 2em 0;" class="figure">
+<svg viewbox="0 0 720 380" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Bar chart of the four-way honest-model AUC results">
+<!-- Title -->
+</svg><p><text x="360" y="22" text-anchor="middle" font-size="15" font-weight="600" fill="currentColor">Honest-model |AUC| — four-way comparison</text> <text x="360" y="40" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.7">200K-row LendingClub sample, seed=42, test fraction 0.3</text></p>
+<!-- Plot area: x 80-700, y 70-310 (height 240 = AUC of 1.0) -->
+<!-- Literature band 0.69–0.74 → y 226.4 to 238.4 -->
+<p><rect x="80" y="226.4" width="620" height="12" fill="#2d8b50" opacity="0.12"> <text x="694" y="234" text-anchor="end" font-size="10" fill="currentColor" opacity="0.65">literature band 0.69–0.74</text></rect></p>
+<!-- Y axis ticks at 0.0, 0.2, 0.4, 0.6, 0.8, 1.0 -->
+<p><line x1="80" y1="70" x2="80" y2="310" stroke="currentColor" stroke-opacity="0.4"> <line x1="80" y1="310" x2="700" y2="310" stroke="currentColor" stroke-opacity="0.4"> <line x1="75" y1="70" x2="80" y2="70" stroke="currentColor" stroke-opacity="0.4"> <text x="70" y="74" text-anchor="end" font-size="10" fill="currentColor">1.0</text> <line x1="75" y1="118" x2="80" y2="118" stroke="currentColor" stroke-opacity="0.4"> <text x="70" y="122" text-anchor="end" font-size="10" fill="currentColor">0.8</text> <line x1="75" y1="166" x2="80" y2="166" stroke="currentColor" stroke-opacity="0.4"> <text x="70" y="170" text-anchor="end" font-size="10" fill="currentColor">0.6</text> <line x1="75" y1="214" x2="80" y2="214" stroke="currentColor" stroke-opacity="0.4"> <text x="70" y="218" text-anchor="end" font-size="10" fill="currentColor">0.4</text> <line x1="75" y1="262" x2="80" y2="262" stroke="currentColor" stroke-opacity="0.4"> <text x="70" y="266" text-anchor="end" font-size="10" fill="currentColor">0.2</text> <line x1="75" y1="310" x2="80" y2="310" stroke="currentColor" stroke-opacity="0.4"> <text x="70" y="314" text-anchor="end" font-size="10" fill="currentColor">0.0</text></line></line></line></line></line></line></line></line></p>
+<!-- Bars: width 110, x positions 110, 270, 430, 590; bar height = AUC * 240 -->
+<!-- Pre-Locke 0.9993 → height 239.83 → y 70.17 -->
+<p><rect x="110" y="70.17" width="110" height="239.83" fill="#c1432d"> <text x="165" y="62" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor">0.9993</text> <text x="165" y="332" text-anchor="middle" font-size="11" fill="currentColor">Pre-Locke (naive)</text> <text x="165" y="346" text-anchor="middle" font-size="9" fill="currentColor" opacity="0.7">p=87, iter=100 cap</text></rect></p>
+<!-- Locke-filtered 0.9995 → height 239.88 → y 70.12 -->
+<p><rect x="270" y="70.12" width="110" height="239.88" fill="#c1432d"> <text x="325" y="62" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor">0.9995</text> <text x="325" y="332" text-anchor="middle" font-size="11" fill="currentColor">Locke-filtered</text> <text x="325" y="346" text-anchor="middle" font-size="9" fill="currentColor" opacity="0.7">E9061 only, p=84</text></rect></p>
+<!-- Locke + custom 0.7388 → height 177.31 → y 132.69 -->
+<p><rect x="430" y="132.69" width="110" height="177.31" fill="#2d8b50"> <text x="485" y="125" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor">0.7388</text> <text x="485" y="332" text-anchor="middle" font-size="11" fill="currentColor">Locke + custom det.</text> <text x="485" y="346" text-anchor="middle" font-size="9" fill="currentColor" opacity="0.7">E9500 ∪ E9061, p=68</text></rect></p>
+<!-- Domain-honest 0.7394 → height 177.46 → y 132.54 -->
+<p><rect x="590" y="132.54" width="110" height="177.46" fill="#2d8b50"> <text x="645" y="125" text-anchor="middle" font-size="13" font-weight="700" fill="currentColor">0.7394</text> <text x="645" y="332" text-anchor="middle" font-size="11" fill="currentColor">Domain-honest</text> <text x="645" y="346" text-anchor="middle" font-size="9" fill="currentColor" opacity="0.7">hand-curated, p=75</text></rect></p>
+<!-- Bracket connecting bars 3 and 4 with the "0.0006 gap" annotation -->
+<line x1="485" y1="115" x2="485" y2="105" stroke="currentColor" stroke-opacity="0.5"> <line x1="485" y1="105" x2="645" y2="105" stroke="currentColor" stroke-opacity="0.5"> <line x1="645" y1="105" x2="645" y2="115" stroke="currentColor" stroke-opacity="0.5"> <text x="565" y="98" text-anchor="middle" font-size="10" fill="currentColor" opacity="0.8" font-style="italic">|Δ| = 0.0006</text>
+
+<figcaption style="text-align: center; font-size: 0.9em; opacity: 0.85; margin-top: 0.4em;" class="figure-caption">
+The custom detector (bar #3) recovers the honest credit-risk baseline (bar #4) inside Locke configuration. Bars #1 and #2 are inflated by leakage; bars #3 and #4 land within 0.0006 of each other, both inside the published credit-risk literature band of 0.69–0.74.
+</figcaption>
+</line></line></line></figure>
+<p><strong><code>Locke + custom det.</code> at <code>|AUC| = 0.7388</code> lands within 0.0006 of the hand-curated <code>domain-honest</code> baseline at <code>0.7394</code>.</strong> The custom detector recovered honest credit-risk performance entirely <em>inside</em> Locke configuration — using a ~30-LOC detector to encode the same domain knowledge that previously lived as a separate hard-coded exclusion list in the modeling code.</p>
+<p>Two further notes on this table:</p>
+<ul>
+<li><strong>The custom-detector variant uses FEWER features (68 vs 75).</strong> It’s <em>more</em> aggressive about exclusion (39 columns flagged vs the handoff’s 12, because the custom detector catches <code>sec_app_*</code>, <code>hardship_*</code>, <code>settlement_*</code> etc. that the handoff’s list didn’t anticipate). And yet it achieves essentially the same AUC. That’s empirical evidence the extra exclusions weren’t carrying useful signal — the custom detector is at least as conservative as expert curation.</li>
+<li><strong>IRLS convergence speed is a real diagnostic.</strong> The leaky models hit the 100-iter cap because the multicollinear post-origination cluster makes <code>X^T W X</code> near-singular. The honest variants both converge in 14–17 iterations because removing that cluster conditions the matrix well. Convergence speed is a proxy for “how well did the exclusion set capture the multicollinear leakage subspace” — and Locke + custom converged in 17 iters, comparable to domain-honest’s 14.</li>
+</ul>
+</section>
+<section id="tests-in-three-columns" class="level3">
+<h3 class="anchored" data-anchor-id="tests-in-three-columns">5.7 Tests, in three columns</h3>
+<table class="table">
+<colgroup>
+<col style="width: 17%">
+<col style="width: 43%">
+<col style="width: 4%">
+<col style="width: 34%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Layer</th>
+<th>File</th>
+<th>Tests</th>
+<th>Kind</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Rust unit</td>
+<td><code>crates/cjc-locke/src/custom_detector.rs</code></td>
+<td>15</td>
+<td>Trait, sink, namespace, axis set</td>
+</tr>
+<tr class="even">
+<td>Rust integration</td>
+<td><code>tests/locke/custom_detector_tests.rs</code></td>
+<td>14</td>
+<td>End-to-end + 3 proptest + 3 bolero fuzz</td>
+</tr>
+<tr class="odd">
+<td>Python end-to-end</td>
+<td><code>python/tests/test_custom_detectors.py</code></td>
+<td>14</td>
+<td>Registration, sink contract, emission shuffle</td>
+</tr>
+<tr class="even">
+<td>Demo</td>
+<td><code>demos/lendingclub/src/lib.rs</code> (in-module)</td>
+<td>2</td>
+<td>Pattern detector smoke tests</td>
+</tr>
+<tr class="odd">
+<td><strong>Total new</strong></td>
+<td></td>
+<td><strong>45</strong></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>The integration test file leans on a <code>NameMatchDetector</code> helper plus <code>ProptestDetector</code> plus <code>ShuffleEmissionDetector</code> — three detector subclasses that exercise different aspects of the trait. Three of the integration tests are bolero fuzz tests that exercise the registration namespace validator (<code>validate_custom_code</code>) and the emit input validation under arbitrary byte sequences. None of the fuzz inputs panic; either the input is valid (no error recorded) or it’s invalid (error recorded, no finding constructed). Determinism is also exercised in the Rust proptest: random axes + emit count + arbitrary DataFrame → byte-identical JSON across runs.</p>
+<p>Workspace test totals after ADR-0041 alone: <code>cjc-locke</code> lib passes 423 (was 408, +15); <code>tests/locke</code> integration passes 291 (was 277, +14); zero regressions in pre-existing tests.</p>
+</section>
+</section>
+<section id="adr-0042-the-str-with-sentinels-gap-which-turned-out-to-be-two-gaps" class="level2">
+<h2 class="anchored" data-anchor-id="adr-0042-the-str-with-sentinels-gap-which-turned-out-to-be-two-gaps">6. ADR-0042: The Str-with-sentinels gap (which turned out to be two gaps)</h2>
+<p>The ADR-0041 retrospective in <code>cross_validate.md</code> ended with a “Suggested Locke adjustments” section. The first item:</p>
+<blockquote class="blockquote">
+<p><strong>Str-with-sentinels columns silently bypass three detectors</strong> (E9070 conditional missingness, E9039 numeric drift, E9050+ temporal). The CSV reader infers a column as <code>Str</code> if the first row has empty/sentinel values. Once typed <code>Str</code>, the column carries the sentinel string instead of NaN, and the Float-only detectors skip it. <code>annual_inc_joint</code> is the canonical example — logically numeric, but the reader sees <code>""</code> in row 1 and types it <code>Str</code>.</p>
+</blockquote>
+<p>The intent was to address it before Project B (NYC Taxi), where every drift-detection scenario depends on Float typing. The investigation surfaced something the brief hadn’t anticipated.</p>
+<section id="gap-one-type-inference-from-the-first-data-row" class="level3">
+<h3 class="anchored" data-anchor-id="gap-one-type-inference-from-the-first-data-row">6.1 Gap one: type inference from the first data row</h3>
+<p><code>cjc-data::CsvReader</code> types each column from its first data row only. For <code>annual_inc_joint</code>, the first row’s value is <code>""</code> (empty string — the loan was an individual application, not joint). <code>infer_type("")</code> returns <code>InferredType::Str</code>. Once the column is <code>Str</code>, every subsequent numeric value (<code>"100000"</code>, <code>"50000.0"</code>, etc.) gets stored as a string. Downstream Float-only detectors skip the column.</p>
+<p>The fix lives in a new module <code>crates/cjc-locke/src/auto_promote.rs</code>. Each <code>Str</code> column is scanned and each value classified as:</p>
+<ul>
+<li><strong>Sentinel</strong> — matches the existing <code>BUILTIN_STRING_SENTINELS</code> (<code>""</code>, <code>"?"</code>, <code>"NA"</code>, <code>"N/A"</code>, <code>"NULL"</code>, <code>"null"</code>, <code>"nan"</code>, <code>"NaN"</code>, <code>"None"</code>, <code>"-"</code>) or <code>cfg.additional_sentinels</code>.</li>
+<li><strong>Parseable</strong> — <code>str::parse::&lt;f64&gt;()</code> succeeds. Accepts integer and float literals, including scientific notation (<code>1.5e-3</code>).</li>
+<li><strong>Other</strong> — text, malformed numbers, anything else.</li>
+</ul>
+<p>A column is <strong>promoted</strong> when:</p>
+<ul>
+<li><code>non_sentinel_rows &gt;= cfg.min_non_sentinel_rows_for_promotion</code> (default 10), AND</li>
+<li><code>n_parseable / non_sentinel &gt;= cfg.min_parseable_fraction_for_promotion</code> (default 0.80).</li>
+</ul>
+<p>Promoted columns are rebuilt as <code>Column::Float</code> where sentinels and unparseable values become <code>NaN</code>. Each emits one <code>E9009</code> (<code>Info</code> severity) finding with full evidence (counts, fraction).</p>
+<div class="sourceCode" id="cb19"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb19-1"><a href="#cb19-1" aria-hidden="true" tabindex="-1"></a><span class="kw">pub</span> <span class="kw">fn</span> auto_promote_str_columns(</span>
+<span id="cb19-2"><a href="#cb19-2" aria-hidden="true" tabindex="-1"></a>    df<span class="op">:</span> <span class="op">&amp;</span>DataFrame<span class="op">,</span></span>
+<span id="cb19-3"><a href="#cb19-3" aria-hidden="true" tabindex="-1"></a>    cfg<span class="op">:</span> <span class="op">&amp;</span>ValidationConfig<span class="op">,</span></span>
+<span id="cb19-4"><a href="#cb19-4" aria-hidden="true" tabindex="-1"></a>) <span class="op">-&gt;</span> (<span class="dt">Option</span><span class="op">&lt;</span>DataFrame<span class="op">&gt;,</span> <span class="dt">Vec</span><span class="op">&lt;</span>ValidationFinding<span class="op">&gt;</span>)<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The <code>Option&lt;DataFrame&gt;</code> return is the zero-allocation no-op path: if no column qualifies, returns <code>None</code> and the caller uses the original DataFrame without any clone cost. The wiring in <code>api::validate</code> is the <code>working_df</code> pattern:</p>
+<div class="sourceCode" id="cb20"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> (maybe_promoted_df<span class="op">,</span> promo_findings) <span class="op">=</span></span>
+<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>    <span class="kw">crate</span><span class="pp">::auto_promote::</span>auto_promote_str_columns(df<span class="op">,</span> <span class="op">&amp;</span>opts<span class="op">.</span>config)<span class="op">;</span></span>
+<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> working_df<span class="op">:</span> <span class="op">&amp;</span>DataFrame <span class="op">=</span> maybe_promoted_df<span class="op">.</span>as_ref()<span class="op">.</span>unwrap_or(df)<span class="op">;</span></span>
+<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a><span class="kw">let</span> <span class="kw">mut</span> findings <span class="op">=</span> validate_dataframe(working_df<span class="op">,</span> <span class="op">...</span>)<span class="op">;</span></span>
+<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>findings<span class="op">.</span>extend(promo_findings)<span class="op">;</span></span>
+<span id="cb20-7"><a href="#cb20-7" aria-hidden="true" tabindex="-1"></a><span class="co">// All downstream detectors + column reports + custom detectors use working_df.</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The report’s <code>input.column_types</code> reflects post-promotion types, so JSON consumers see the right view. The default <code>auto_promote_str_to_float = true</code> was the deliberate choice — a flag that’s off by default doesn’t fix the gap for users who don’t know it exists.</p>
+</section>
+<section id="gap-two-e9070-was-defined-but-never-invoked" class="level3">
+<h3 class="anchored" data-anchor-id="gap-two-e9070-was-defined-but-never-invoked">6.2 Gap two: E9070 was defined but never invoked</h3>
+<p>Here’s where the investigation got interesting. After adding the auto-promotion, I ran the LC demo with promotion enabled. E9070 (conditional missingness) didn’t fire. Promotion was working — column types changed, joint columns were <code>Float</code>, NaN positions were correct — but E9070 stayed at zero.</p>
+<p>The cause was simpler and more embarrassing than the typing fix:</p>
+<div class="sourceCode" id="cb21"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb21-1"><a href="#cb21-1" aria-hidden="true" tabindex="-1"></a><span class="ex">$</span> grep <span class="at">-n</span> <span class="st">"detect_conditional_missingness\b"</span> crates/cjc-locke/src/validation.rs</span>
+<span id="cb21-2"><a href="#cb21-2" aria-hidden="true" tabindex="-1"></a><span class="ex">1425:pub</span> fn detect_conditional_missingness<span class="er">(</span></span>
+<span id="cb21-3"><a href="#cb21-3" aria-hidden="true" tabindex="-1"></a><span class="ex">2398:</span>    let r = detect_conditional_missingness<span class="er">(</span><span class="kw">&amp;</span><span class="fu">df</span>, ...<span class="kw">);</span>  <span class="co"># inside a unit test</span></span>
+<span id="cb21-4"><a href="#cb21-4" aria-hidden="true" tabindex="-1"></a><span class="ex">2420:</span>    let r = detect_conditional_missingness<span class="er">(</span><span class="kw">&amp;</span><span class="fu">df</span>, ...<span class="kw">);</span>  <span class="co"># inside a unit test</span></span>
+<span id="cb21-5"><a href="#cb21-5" aria-hidden="true" tabindex="-1"></a><span class="ex">2771:</span>    let r = detect_conditional_missingness<span class="er">(</span>            <span class="co"># inside a unit test</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p><code>detect_conditional_missingness</code> was defined, exported, unit-tested. But the call site inside <code>validate_dataframe</code> — the function that orchestrates the actual validation pipeline — never invoked it. The detector had been silently zero-firing for everyone, on every input, since v0.6.4. The unit tests that exercised it caught the function’s own behavior; they didn’t catch the missing wire.</p>
+<p>The fix is one <code>out.extend(...)</code> line:</p>
+<div class="sourceCode" id="cb22"><pre class="sourceCode rust code-with-copy"><code class="sourceCode rust"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a>out<span class="op">.</span>extend(detect_missingness(df<span class="op">,</span> cfg<span class="op">,</span> <span class="op">&amp;</span>effective_masks))<span class="op">;</span></span>
+<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>out<span class="op">.</span>extend(detect_conditional_missingness(   <span class="co">// &lt;-- new</span></span>
+<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>    df<span class="op">,</span></span>
+<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>    <span class="op">&amp;</span><span class="pp">ConditionalMissingnessConfig::</span><span class="kw">default</span>()<span class="op">,</span></span>
+<span id="cb22-5"><a href="#cb22-5" aria-hidden="true" tabindex="-1"></a>    <span class="op">&amp;</span>effective_masks<span class="op">,</span></span>
+<span id="cb22-6"><a href="#cb22-6" aria-hidden="true" tabindex="-1"></a>))<span class="op">;</span></span>
+<span id="cb22-7"><a href="#cb22-7" aria-hidden="true" tabindex="-1"></a>out<span class="op">.</span>extend(detect_duplicates_full_row(df<span class="op">,</span> cfg))<span class="op">;</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>The detector honors <code>effective_masks</code> (the merged caller + auto-sentinel mask map), so it works for both Float-NaN columns and Str-with-mask columns. The opt-out path — disable auto-promotion via <code>ValidationConfig::auto_promote_str_to_float = false</code> — still fires E9070 via the sentinel-mask path. Both code paths produce findings; the auto-promotion makes them more numerous and the per-column missingness rates cleaner.</p>
+</section>
+<section id="the-real-lc-measurement-post-fix" class="level3">
+<h3 class="anchored" data-anchor-id="the-real-lc-measurement-post-fix">6.3 The real LC measurement post-fix</h3>
+<p>Re-running <code>lendingclub_demo</code> on the full 2.26M-row CSV with v0.8 enabled:</p>
+<table class="table">
+<colgroup>
+<col style="width: 8%">
+<col style="width: 36%">
+<col style="width: 36%">
+<col style="width: 17%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>Code</th>
+<th>Pre-v0.8 (2026-06-01)</th>
+<th>Post-v0.8 (2026-06-02)</th>
+<th>What changed</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>E9008</td>
+<td>55</td>
+<td>33</td>
+<td>Some Str cols promoted; E9009 supersedes E9008 for those</td>
+</tr>
+<tr class="even">
+<td>E9009</td>
+<td>not implemented</td>
+<td><strong>22</strong></td>
+<td>Auto-promoted columns</td>
+</tr>
+<tr class="odd">
+<td>E9070</td>
+<td><strong>0</strong> (silently never invoked)</td>
+<td><strong>1879</strong></td>
+<td>Now fires across ~54 unique columns</td>
+</tr>
+<tr class="even">
+<td>E9001</td>
+<td>55</td>
+<td>55</td>
+<td>unchanged</td>
+</tr>
+<tr class="odd">
+<td>E9061</td>
+<td>3</td>
+<td>3</td>
+<td>unchanged</td>
+</tr>
+<tr class="even">
+<td>E9072</td>
+<td>2</td>
+<td>2</td>
+<td>unchanged</td>
+</tr>
+<tr class="odd">
+<td>total</td>
+<td>577</td>
+<td>2421</td>
+<td>mostly E9070 + a few E9009 + E9024/E9040 ticks</td>
+</tr>
+</tbody>
+</table>
+<figure style="margin: 2em 0;" class="figure">
+<svg viewbox="0 0 720 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Horizontal bar chart of LC finding counts that changed between pre-v0.8 and post-v0.8">
+<!-- Title -->
+</svg><p><text x="360" y="22" text-anchor="middle" font-size="15" font-weight="600" fill="currentColor">LC finding counts that changed across v0.7 → v0.8</text> <text x="360" y="40" text-anchor="middle" font-size="11" fill="currentColor" opacity="0.7">Full 2.26M-row dataset; codes unchanged across the release omitted</text></p>
+<!-- Legend -->
+<p><rect x="480" y="56" width="14" height="10" fill="#9ca3af"> <text x="498" y="65" font-size="11" fill="currentColor">pre-v0.8</text> <rect x="568" y="56" width="14" height="10" fill="#2d6db5"> <text x="586" y="65" font-size="11" fill="currentColor">post-v0.8 (ADR-0042)</text></rect></rect></p>
+<!-- Plot area: x label column 0-150, bars start at 160, end at 700 (540px wide) -->
+<!-- Max value 1879; scale: 1px = 3.479 counts -->
+<!-- Pre and post bars stacked vertically per row (height 13 each, 2px gap) -->
+<!-- ===== Row 1: E9008 (55 → 33, decreased) ===== -->
+<p><text x="150" y="100" text-anchor="end" font-size="13" font-weight="600" fill="currentColor">E9008</text> <text x="150" y="116" text-anchor="end" font-size="10" fill="currentColor" opacity="0.65">sentinel</text> <rect x="160" y="92" width="15.81" height="13" fill="#9ca3af"> <text x="181" y="103" font-size="11" fill="currentColor">55</text> <rect x="160" y="107" width="9.49" height="13" fill="#2d6db5"> <text x="175" y="118" font-size="11" fill="currentColor">33 (–22)</text></rect></rect></p>
+<!-- ===== Row 2: E9009 (0 → 22, NEW) ===== -->
+<p><text x="150" y="158" text-anchor="end" font-size="13" font-weight="600" fill="currentColor">E9009</text> <text x="150" y="174" text-anchor="end" font-size="10" fill="currentColor" opacity="0.65">promotion</text> <text x="160" y="160" font-size="11" fill="currentColor" opacity="0.55">— (not implemented)</text> <rect x="160" y="165" width="6.32" height="13" fill="#2d6db5"> <text x="171" y="176" font-size="11" fill="currentColor">22 (new)</text></rect></p>
+<!-- ===== Row 3: E9070 (0 → 1879, NEW + dominant) ===== -->
+<p><text x="150" y="222" text-anchor="end" font-size="13" font-weight="600" fill="currentColor">E9070</text> <text x="150" y="238" text-anchor="end" font-size="10" fill="currentColor" opacity="0.65">cond. missing</text> <text x="160" y="222" font-size="11" fill="currentColor" opacity="0.55">— (silently never invoked)</text> <rect x="160" y="227" width="540" height="13" fill="#2d6db5"> <text x="694" y="238" text-anchor="end" font-size="12" font-weight="700" fill="#ffffff">1879 (new)</text></rect></p>
+<!-- X axis with scale reference -->
+<line x1="160" y1="263" x2="700" y2="263" stroke="currentColor" stroke-opacity="0.4"> <text x="160" y="276" font-size="10" text-anchor="middle" fill="currentColor">0</text> <text x="304" y="276" font-size="10" text-anchor="middle" fill="currentColor">500</text> <text x="448" y="276" font-size="10" text-anchor="middle" fill="currentColor">1000</text> <text x="592" y="276" font-size="10" text-anchor="middle" fill="currentColor">1500</text> <text x="700" y="276" font-size="10" text-anchor="end" fill="currentColor">≈1879</text> <text x="430" y="296" font-size="10" text-anchor="middle" fill="currentColor" opacity="0.65">findings (linear scale)</text>
+
+<figcaption style="text-align: center; font-size: 0.9em; opacity: 0.85; margin-top: 0.4em;" class="figure-caption">
+Three codes changed between v0.7 and v0.8. <strong>E9008</strong> (sentinel detection) drops from 55 to 33 as some <code>Str</code> columns get promoted to <code>Float</code> via the new <strong>E9009</strong> path (22 columns). <strong>E9070</strong> (conditional missingness) goes from <em>silently never invoked</em> to 1879 firings — every co-missing column pair contributes a finding in both directions. The visual dominance of E9070 in the chart is the dominance the gap fix actually surfaces.
+</figcaption>
+</line></figure>
+<p>The 22 columns the auto-promotion fires on:</p>
+<ul>
+<li><code>sec_app_*</code> (12 columns) — secondary applicant fields: <code>fico_range_high/low</code>, <code>mort_acc</code>, <code>num_rev_accts</code>, <code>open_acc</code>, <code>open_act_il</code>, <code>inq_last_6mths</code>, <code>chargeoff_within_12_mths</code>, <code>collections_12_mths_ex_med</code>, <code>mths_since_last_major_derog</code>, <code>revol_util</code></li>
+<li><code>hardship_*</code> (5 columns) — workout plan fields: <code>amount</code>, <code>dpd</code>, <code>length</code>, <code>payoff_balance_amount</code>, <code>last_payment_amount</code></li>
+<li><code>settlement_*</code> (3 columns) — debt settlement fields: <code>amount</code>, <code>percentage</code>, <code>term</code></li>
+<li><code>revol_bal_joint</code>, <code>orig_projected_additional_accrued_interest</code>, <code>mths_since_last_record</code></li>
+</ul>
+<p>E9070’s 1879 firings span ~54 unique columns. Most pairs are within the joint/secondary/hardship/settlement set: every co-missing pair fires twice (a→b and b→a are separate findings). For users who want a smaller set, raising <code>ConditionalMissingnessConfig::implication_threshold</code> above 0.95 or post-hoc filtering by column-pair is the right knob.</p>
+</section>
+<section id="gap-three-csv-quoted-string-handling-deferred" class="level3">
+<h3 class="anchored" data-anchor-id="gap-three-csv-quoted-string-handling-deferred">6.4 Gap three: CSV quoted-string handling (deferred)</h3>
+<p><code>annual_inc_joint</code>, <code>dti_joint</code>, <code>verification_status_joint</code> — the three columns the handoff originally named — are <em>NOT</em> in the v0.8 promotion set. Investigation:</p>
+<pre class="text"><code>Sampled 50000 rows of annual_inc_joint:
+  empty:     49290
+  parseable: 248
+  other:     462
+  non-parseable samples:
+    'Individual'
+    'Individual'
+    'Individual'
+    'Individual'
+    'Individual'</code></pre>
+<p>The non-sentinel rows split 248 parseable vs 462 “Other” — <code>parseable_fraction = 0.349</code>, well below the 0.80 threshold. So promotion correctly declines.</p>
+<p>The “Other” values are <code>'Individual'</code> — the string from the LC dataset’s <code>application_type</code> column. They’re bleeding into <code>annual_inc_joint</code> because <code>cjc-data::CsvReader</code> does NOT support RFC-4180 quoted strings. LC’s <code>desc</code> (free-text loan description) column contains embedded commas; without quote-handling, every cell after <code>desc</code> in such a row gets shifted left by however many commas the description contained. <code>application_type</code> (which sits after <code>desc</code> in column order) leaks into <code>annual_inc_joint</code>’s position.</p>
+<p>This is a real third gap, but it lives in <code>cjc-data</code>, not <code>cjc-locke</code>. ADR-0042 documents it as a known limitation and bounds it: the parseable-fraction guard correctly refuses to promote a column polluted by column-shift, which is the right defensive behavior. The upstream CSV fix is tracked separately. The right user workaround until then is to pre-clean the CSV with a parser that understands quoting (Python’s <code>csv</code> module, pandas) and pass the cleaned dict to Locke via the Python bridge or via <code>DataFrame::from_columns</code>.</p>
+</section>
+<section id="discovery-cascade-visualized" class="level3">
+<h3 class="anchored" data-anchor-id="discovery-cascade-visualized">6.5 Discovery cascade, visualized</h3>
+<div class="cell">
+<div class="cell-output-display">
+<div>
+<div>
+<pre class="mermaid mermaid-js">flowchart TD
+    A[Handoff: Project A = LC demo&lt;br/&gt;predicted top leakage = payment streams] --&gt;|build demo| B[E9061 fires on last_fico_range_*&lt;br/&gt;not on payment streams]
+    B --&gt;|honest-model AUC follow-up| C[Locke-filtered AUC = 0.9995&lt;br/&gt;Locke flags alone don't recover honesty]
+    C --&gt;|architectural response| D[ADR-0041:&lt;br/&gt;custom detector extension layer]
+    D --&gt;|LC re-measurement| E[Locke + custom AUC = 0.7388&lt;br/&gt;within 0.0006 of domain-honest 0.7394]
+    E --&gt;|prepare for Project B| F[Str-with-sentinels gap blocks&lt;br/&gt;NYC Taxi drift detection]
+    F --&gt;|investigate| G[Gap 1: CSV type inference from first row]
+    F --&gt;|investigate| H[Gap 2: E9070 was never invoked]
+    G --&gt; I[ADR-0042: auto_promote_str_columns]
+    H --&gt; I
+    I --&gt;|re-run LC demo| J[E9009 × 22, E9070 × 1879&lt;br/&gt;+ Gap 3 discovered: CSV quoted strings]
+    J --&gt;|out of scope for v0.8| K[Tracked as upstream cjc-data fix]
+    style B fill:#fff4d6
+    style C fill:#fff4d6
+    style F fill:#fff4d6
+    style J fill:#fff4d6
+</pre>
+</div>
+</div>
+</div>
+</div>
+<p>Each yellow node is a discovery that drove the next change. The brief at the top would have predicted A → I directly. The path through B, C, F is what actually happened.</p>
+</section>
+</section>
+<section id="the-release" class="level2">
+<h2 class="anchored" data-anchor-id="the-release">7. The release</h2>
+<table class="table">
+<thead>
+<tr class="header">
+<th>Artifact</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td><code>cjc-locke v0.1.11</code></td>
+<td><a href="https://crates.io/crates/cjc-locke/0.1.11" class="uri">https://crates.io/crates/cjc-locke/0.1.11</a></td>
+</tr>
+<tr class="even">
+<td>24 sibling crates at v0.1.11</td>
+<td>crates.io (<code>cjc-lang</code>, <code>cjc-data</code>, <code>cjc-runtime</code>, …, one workspace publish)</td>
+</tr>
+<tr class="odd">
+<td><code>cjc-locke v0.1.2</code> (Python)</td>
+<td><a href="https://pypi.org/project/cjc-locke/0.1.2/" class="uri">https://pypi.org/project/cjc-locke/0.1.2/</a></td>
+</tr>
+<tr class="even">
+<td>Source code</td>
+<td><a href="https://github.com/AdamEzzat1/CJC" class="uri">https://github.com/AdamEzzat1/CJC</a> (PR #18 merged on master)</td>
+</tr>
+<tr class="odd">
+<td>ADR-0041</td>
+<td><code>CJC-Lang_Obsidian_Vault/13_ADRs/ADR-0041 Locke v0.8 — Custom Detector Extension Layer.md</code></td>
+</tr>
+<tr class="even">
+<td>ADR-0042</td>
+<td><code>CJC-Lang_Obsidian_Vault/13_ADRs/ADR-0042 Locke v0.8 — Str-to-Float Auto-Promotion + E9070 Wiring.md</code></td>
+</tr>
+<tr class="odd">
+<td>LC demo</td>
+<td><code>demos/lendingclub/</code> (workspace member, <code>publish = false</code>)</td>
+</tr>
+</tbody>
+</table>
+<section id="quick-start-python" class="level3">
+<h3 class="anchored" data-anchor-id="quick-start-python">Quick-start (Python)</h3>
+<div class="sourceCode" id="cb24"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="ex">pip</span> install cjc-locke<span class="pp">[</span><span class="ss">numpy</span><span class="pp">]</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="sourceCode" id="cb25"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb25-1"><a href="#cb25-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> cjc_locke</span>
+<span id="cb25-2"><a href="#cb25-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-3"><a href="#cb25-3" aria-hidden="true" tabindex="-1"></a><span class="kw">class</span> PostOriginationByName(cjc_locke.CustomDetector):</span>
+<span id="cb25-4"><a href="#cb25-4" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> code(<span class="va">self</span>) <span class="op">-&gt;</span> <span class="bu">str</span>:</span>
+<span id="cb25-5"><a href="#cb25-5" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> <span class="st">"E9500"</span></span>
+<span id="cb25-6"><a href="#cb25-6" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-7"><a href="#cb25-7" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> belief_axes(<span class="va">self</span>) <span class="op">-&gt;</span> <span class="bu">list</span>[<span class="bu">str</span>]:</span>
+<span id="cb25-8"><a href="#cb25-8" aria-hidden="true" tabindex="-1"></a>        <span class="cf">return</span> [<span class="st">"leakage"</span>]</span>
+<span id="cb25-9"><a href="#cb25-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-10"><a href="#cb25-10" aria-hidden="true" tabindex="-1"></a>    <span class="kw">def</span> run(<span class="va">self</span>, df, sink) <span class="op">-&gt;</span> <span class="va">None</span>:</span>
+<span id="cb25-11"><a href="#cb25-11" aria-hidden="true" tabindex="-1"></a>        <span class="cf">for</span> col <span class="kw">in</span> df.column_names():</span>
+<span id="cb25-12"><a href="#cb25-12" aria-hidden="true" tabindex="-1"></a>            <span class="cf">if</span> col.startswith((<span class="st">"total_"</span>, <span class="st">"last_pymnt_"</span>, <span class="st">"recoveries"</span>)):</span>
+<span id="cb25-13"><a href="#cb25-13" aria-hidden="true" tabindex="-1"></a>                sink.emit(<span class="st">"error"</span>,</span>
+<span id="cb25-14"><a href="#cb25-14" aria-hidden="true" tabindex="-1"></a>                          <span class="ss">f"`</span><span class="sc">{</span>col<span class="sc">}</span><span class="ss">` matches a post-origination naming pattern"</span>,</span>
+<span id="cb25-15"><a href="#cb25-15" aria-hidden="true" tabindex="-1"></a>                          column<span class="op">=</span>col, sample_size<span class="op">=</span>df.n_rows)</span>
+<span id="cb25-16"><a href="#cb25-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-17"><a href="#cb25-17" aria-hidden="true" tabindex="-1"></a>report <span class="op">=</span> cjc_locke.validate(</span>
+<span id="cb25-18"><a href="#cb25-18" aria-hidden="true" tabindex="-1"></a>    {<span class="st">"loan_amnt"</span>: [...], <span class="st">"total_pymnt"</span>: [...], <span class="st">"dti"</span>: [...]},</span>
+<span id="cb25-19"><a href="#cb25-19" aria-hidden="true" tabindex="-1"></a>    label<span class="op">=</span><span class="st">"my-loans"</span>,</span>
+<span id="cb25-20"><a href="#cb25-20" aria-hidden="true" tabindex="-1"></a>    custom_detectors<span class="op">=</span>[PostOriginationByName()],</span>
+<span id="cb25-21"><a href="#cb25-21" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb25-22"><a href="#cb25-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb25-23"><a href="#cb25-23" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(report.severity_counts)   <span class="co"># {'info': ..., 'notice': ..., 'warning': ..., 'error': ...}</span></span>
+<span id="cb25-24"><a href="#cb25-24" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(report.finding_codes())   <span class="co"># ['E9001', 'E9500', ...]</span></span>
+<span id="cb25-25"><a href="#cb25-25" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(report.to_json())         <span class="co"># canonical, byte-deterministic</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</section>
+<section id="known-follow-ups-for-v0.1.3-v0.9" class="level3">
+<h3 class="anchored" data-anchor-id="known-follow-ups-for-v0.1.3-v0.9">Known follow-ups for v0.1.3 / v0.9</h3>
+<p>Two cosmetic Python issues caught during post-publish verification:</p>
+<ol type="1">
+<li><strong>Stale <code>__version__</code> constant.</strong> <code>python/src/lib.rs</code> hardcodes <code>m.add("__version__", "0.1.0")?</code> — <code>cjc_locke.__version__</code> reports <code>"0.1.0"</code> regardless of the actual wheel version. The <code>__rust_crate_version__</code> field uses <code>env!("CARGO_PKG_VERSION")</code> and reports correctly. One-line fix.</li>
+<li><strong>NumPy probe panic</strong> when numpy isn’t installed. PyO3’s <code>value.extract::&lt;PyReadonlyArray1&lt;f64&gt;&gt;()</code> invokes numpy’s lazy init even for non-numpy inputs; the bridge needs either a hard dep on numpy or a <code>py.import("numpy").is_ok()</code> guard. The <code>[numpy]</code> extra in <code>pyproject.toml</code> works around this for typical use.</li>
+</ol>
+<p>And two <code>cjc-data</code> follow-ups that this session surfaced but didn’t fix:</p>
+<ol start="3" type="1">
+<li><strong>RFC-4180 quoted-string support</strong> in <code>cjc-data::CsvReader</code>. The third gap from §6.4 lives here.</li>
+<li><strong>A pre-existing <code>tests/test_cjc_v0_1_hardening.rs</code> path bug</strong> on Linux/macOS — inline <code>mod unit { #[path = "../..."] mod foo; }</code> resolves the relative path against the module name, not the file location. Master CI has been red on Linux/macOS Test Suite for some time as a result. Unrelated to v0.8 but worth fixing.</li>
+</ol>
+</section>
+<section id="total-session-footprint" class="level3">
+<h3 class="anchored" data-anchor-id="total-session-footprint">Total session footprint</h3>
+<table class="table">
+<colgroup>
+<col style="width: 50%">
+<col style="width: 50%">
+</colgroup>
+<tbody>
+<tr class="odd">
+<td>Commits on the PR</td>
+<td>5 (handoff + LC demo + AUC follow-up + ADR-0041 + ADR-0042 + release bump)</td>
+</tr>
+<tr class="even">
+<td>ADRs</td>
+<td>2</td>
+</tr>
+<tr class="odd">
+<td>Rust crates published</td>
+<td>25 (workspace <code>0.1.10 → 0.1.11</code>)</td>
+</tr>
+<tr class="even">
+<td>Python wheels published</td>
+<td>1 (<code>cjc-locke 0.1.2</code> on PyPI)</td>
+</tr>
+<tr class="odd">
+<td>New tests</td>
+<td>71 (45 from ADR-0041 + 26 from ADR-0042)</td>
+</tr>
+<tr class="even">
+<td><code>cjc-locke</code> lib tests</td>
+<td>408 → <strong>435</strong> (+27, zero regressions)</td>
+</tr>
+<tr class="odd">
+<td><code>tests/locke</code> integration</td>
+<td>277 → <strong>305</strong> (+28, zero regressions)</td>
+</tr>
+<tr class="even">
+<td>Python pytest</td>
+<td>0 → <strong>14</strong> new</td>
+</tr>
+<tr class="odd">
+<td>LC demo wall (full dataset)</td>
+<td>~9 minutes</td>
+</tr>
+<tr class="even">
+<td>LC demo determinism</td>
+<td>byte-identical JSON across runs</td>
+</tr>
+<tr class="odd">
+<td>Workspace test wall</td>
+<td>~13 seconds for the locke integration suite</td>
+</tr>
+</tbody>
+</table>
+</section>
+</section>
+<section id="reflections-on-a-discovery-driven-session" class="level2">
+<h2 class="anchored" data-anchor-id="reflections-on-a-discovery-driven-session">8. Reflections on a discovery-driven session</h2>
+<p>Two patterns recurred, and they’re both worth banking for the next session.</p>
+<p><strong>The handoff was directionally right, magnitude-wrong, and the magnitude error was load-bearing.</strong> The handoff predicted payment streams would hit <code>|AUC| ≥ 0.95</code> (E9060). They hit <code>[0.5, 0.85)</code> instead — <em>individually</em>. Jointly, they’re still leaky, but Locke’s per-feature heuristic can’t see jointly-leaky-but-individually-modest signals. The handoff also predicted E9070 would fire on the joint columns — it would have, eventually, but the detector wasn’t actually wired in. Both of these gaps look superficially like “the tool failed”; both turned out to be “the tool surfaced the wrong magnitude, which forced an honest measurement, which forced an architectural response.” That cascade is the point.</p>
+<p><strong>Default-on backward-incompatible additions are the right call when the gap <em>is</em> the feature.</strong> Both ADR-0042 fixes default to ON (<code>auto_promote_str_to_float = true</code>, <code>detect_conditional_missingness</code> always invoked). v0.7 reports are no longer byte-identical to v0.8 reports for affected inputs. I considered defaulting OFF for backward compatibility; the argument that won was that <em>a flag that’s off by default doesn’t fix the gap for users who don’t know it exists</em>. The user with strict v0.7 byte-identity requirements can opt out; the user who didn’t realize their joint columns were silently bypassed gets the fix automatically. The structural defense — every existing snapshot test in the workspace passes with default-on enabled, because no test had constructed a “sentinel-rich-first-row” Str column — vindicated the choice.</p>
+<p>The deeper lesson is about what kind of tool Locke is becoming. It started as an <em>opinionated</em> validator with built-in detectors and a belief algebra. v0.8 turns it into a <em>configurable</em> validator where the opinionated baseline is still the default <em>and</em> the team’s domain knowledge composes with it on equal footing. The Python <code>CustomDetector</code> ABC is the surface analysts will touch most. The custom-detector findings sit in the same JSON, contribute to the same belief axes under the same meet-semilattice algebra, and survive the same byte-identity determinism contract. The discovery-cascade in this session is what shaped the API: I wouldn’t have designed <code>BeliefAxisSet</code>, <code>FindingSink</code>, the structural-determinism Python bridge, or the <code>working_df</code> pattern if I’d tried to specify them upfront.</p>
+<p>Project B (NYC Taxi) is queued next. With auto-promotion in place, the streaming numeric drift detectors should actually fire on Parquet-loaded data without manual type coercion. We’ll see what gaps <em>that</em> surfaces.</p>
+<hr>
+<p><em>The code, tests, ADRs, expected_findings fixture, and cross_validate measurements live in <a href="https://github.com/AdamEzzat1/CJC/pull/18">PR #18 on GitHub</a>. Pull <code>cjc-locke = "0.1.11"</code> from crates.io or <code>pip install cjc-locke==0.1.2</code> from PyPI to reproduce. Issues, design-decision pushback, and “Locke’s threshold should be X not Y on this dataset” findings are welcome.</em></p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const disableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'prefetch';
+    }
+  }
+  const enableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'stylesheet';
+    }
+  }
+  const manageTransitions = (selector, allowTransitions) => {
+    const els = window.document.querySelectorAll(selector);
+    for (let i=0; i < els.length; i++) {
+      const el = els[i];
+      if (allowTransitions) {
+        el.classList.remove('notransition');
+      } else {
+        el.classList.add('notransition');
+      }
+    }
+  }
+  const toggleColorMode = (alternate) => {
+    // Switch the stylesheets
+    const alternateStylesheets = window.document.querySelectorAll('link.quarto-color-scheme.quarto-color-alternate');
+    manageTransitions('#quarto-margin-sidebar .nav-link', false);
+    if (alternate) {
+      enableStylesheet(alternateStylesheets);
+      for (const sheetNode of alternateStylesheets) {
+        if (sheetNode.id === "quarto-bootstrap") {
+          toggleBodyColorMode(sheetNode);
+        }
+      }
+    } else {
+      disableStylesheet(alternateStylesheets);
+      toggleBodyColorPrimary();
+    }
+    manageTransitions('#quarto-margin-sidebar .nav-link', true);
+    // Switch the toggles
+    const toggles = window.document.querySelectorAll('.quarto-color-scheme-toggle');
+    for (let i=0; i < toggles.length; i++) {
+      const toggle = toggles[i];
+      if (toggle) {
+        if (alternate) {
+          toggle.classList.add("alternate");     
+        } else {
+          toggle.classList.remove("alternate");
+        }
+      }
+    }
+    // Hack to workaround the fact that safari doesn't
+    // properly recolor the scrollbar when toggling (#1455)
+    if (navigator.userAgent.indexOf('Safari') > 0 && navigator.userAgent.indexOf('Chrome') == -1) {
+      manageTransitions("body", false);
+      window.scrollTo(0, 1);
+      setTimeout(() => {
+        window.scrollTo(0, 0);
+        manageTransitions("body", true);
+      }, 40);  
+    }
+  }
+  const isFileUrl = () => { 
+    return window.location.protocol === 'file:';
+  }
+  const hasAlternateSentinel = () => {  
+    let styleSentinel = getColorSchemeSentinel();
+    if (styleSentinel !== null) {
+      return styleSentinel === "alternate";
+    } else {
+      return false;
+    }
+  }
+  const setStyleSentinel = (alternate) => {
+    const value = alternate ? "alternate" : "default";
+    if (!isFileUrl()) {
+      window.localStorage.setItem("quarto-color-scheme", value);
+    } else {
+      localAlternateSentinel = value;
+    }
+  }
+  const getColorSchemeSentinel = () => {
+    if (!isFileUrl()) {
+      const storageValue = window.localStorage.getItem("quarto-color-scheme");
+      return storageValue != null ? storageValue : localAlternateSentinel;
+    } else {
+      return localAlternateSentinel;
+    }
+  }
+  let localAlternateSentinel = 'default';
+  // Dark / light mode switch
+  window.quartoToggleColorScheme = () => {
+    // Read the current dark / light value 
+    let toAlternate = !hasAlternateSentinel();
+    toggleColorMode(toAlternate);
+    setStyleSentinel(toAlternate);
+  };
+  // Ensure there is a toggle, if there isn't float one in the top right
+  if (window.document.querySelector('.quarto-color-scheme-toggle') === null) {
+    const a = window.document.createElement('a');
+    a.classList.add('top-right');
+    a.classList.add('quarto-color-scheme-toggle');
+    a.href = "";
+    a.onclick = function() { try { window.quartoToggleColorScheme(); } catch {} return false; };
+    const i = window.document.createElement("i");
+    i.classList.add('bi');
+    a.appendChild(i);
+    window.document.body.appendChild(a);
+  }
+  // Switch to dark mode if need be
+  if (hasAlternateSentinel()) {
+    toggleColorMode(true);
+  } else {
+    toggleColorMode(false);
+  }
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+      &nbsp;
+    </div>   
+    <div class="nav-footer-center">© 2026 Adam Ezzat. Built with <a href="https://quarto.org/">Quarto</a>.</div>
+    <div class="nav-footer-right">
+      &nbsp;
+    </div>
+  </div>
+</footer>
+
+
+
+<script src="../../../site_libs/quarto-html/zenscroll-min.js"></script>
+</body></html>
