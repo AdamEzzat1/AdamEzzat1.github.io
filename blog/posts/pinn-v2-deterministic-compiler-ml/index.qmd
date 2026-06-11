@@ -1,0 +1,209 @@
+---
+title: "The MLP That Never Got Written: Teaching a Deterministic Compiler to See Heat"
+subtitle: "CJC-Lang's compiler advisory stack (CANA + NSS) got its first trained model this week — and the story is not the one I planned. The handoff said 'train a 2-layer MLP.' A mandated data-sanity pass found the feature set was type-blind: no model of any capacity could have learned the thermal signal, because the information wasn't in the inputs. One physically-motivated static feature took held-out R² from −0.05 to +0.96, the model that won was linear regression — 22 numbers, trained by closed-form ridge OLS so the weights themselves are bit-reproducible — and the shadow gate promoted it with a 9× error reduction against measured labels. Also in this post: the quantum-inspired energy ranker I measured at exactly zero effect on compiler output, and the structural reason why training can't fix that."
+author: "Adam Ezzat"
+date: "2026-06-11"
+date-modified: "2026-06-11"
+categories: [CJC-Lang, CANA, NSS, compilers, machine-learning, physics-informed, determinism, energy, green-computing]
+description: "A field report on putting the first trained model inside CJC-Lang's deterministic compiler pipeline. The §2.1 data-sanity pass killed the planned MLP before a line of training code existed: recorded thermal pressure (FP-op density) was unpredictable from the existing features by ANY model class, because every static feature counted expressions without knowing their type. A conservative float-propagation analysis (TypeMix) closed the information gap; linear regression then saturated the task (held-out R² 0.952); the trained head shipped as a content-addressed CPB0 weight bundle whose model identity flows into report hashes; and a shadow-mode gate promoted it 9× over the v1 closed form. The honest nulls are documented with mechanisms: the Ising-style energy re-ranker permutes within an already-decided pass set (zero outcome effect, architectural not trainable), cpu/memory labels carry no learnable variance, and the first energy-head attempt fails held-out so badly it earns a design constraint for part two."
+---
+
+<div class="reading-time">&#128337; ~24 min read</div>
+
+<div class="stats-row">
+<div class="stat"><span class="number">−0.05 → 0.96</span><span class="stat-label">held-out R², thermal prediction</span></div>
+<div class="stat"><span class="number">9×</span><span class="stat-label">error reduction vs v1, held-out</span></div>
+<div class="stat"><span class="number">22</span><span class="stat-label">numbers in the shipped model</span></div>
+<div class="stat"><span class="number">0</span><span class="stat-label">plans changed by the quantum layer</span></div>
+</div>
+
+::: {.callout-tip appearance="minimal"}
+## TL;DR
+[CJC-Lang](../introducing-cjc/index.qmd)'s compiler has an advisory stack: **CANA** (Compiler-Aware Neural Architecture) extracts deterministic features from MIR and ranks optimization passes; **NSS** (Neural Systems Simulator) models runtime pressures — thermal, memory, CPU — from instrumented execution traces; a physics-informed cost model (**PINN**) sits at their boundary, consuming NSS pressures to veto or down-weight passes that would overheat hot code. This week that stack got its first *trained* component, and four things happened that I think are worth writing down honestly:
+
+- **The planned neural network died in the data-sanity pass.** The handoff prescribed a 2-layer MLP. The mandated pre-training audit found the static feature set was *type-blind* — `estimated_flops` counted every expression, float or int alike — so recorded thermal pressure (which is FP-op *density*) was unpredictable from those inputs by any model class. Held-out R² of a linear probe: **−0.05**. You can't out-architect missing information.
+- **One feature beat all the model capacity I was about to throw at the problem.** A ~350-line conservative float-propagation analysis (`TypeMix`) gave the compiler a static FP-density signal that correlates **+0.947** with measured thermal labels. Linear regression then saturated the task: held-out R² **0.952**. The shipped model is 22 numbers — 7 coefficients, 7 means, 7 standard deviations, 1 intercept — trained by closed-form ridge OLS with Kahan accumulation, so even *training* is bit-reproducible. No SGD, no seeds to manage, no nondeterminism to apologize for.
+- **A shadow gate promoted it on evidence.** Against measured per-program thermal labels, the v1 closed form scored held-out MAE 0.190 with correlation +0.18 (functionally blind — its predictions maxed at 0.0001). The trained head: MAE **0.021**, correlation **+0.98**. It now changes real ranking decisions on 14/134 corpus programs, withholding loop-unrolling and LICM on exactly the floating-point-dense functions v1 couldn't see.
+- **The quantum-inspired layer measured at exactly zero — and training can't fix it.** The Ising-style energy re-ranker reorders recommendations *within* an already-decided pass set; it never adds or drops a pass. Measured consequence across 2,680 corpus rows: zero plan changes, zero score changes. That's an architecture problem (a minimizer over a one-candidate space), and it defines part two: candidate-plan generation + a trained energy head as the *selector*.
+
+Everything below was measured on the branch; the corpus, the trainer, the weights, and every gate are committed and re-runnable.
+:::
+
+::: {.callout-warning}
+## Prototype disclaimer
+CJC-Lang and its CANA/NSS stack are research-stage prototypes. The corpus is 134 small deterministic programs (arithmetic kernels, loop nests, a thermal-gradient family, a 95-program training set) × 20 ranker configurations = 2,680 rows — micro-benchmarks, not production workloads. "Energy" throughout means a *modeled, deterministic* score (executed statements + weighted FP ops + heap pages), not wall-clock or watts; hardware validation is explicitly future work. Single machine, single seed, every number from one reproducible campaign — read as honest exploratory engineering, not a benchmark.
+:::
+
+::: {.callout-note}
+## Where this sits in the series
+- [Green by Construction: Thermal Bounds Without Losing a Bit](../deterministic-green-compute/index.qmd) — the *runtime* half of the thermal story: policy profiles, race-to-idle scheduling, fused kernels, all under the same-bits guarantee.
+- [Neural Networks in CJC-Lang](../neural-networks-in-cjc/index.qmd) — the GradGraph autodiff arena this stack's training infrastructure descends from.
+- **This post** — the *compile-time* half: the first trained cost model inside the pass-ranking pipeline, and the measurement discipline that decided what (not) to train.
+:::
+
+## 1. The stack, in one diagram
+
+CJC-Lang's whole pitch is *same seed, same bits, every run*. That constraint shapes everything in this post, so here's the compile-time advisory stack it has to survive in:
+
+```{mermaid}
+flowchart TD
+    SRC["source (.cjcl)"] --> MIR["MIR"]
+    MIR --> FEAT["CANA features<br/>(CFG, memory proxies, reductions, TypeMix)"]
+    FEAT --> COST["cost-model stack<br/>LinearCostModel → PinnPhysicalCostModel"]
+    TRACE["instrumented run<br/>(cjc-mir-exec trace events)"] --> NSS["NSS recorded pressures<br/>thermal / memory / cpu"]
+    NSS -->|"PressurePredictor"| COST
+    HEAD["trained thermal head<br/>(CPB0 bundle, 22 numbers)"] -.->|"with_thermal_head"| COST
+    COST --> RANK["PassRanker → per-function pass plan"]
+    RANK --> GATE["legality gate (final authority)"]
+    GATE --> OPT["optimized MIR → executor"]
+```
+
+Three names to keep straight:
+
+- **CANA** (Compiler-Aware Neural Architecture) is the *advisory* layer: it extracts deterministic per-function features from MIR and ranks which optimization passes are worth running where. Advisory means exactly that — a separate legality gate retains final authority, always.
+- **NSS** (Neural Systems Simulator) models system pressures over time. In the compiler loop it consumes *real instrumented traces* from the MIR executor — per-iteration loop events, FP-op density, heap occupancy — and produces per-function pressure predictions in [0, 1].
+- **PINN** is the physics-informed cost model at their boundary: `PinnPhysicalCostModel` wraps the base cost model and adjusts pass-benefit estimates using physical pressure estimates (thermal, memory traffic, bandwidth, locality), with a hard rule — it can *withhold* a recommendation, never force one. v1 shipped as a closed-form coefficient model. v2, this post, is the first *trained* component.
+
+There's also a quantum-inspired piece — an Ising-style energy decomposition that scores plans, reusing the deterministic numerics discipline from CJC's quantum-simulation crate. Hold that thought; it stars in the section about zeros.
+
+## 2. The rule that ran the session
+
+The handoff document for this session carried a warning at the top, earned over two prior sessions: **verify every handoff claim against the code before building on it.** Its predecessor documents had been wrong in seven separate implementation-blocking ways — types that never existed, prescribed file locations that created dependency cycles, an instrumentation path that under-counted straight-lined code 24× (caught only because an energy ratio came out physically impossible).
+
+This session added two more catches to the list before lunch:
+
+1. The handoff's own header said the branch HEAD was one commit older than reality — the handoff predated its own final commit.
+2. The corpus harness had a label bug: configs were matched with `ends_with("_rec")`, which silently missed the three threshold-sweep variants (`_t50`, `_c80`, `_c60`). Those rows *ranked* under real recorded pressures but *recorded* synthetic pressure labels — 402 of 1,474 rows carried wrong labels. One membership test and a 35-second deterministic regeneration fixed it, but training on the unaudited corpus would have quietly learned from contaminated labels.
+
+The same discipline produced the handoff's best instruction, the one this whole post hangs on: *before writing any training code, run a data-sanity pass and find out whether the linear signal already saturates.* So that's where the session started — and it's where the plan died.
+
+## 3. What the sanity pass found
+
+The training corpus is one row per (program × ranker-configuration): 134 programs × 11 configurations, each row carrying static workload estimates, NSS pressure predictions, the chosen pass plan, both-executor parity verdicts, and a baseline-relative modeled energy score. The sanity tool (~700 lines of deterministic statistics: Kahan-accumulated moments, Pearson correlations, ridge OLS via normal equations with partial-pivot Gaussian elimination, a by-program FNV-hash train/test split so no program leaks across the boundary) reported four structural facts:
+
+**Fact 1 — the energy signal was almost nonexistent.** A config's score is `energy(its plan) / energy(baseline plan)`, so any config whose plan ties baseline scores *exactly* 1.0. Measured: only **39 of 1,474 rows** diverged, taking 17 distinct values in [0.967, 1.009]. You cannot train a neural network on 39 informative samples, and worse —
+
+**Fact 2 — linear already saturated what little energy signal existed.** On the divergent rows, log-flops alone correlated +0.996 with score. The handoff's own warning ("if the linear signal saturates, a 2-layer MLP may add nothing — know this BEFORE writing the loop") was confirmed for the energy target before any model existed.
+
+**Fact 3 — pressure labels are per-program, not per-row.** The recorded predictor is built from one instrumented run of the unoptimized program, so all recorded-config rows of a program carry bitwise-identical pressure labels (verified bitwise, not assumed — that's how the `ends_with` bug surfaced). Effective sample size for pressure prediction: **134**, not 804.
+
+**Fact 4 — and the headline — recorded thermal was unpredictable from the existing features.** Ridge OLS from the full workload-estimate feature set to measured thermal labels, by-program split:
+
+| target | R² (train) | R² (held-out) |
+|---|---|---|
+| recorded thermal | 0.157 | **−0.050** |
+| recorded cpu | 0.172 | 0.170 |
+| recorded memory | 0.075 | 0.030 |
+
+A held-out R² of −0.05 means the model is *worse than predicting the mean*. The reflex at this point is to reach for capacity — surely an MLP finds what linear missed. The sanity pass had one more table that killed that reflex.
+
+## 4. The information gap
+
+Recorded thermal pressure in this stack is **FP-op density**: the executor's instrumentation counts every binary operation where at least one operand is a float — comparisons included — and `thermal_intensity = fp_ops / instructions` per trace window. Floating-point units burn more power per retired op than integer ALUs; density of FP work is the static-analysis-shaped proxy for heat.
+
+Now look at what the features knew. The per-function feature record contained CFG metrics (block counts, loop depths, branch counts), memory proxies (allocation sites, copy-on-write sites, tensor ops, *total expression count*), and reduction classifications. The workload estimate fed to the cost model was:
+
+```
+flops_estimate = expr_count × loop_amplification
+```
+
+Every expression. Float or int. **Nothing anywhere in the feature set distinguished a floating-point operation from an integer one.** The label was FP density; the features were type-blind. The signal wasn't noisy — it was *absent*. No model class recovers information that isn't in its inputs, and an MLP trained on these features would have been an exercise in memorizing 103 training programs.
+
+This reframes the problem completely: it's not a modeling task, it's a feature-engineering task. The fix is `TypeMix` — a conservative intra-function float-propagation walk over MIR:
+
+- **Seed:** parameters annotated `f64` (CJC-Lang requires parameter type annotations, which makes this tractable).
+- **Propagate:** `FloatLit` is float; a variable is float once anything float is assigned to it; arithmetic (`+ − × ÷ % **`) produces float iff either operand is float; comparisons produce bool. Iterate to fixpoint — the lattice is monotone (bindings only ever *become* float), so loop-carried accumulators converge in two rounds.
+- **Count:** every `Binary` node with ≥1 float operand, *any operator* — deliberately mirroring the runtime counter's definition, comparisons included, so the static proxy and the measured label quantify the same phenomenon.
+- **Direction of error:** calls are conservatively non-float, so the analysis under-counts. For a density signal that's the safe direction — it can make a hot function look cooler, never invent heat that would withhold optimizations from cold code.
+
+Two implementation notes for fellow travelers. First, the walker had a bug my own test caught: the expression-children enumerator handled if-*bodies* but forgot the if-*condition*, so every `x > 0.5` comparison silently vanished from the count — a one-arm fix, locked by a regression test. Second, adding the field changes the content-addressed `FeatureHash` for every program, which is the fingerprint doing its job: the features genuinely changed, and the profile-database schema version bumped 1 → 2 with it.
+
+The derived signal is one ratio: `float_ops_estimate / flops_estimate` — static FP density, amplification-invariant by construction (numerator and denominator carry the same loop and pass amplification factors).
+
+## 5. One feature later
+
+Corpus regenerated (35 seconds, deterministic, parity 100%, row hashes double-run stable), sanity pass re-run:
+
+| metric | before TypeMix | after |
+|---|---|---|
+| corr(static FP density, recorded thermal) | — (no feature) | **+0.947** |
+| thermal OLS R², held-out, by-program split | **−0.050** | **+0.956** |
+
+One feature. The planned MLP didn't survive contact with that table: with n=134 programs and a linear model already explaining 95% of held-out variance, a neural network chasing the residual is overfit theater. The honest model class is linear, and the §2.2 decision — *"model class decided by re-run sanity numbers, not by fiat"* — wrote itself.
+
+So the shipped PINN v2 is: **the v1 closed form for every dimension except thermal, plus a trained linear thermal head.** Seven features, all derivable from the same workload query the cost model already builds (log1p of flops / bytes-read / bytes-written / alloc-bytes / working-set / float-ops, plus the raw FP-density ratio), z-scored with training statistics, dotted with trained coefficients, clamped to [0, 1].
+
+Twenty-two numbers.
+
+## 6. Training a model a deterministic compiler can live with
+
+This is the part with no precedent to crib from, because the constraint set is unusual: CJC-Lang's compiler reports embed a content hash, and two compilations of the same program with the same model must produce byte-identical reports — across runs, machines, and time. A model that trains differently on each invocation, or loads approximately, breaks the language's core promise. The choices that follow from that:
+
+**Training is a pure function.** The trainer fits the head by closed-form ridge regression — normal equations accumulated with Kahan compensation, solved by Gaussian elimination with deterministic partial pivoting (`f64::total_cmp` on absolute values), ridge λ = 10⁻⁸ for the collinearity the feature basis inevitably has. No SGD, no shuffling, no learning-rate schedule, no RNG anywhere. Same corpus in, same 22 numbers out, to the bit. (The GradGraph + Adam training loop the handoff sketched exists in this codebase and is proven — the chess-RL and PINN-demo posts run on it — but reaching for it here would have added nondeterminism-management work to buy nothing the closed form doesn't already give.)
+
+**Weights are a content-addressed artifact.** The head persists as a `CPB0` bundle: magic, schema version, then a losslessly-compressed payload (the codec embeds its own input hash, so corruption is detected on read) carrying the model id, model version, and the raw `f64` bits of every parameter. Same weights → byte-identical file; the round-trip test asserts bit equality, and double-writing the bundle produces identical bytes. Loaders reject wrong magic, wrong version, wrong feature count, truncation, trailing bytes, and — separately — *valid encodings of invalid weights* (NaN coefficients, zero standard deviations). A corrupted bundle is an error, never a silently-degraded model.
+
+**Model identity flows into report hashes.** Attaching the head flips the cost model's reported identity from `pinn_coeffs_v1` to `pinn_thermal_v2`, and that identity participates in report hashing — so two compilations under different models are *distinguishable by hash*, which is what reproducibility means when models become swappable.
+
+**Promotion is gated on evidence, in shadow mode.** Trained weights don't get trusted because the training metrics looked good; v2 ran against v1 on the same measured per-program thermal labels, same held-out split:
+
+| cohort | v1 MAE | v1 corr | v2 MAE | v2 corr |
+|---|---|---|---|---|
+| train (103 programs) | 0.142 | +0.43 | 0.016 | +0.99 |
+| **held-out (31 programs)** | **0.190** | **+0.18** | **0.021** | **+0.98** |
+| overall (134) | 0.153 | +0.37 | 0.017 | +0.99 |
+
+A 9× held-out error reduction, and a correlation jump that tells the real story: v1's closed-form thermal predictions topped out at 0.0001 against labels spanning [0, 1] — it was not weakly informative, it was *blind*. The gate's verdict: **promote**.
+
+One more physics-informed touch, in the literal sense: the post-fit checks assert that the standardized FP-density coefficient is positive (+0.194 — more FP work rate must predict more heat; a sign flip would mean the model learned something physically wrong from a quirk of the corpus) and that a zero-workload query predicts cold (raw −0.81, clamps to 0). Cheap assertions, but they're the difference between "the loss went down" and "the model believes something compatible with thermodynamics."
+
+## 7. Did the compiler actually change its mind?
+
+Yes — measurably, and in the right places. A new ablation configuration ranks the corpus under the trained head, and **14 of 134 programs get different pass plans** than under v1. The diffs all have the same shape: on functions the gradient family deliberately made FP-dense, v2 predicts thermal pressure above the withholding threshold and the ranker drops `licm` and `loop_unroll` — the passes that amplify sustained FP throughput — while keeping the cheap structural cleanups. v1, predicting ≈0 thermal everywhere, withheld nothing. The trained model isn't just more accurate in a table; it changes decisions, and the decisions are physically coherent.
+
+It's also wired end-to-end: `cjcl run --pinn-weights path/to/pinn_thermal_v2.cpb` loads the bundle, attaches the head, and compiles under it (implying `--mir-opt`; superseding the older single-axis `--thermal-aware` wrapper, because stacking both would double-penalize heat). A four-test parity suite locks the load-bearing claim: output under the trained head is byte-identical to output without it, on integer-only and FP-heavy programs alike — the model changes *which optimizations run*, never *what the program computes*.
+
+Now the honest caveat, because this is where overclaiming lives: **on the modeled energy scoreboard, thermal withholding roughly breaks even** (best case −3.3% on a single program; ties elsewhere). That is not a failure of the head — it's a structural limitation of the metric. The value of refusing to unroll a hot loop is *avoiding thermal throttling on real silicon*, a benefit that a deterministic scalar energy proxy cannot represent and that the determinism rules correctly forbid measuring inside the compiler (wall-clock and sensors are diagnostic-only, excluded from every decision path and every hash). The plans are different and defensible; the end-to-end hardware win is an explicitly open claim, queued for diagnostic measurement *outside* the deterministic boundary.
+
+## 8. The section where I report zeros
+
+Three negative results, each with a mechanism. I think these are the most useful part of the post.
+
+**The quantum-inspired energy ranker changes nothing — architecturally, not fixably-by-training.** The `EnergyAwarePassRanker` wraps the base ranker, computes an Ising-style energy decomposition per recommendation (compute cost, memory traffic, thermal pressure, code-size, reconstruction-error terms — Kahan-summed, deterministically tie-broken), and re-sorts each function's recommendation list by ascending energy. It carries an explicit invariant: it never adds a pass and never drops one. Which means the *set* of passes — the thing that determines compiled output — is decided entirely upstream. Measured across every quantum-flavored configuration and 2,680 rows: **zero plan-set changes, zero score changes**. An energy minimizer is only as useful as the candidate space it discriminates over, and this one was handed a one-candidate space per function. A perfect energy function evaluated over a single candidate still selects that candidate. The fix is architectural — give it candidates — and that's part two, not a training run. (Worth saying: the layer was *designed* advisory-first on purpose; "cannot override selection" is the safe default in a deterministic compiler. The zero is the cost of that safety, now measured rather than assumed.)
+
+**The cpu and memory heads will probably never be trained — and that's a data verdict, not a modeling one.** Measured label standard deviations across the corpus: cpu 0.013, memory 0.0007. The corpus programs are arithmetic kernels; they barely touch the allocator. There is nothing for any model to learn until the corpus contains workloads that actually generate memory-pressure variance. (This is the same lesson the thermal head taught in reverse: thermal only became learnable after a deliberately-constructed gradient family of programs created label variance. Datasets are built, not found.)
+
+**The first energy-head probe fails spectacularly, and the failure is informative.** With the new forced-plan rows (next section) providing real energy variance, a linear probe on the divergent rows scores held-out R² ≈ **−32**. Not noise — structure the basis can't express: energy ratios are multiplicative and span [0.91, 11.2], so a linear model on raw ratios gets shredded by the long tail. The constraint it buys for part two: log-ratio target, and possibly the nonlinearity the thermal head never needed.
+
+## 9. Buying the next dataset
+
+The thinnest thing in the original corpus was energy-label variance — 39 informative rows, because ranked configurations mostly agree with baseline. This session closed that the blunt way: eight **forced-plan configurations** that apply a fixed pass list to every function (`force_none` through `force_all`, one per canonical pass), bypassing the cost model but *not* the legality gate — every (function, pass) pair is individually gate-checked, and the gate vetoed pairs on 282 of the new rows, because "forced" must never mean "illegal."
+
+The corpus is now 134 × 20 = 2,680 rows, with **295 energy-informative rows** spanning [0.909, 11.16] — and one genuinely exciting measurement hiding in them: `force_unroll` and `force_all` *sometimes beat the ranked baseline*. The current cost model measurably mis-ranks on some programs. That's not an embarrassment; that's **headroom** — proof there's signal for a trained energy selector to exploit, which closes the loop on the quantum layer's zero: candidate plans (the forced variants are exactly that) + a trained energy head as the selection criterion, replacing the hand-tuned `FP_ENERGY_WEIGHT = 3.0` that currently prices FP ops in the energy score.
+
+That's part two, and its training data now exists.
+
+## 10. Takeaways
+
+1. **Run the sanity pass before the training loop.** One session of deterministic statistics killed a doomed MLP, found a 402-row label bug, and located the real problem (features, not models). Cheapest experiment of the year.
+2. **Information beats capacity.** Held-out R² went −0.05 → +0.96 by adding one physically-motivated feature. No architecture search touches that.
+3. **Match the static proxy to the measured label's *definition*.** TypeMix counts exactly what the runtime instrumentation counts — same op classes, comparisons included. Proxy-label agreement is a design decision, not luck.
+4. **Deterministic ML is mostly subtraction.** Closed-form training, bit-stable artifacts, identity-in-hashes, validity-gated loading — each choice *removes* a source of nondeterminism rather than managing one. The result trains the same way twice.
+5. **Gate promotion on measured labels, in shadow.** "Training metrics looked good" and "beats the incumbent on held-out ground truth" are different claims; only the second one ships.
+6. **Publish the zeros with mechanisms.** The quantum layer's zero took an afternoon to explain structurally, and the explanation is the roadmap.
+
+## 11. Pointers
+
+Everything is in the [CJC-Lang repository](https://github.com/AdamEzzat1/CJC): the `TypeMix` analysis (`crates/cjc-cana/src/type_mix.rs`), the trained head and its swap-in surface (`crates/cjc-cana/src/pinn_thermal_v2.rs`, `pinn_cost_model.rs`), the CPB0 bundle codec (`crates/cjc-cana-compress/src/pinn_bundle.rs`), the sanity/train/shadow harness (`bench/cana_train_pinn/`), the ablation corpus generator (`bench/cana_ablation/`), the committed weights (`bench_results/cana_train_pinn/pinn_thermal_v2.cpb`), and the design note with every number in this post (`docs/cana/PINN_V2_DESIGN.md`). The session landed as two feature commits and a merge, 31 new tests, with the cross-executor parity gate green at every step.
+
+```bash
+# install
+cargo install cjc-lang
+
+# compile + run under the trained thermal head
+cjcl run --pinn-weights bench_results/cana_train_pinn/pinn_thermal_v2.cpb program.cjcl
+# output is byte-identical to a plain run — the model changes which
+# optimizations are attempted, never what the program computes
+```
+
+If you're building anything where a learned component has to coexist with a reproducibility contract — compilers, scientific pipelines, anything audited — I'd genuinely like to compare notes.

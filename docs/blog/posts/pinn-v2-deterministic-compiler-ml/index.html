@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-1.3.340">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Adam Ezzat">
+<meta name="dcterms.date" content="2026-06-11">
+<meta name="description" content="A field report on putting the first trained model inside CJC-Lang’s deterministic compiler pipeline. The §2.1 data-sanity pass killed the planned MLP before a line of training code existed: recorded thermal pressure (FP-op density) was unpredictable from the existing features by ANY model class, because every static feature counted expressions without knowing their type. A conservative float-propagation analysis (TypeMix) closed the information gap; linear regression then saturated the task (held-out R² 0.952); the trained head shipped as a content-addressed CPB0 weight bundle whose model identity flows into report hashes; and a shadow-mode gate promoted it 9× over the v1 closed form. The honest nulls are documented with mechanisms: the Ising-style energy re-ranker permutes within an already-decided pass set (zero outcome effect, architectural not trainable), cpu/memory labels carry no learnable variance, and the first energy-head attempt fails held-out so badly it earns a design constraint for part two.">
+
+<title>Adam Ezzat - The MLP That Never Got Written: Teaching a Deterministic Compiler to See Heat</title>
+<style>
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="../../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../../site_libs/quarto-nav/headroom.min.js"></script>
+<script src="../../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../../site_libs/quarto-search/autocomplete.umd.js"></script>
+<script src="../../../site_libs/quarto-search/fuse.min.js"></script>
+<script src="../../../site_libs/quarto-search/quarto-search.js"></script>
+<meta name="quarto:offset" content="../../../">
+<script src="../../../site_libs/quarto-html/quarto.js"></script>
+<script src="../../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<script src="../../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../../site_libs/bootstrap/bootstrap.min.css" rel="stylesheet" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="../../../site_libs/bootstrap/bootstrap-dark.min.css" rel="prefetch" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<script id="quarto-search-options" type="application/json">{
+  "location": "navbar",
+  "copy-button": false,
+  "collapse-after": 3,
+  "panel-placement": "end",
+  "type": "overlay",
+  "limit": 20,
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit"
+  }
+}</script>
+<style>html{ scroll-behavior: smooth; }</style>
+<script src="../../../site_libs/quarto-diagram/mermaid.min.js"></script>
+<script src="../../../site_libs/quarto-diagram/mermaid-init.js"></script>
+<link href="../../../site_libs/quarto-diagram/mermaid.css" rel="stylesheet">
+
+
+</head>
+
+<body class="nav-fixed">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg navbar-dark ">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container">
+    <a class="navbar-brand" href="../../../index.html">
+    <span class="navbar-title">Adam Ezzat</span>
+    </a>
+  </div>
+            <div id="quarto-search" class="" title="Search"></div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../../index.html" rel="" target="">
+ <span class="menu-text">Home</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../about.html" rel="" target="">
+ <span class="menu-text">About</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../projects.html" rel="" target="">
+ <span class="menu-text">Projects</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../../blog/index.html" rel="" target="">
+ <span class="menu-text">Blog</span></a>
+  </li>  
+</ul>
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/AdamEzzat1" rel="" target=""><i class="bi bi-github" role="img" aria-label="GitHub">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://linkedin.com/in/adamezzat" rel="" target=""><i class="bi bi-linkedin" role="img" aria-label="LinkedIn">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+            <div class="quarto-navbar-tools">
+  <a href="" class="quarto-color-scheme-toggle quarto-navigation-tool  px-1" onclick="window.quartoToggleColorScheme(); return false;" title="Toggle dark mode"><i class="bi"></i></a>
+</div>
+          </div> <!-- /navcollapse -->
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">On this page</h2>
+   
+  <ul>
+  <li><a href="#the-stack-in-one-diagram" id="toc-the-stack-in-one-diagram" class="nav-link active" data-scroll-target="#the-stack-in-one-diagram">1. The stack, in one diagram</a></li>
+  <li><a href="#the-rule-that-ran-the-session" id="toc-the-rule-that-ran-the-session" class="nav-link" data-scroll-target="#the-rule-that-ran-the-session">2. The rule that ran the session</a></li>
+  <li><a href="#what-the-sanity-pass-found" id="toc-what-the-sanity-pass-found" class="nav-link" data-scroll-target="#what-the-sanity-pass-found">3. What the sanity pass found</a></li>
+  <li><a href="#the-information-gap" id="toc-the-information-gap" class="nav-link" data-scroll-target="#the-information-gap">4. The information gap</a></li>
+  <li><a href="#one-feature-later" id="toc-one-feature-later" class="nav-link" data-scroll-target="#one-feature-later">5. One feature later</a></li>
+  <li><a href="#training-a-model-a-deterministic-compiler-can-live-with" id="toc-training-a-model-a-deterministic-compiler-can-live-with" class="nav-link" data-scroll-target="#training-a-model-a-deterministic-compiler-can-live-with">6. Training a model a deterministic compiler can live with</a></li>
+  <li><a href="#did-the-compiler-actually-change-its-mind" id="toc-did-the-compiler-actually-change-its-mind" class="nav-link" data-scroll-target="#did-the-compiler-actually-change-its-mind">7. Did the compiler actually change its mind?</a></li>
+  <li><a href="#the-section-where-i-report-zeros" id="toc-the-section-where-i-report-zeros" class="nav-link" data-scroll-target="#the-section-where-i-report-zeros">8. The section where I report zeros</a></li>
+  <li><a href="#buying-the-next-dataset" id="toc-buying-the-next-dataset" class="nav-link" data-scroll-target="#buying-the-next-dataset">9. Buying the next dataset</a></li>
+  <li><a href="#takeaways" id="toc-takeaways" class="nav-link" data-scroll-target="#takeaways">10. Takeaways</a></li>
+  <li><a href="#pointers" id="toc-pointers" class="nav-link" data-scroll-target="#pointers">11. Pointers</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">The MLP That Never Got Written: Teaching a Deterministic Compiler to See Heat</h1>
+<p class="subtitle lead">CJC-Lang’s compiler advisory stack (CANA + NSS) got its first trained model this week — and the story is not the one I planned. The handoff said ‘train a 2-layer MLP.’ A mandated data-sanity pass found the feature set was type-blind: no model of any capacity could have learned the thermal signal, because the information wasn’t in the inputs. One physically-motivated static feature took held-out R² from −0.05 to +0.96, the model that won was linear regression — 22 numbers, trained by closed-form ridge OLS so the weights themselves are bit-reproducible — and the shadow gate promoted it with a 9× error reduction against measured labels. Also in this post: the quantum-inspired energy ranker I measured at exactly zero effect on compiler output, and the structural reason why training can’t fix that.</p>
+  <div class="quarto-categories">
+    <div class="quarto-category">CJC-Lang</div>
+    <div class="quarto-category">CANA</div>
+    <div class="quarto-category">NSS</div>
+    <div class="quarto-category">compilers</div>
+    <div class="quarto-category">machine-learning</div>
+    <div class="quarto-category">physics-informed</div>
+    <div class="quarto-category">determinism</div>
+    <div class="quarto-category">energy</div>
+    <div class="quarto-category">green-computing</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    A field report on putting the first trained model inside CJC-Lang’s deterministic compiler pipeline. The §2.1 data-sanity pass killed the planned MLP before a line of training code existed: recorded thermal pressure (FP-op density) was unpredictable from the existing features by ANY model class, because every static feature counted expressions without knowing their type. A conservative float-propagation analysis (TypeMix) closed the information gap; linear regression then saturated the task (held-out R² 0.952); the trained head shipped as a content-addressed CPB0 weight bundle whose model identity flows into report hashes; and a shadow-mode gate promoted it 9× over the v1 closed form. The honest nulls are documented with mechanisms: the Ising-style energy re-ranker permutes within an already-decided pass set (zero outcome effect, architectural not trainable), cpu/memory labels carry no learnable variance, and the first energy-head attempt fails held-out so badly it earns a design constraint for part two.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Adam Ezzat </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">June 11, 2026</p>
+    </div>
+  </div>
+  
+    <div>
+    <div class="quarto-title-meta-heading">Modified</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date-modified">June 11, 2026</p>
+    </div>
+  </div>
+    
+  </div>
+  
+
+</header>
+
+<div class="reading-time">
+🕑 ~24 min read
+</div>
+<div class="stats-row">
+<div class="stat">
+<span class="number">−0.05 → 0.96</span><span class="stat-label">held-out R², thermal prediction</span>
+</div>
+<div class="stat">
+<span class="number">9×</span><span class="stat-label">error reduction vs v1, held-out</span>
+</div>
+<div class="stat">
+<span class="number">22</span><span class="stat-label">numbers in the shipped model</span>
+</div>
+<div class="stat">
+<span class="number">0</span><span class="stat-label">plans changed by the quantum layer</span>
+</div>
+</div>
+<div class="callout callout-style-simple callout-tip no-icon callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon no-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+TL;DR
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p><a href="../../../blog/posts/introducing-cjc/index.html">CJC-Lang</a>’s compiler has an advisory stack: <strong>CANA</strong> (Compiler-Aware Neural Architecture) extracts deterministic features from MIR and ranks optimization passes; <strong>NSS</strong> (Neural Systems Simulator) models runtime pressures — thermal, memory, CPU — from instrumented execution traces; a physics-informed cost model (<strong>PINN</strong>) sits at their boundary, consuming NSS pressures to veto or down-weight passes that would overheat hot code. This week that stack got its first <em>trained</em> component, and four things happened that I think are worth writing down honestly:</p>
+<ul>
+<li><strong>The planned neural network died in the data-sanity pass.</strong> The handoff prescribed a 2-layer MLP. The mandated pre-training audit found the static feature set was <em>type-blind</em> — <code>estimated_flops</code> counted every expression, float or int alike — so recorded thermal pressure (which is FP-op <em>density</em>) was unpredictable from those inputs by any model class. Held-out R² of a linear probe: <strong>−0.05</strong>. You can’t out-architect missing information.</li>
+<li><strong>One feature beat all the model capacity I was about to throw at the problem.</strong> A ~350-line conservative float-propagation analysis (<code>TypeMix</code>) gave the compiler a static FP-density signal that correlates <strong>+0.947</strong> with measured thermal labels. Linear regression then saturated the task: held-out R² <strong>0.952</strong>. The shipped model is 22 numbers — 7 coefficients, 7 means, 7 standard deviations, 1 intercept — trained by closed-form ridge OLS with Kahan accumulation, so even <em>training</em> is bit-reproducible. No SGD, no seeds to manage, no nondeterminism to apologize for.</li>
+<li><strong>A shadow gate promoted it on evidence.</strong> Against measured per-program thermal labels, the v1 closed form scored held-out MAE 0.190 with correlation +0.18 (functionally blind — its predictions maxed at 0.0001). The trained head: MAE <strong>0.021</strong>, correlation <strong>+0.98</strong>. It now changes real ranking decisions on 14/134 corpus programs, withholding loop-unrolling and LICM on exactly the floating-point-dense functions v1 couldn’t see.</li>
+<li><strong>The quantum-inspired layer measured at exactly zero — and training can’t fix it.</strong> The Ising-style energy re-ranker reorders recommendations <em>within</em> an already-decided pass set; it never adds or drops a pass. Measured consequence across 2,680 corpus rows: zero plan changes, zero score changes. That’s an architecture problem (a minimizer over a one-candidate space), and it defines part two: candidate-plan generation + a trained energy head as the <em>selector</em>.</li>
+</ul>
+<p>Everything below was measured on the branch; the corpus, the trainer, the weights, and every gate are committed and re-runnable.</p>
+</div>
+</div>
+<div class="callout callout-style-default callout-warning callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Prototype disclaimer
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<p>CJC-Lang and its CANA/NSS stack are research-stage prototypes. The corpus is 134 small deterministic programs (arithmetic kernels, loop nests, a thermal-gradient family, a 95-program training set) × 20 ranker configurations = 2,680 rows — micro-benchmarks, not production workloads. “Energy” throughout means a <em>modeled, deterministic</em> score (executed statements + weighted FP ops + heap pages), not wall-clock or watts; hardware validation is explicitly future work. Single machine, single seed, every number from one reproducible campaign — read as honest exploratory engineering, not a benchmark.</p>
+</div>
+</div>
+<div class="callout callout-style-default callout-note callout-titled">
+<div class="callout-header d-flex align-content-center">
+<div class="callout-icon-container">
+<i class="callout-icon"></i>
+</div>
+<div class="callout-title-container flex-fill">
+Where this sits in the series
+</div>
+</div>
+<div class="callout-body-container callout-body">
+<ul>
+<li><a href="../../../blog/posts/deterministic-green-compute/index.html">Green by Construction: Thermal Bounds Without Losing a Bit</a> — the <em>runtime</em> half of the thermal story: policy profiles, race-to-idle scheduling, fused kernels, all under the same-bits guarantee.</li>
+<li><a href="../../../blog/posts/neural-networks-in-cjc/index.html">Neural Networks in CJC-Lang</a> — the GradGraph autodiff arena this stack’s training infrastructure descends from.</li>
+<li><strong>This post</strong> — the <em>compile-time</em> half: the first trained cost model inside the pass-ranking pipeline, and the measurement discipline that decided what (not) to train.</li>
+</ul>
+</div>
+</div>
+<section id="the-stack-in-one-diagram" class="level2">
+<h2 class="anchored" data-anchor-id="the-stack-in-one-diagram">1. The stack, in one diagram</h2>
+<p>CJC-Lang’s whole pitch is <em>same seed, same bits, every run</em>. That constraint shapes everything in this post, so here’s the compile-time advisory stack it has to survive in:</p>
+<div class="cell">
+<div class="cell-output-display">
+<div>
+<div>
+<pre class="mermaid mermaid-js">flowchart TD
+    SRC["source (.cjcl)"] --&gt; MIR["MIR"]
+    MIR --&gt; FEAT["CANA features&lt;br/&gt;(CFG, memory proxies, reductions, TypeMix)"]
+    FEAT --&gt; COST["cost-model stack&lt;br/&gt;LinearCostModel → PinnPhysicalCostModel"]
+    TRACE["instrumented run&lt;br/&gt;(cjc-mir-exec trace events)"] --&gt; NSS["NSS recorded pressures&lt;br/&gt;thermal / memory / cpu"]
+    NSS --&gt;|"PressurePredictor"| COST
+    HEAD["trained thermal head&lt;br/&gt;(CPB0 bundle, 22 numbers)"] -.-&gt;|"with_thermal_head"| COST
+    COST --&gt; RANK["PassRanker → per-function pass plan"]
+    RANK --&gt; GATE["legality gate (final authority)"]
+    GATE --&gt; OPT["optimized MIR → executor"]
+</pre>
+</div>
+</div>
+</div>
+</div>
+<p>Three names to keep straight:</p>
+<ul>
+<li><strong>CANA</strong> (Compiler-Aware Neural Architecture) is the <em>advisory</em> layer: it extracts deterministic per-function features from MIR and ranks which optimization passes are worth running where. Advisory means exactly that — a separate legality gate retains final authority, always.</li>
+<li><strong>NSS</strong> (Neural Systems Simulator) models system pressures over time. In the compiler loop it consumes <em>real instrumented traces</em> from the MIR executor — per-iteration loop events, FP-op density, heap occupancy — and produces per-function pressure predictions in [0, 1].</li>
+<li><strong>PINN</strong> is the physics-informed cost model at their boundary: <code>PinnPhysicalCostModel</code> wraps the base cost model and adjusts pass-benefit estimates using physical pressure estimates (thermal, memory traffic, bandwidth, locality), with a hard rule — it can <em>withhold</em> a recommendation, never force one. v1 shipped as a closed-form coefficient model. v2, this post, is the first <em>trained</em> component.</li>
+</ul>
+<p>There’s also a quantum-inspired piece — an Ising-style energy decomposition that scores plans, reusing the deterministic numerics discipline from CJC’s quantum-simulation crate. Hold that thought; it stars in the section about zeros.</p>
+</section>
+<section id="the-rule-that-ran-the-session" class="level2">
+<h2 class="anchored" data-anchor-id="the-rule-that-ran-the-session">2. The rule that ran the session</h2>
+<p>The handoff document for this session carried a warning at the top, earned over two prior sessions: <strong>verify every handoff claim against the code before building on it.</strong> Its predecessor documents had been wrong in seven separate implementation-blocking ways — types that never existed, prescribed file locations that created dependency cycles, an instrumentation path that under-counted straight-lined code 24× (caught only because an energy ratio came out physically impossible).</p>
+<p>This session added two more catches to the list before lunch:</p>
+<ol type="1">
+<li>The handoff’s own header said the branch HEAD was one commit older than reality — the handoff predated its own final commit.</li>
+<li>The corpus harness had a label bug: configs were matched with <code>ends_with("_rec")</code>, which silently missed the three threshold-sweep variants (<code>_t50</code>, <code>_c80</code>, <code>_c60</code>). Those rows <em>ranked</em> under real recorded pressures but <em>recorded</em> synthetic pressure labels — 402 of 1,474 rows carried wrong labels. One membership test and a 35-second deterministic regeneration fixed it, but training on the unaudited corpus would have quietly learned from contaminated labels.</li>
+</ol>
+<p>The same discipline produced the handoff’s best instruction, the one this whole post hangs on: <em>before writing any training code, run a data-sanity pass and find out whether the linear signal already saturates.</em> So that’s where the session started — and it’s where the plan died.</p>
+</section>
+<section id="what-the-sanity-pass-found" class="level2">
+<h2 class="anchored" data-anchor-id="what-the-sanity-pass-found">3. What the sanity pass found</h2>
+<p>The training corpus is one row per (program × ranker-configuration): 134 programs × 11 configurations, each row carrying static workload estimates, NSS pressure predictions, the chosen pass plan, both-executor parity verdicts, and a baseline-relative modeled energy score. The sanity tool (~700 lines of deterministic statistics: Kahan-accumulated moments, Pearson correlations, ridge OLS via normal equations with partial-pivot Gaussian elimination, a by-program FNV-hash train/test split so no program leaks across the boundary) reported four structural facts:</p>
+<p><strong>Fact 1 — the energy signal was almost nonexistent.</strong> A config’s score is <code>energy(its plan) / energy(baseline plan)</code>, so any config whose plan ties baseline scores <em>exactly</em> 1.0. Measured: only <strong>39 of 1,474 rows</strong> diverged, taking 17 distinct values in [0.967, 1.009]. You cannot train a neural network on 39 informative samples, and worse —</p>
+<p><strong>Fact 2 — linear already saturated what little energy signal existed.</strong> On the divergent rows, log-flops alone correlated +0.996 with score. The handoff’s own warning (“if the linear signal saturates, a 2-layer MLP may add nothing — know this BEFORE writing the loop”) was confirmed for the energy target before any model existed.</p>
+<p><strong>Fact 3 — pressure labels are per-program, not per-row.</strong> The recorded predictor is built from one instrumented run of the unoptimized program, so all recorded-config rows of a program carry bitwise-identical pressure labels (verified bitwise, not assumed — that’s how the <code>ends_with</code> bug surfaced). Effective sample size for pressure prediction: <strong>134</strong>, not 804.</p>
+<p><strong>Fact 4 — and the headline — recorded thermal was unpredictable from the existing features.</strong> Ridge OLS from the full workload-estimate feature set to measured thermal labels, by-program split:</p>
+<table class="table">
+<thead>
+<tr class="header">
+<th>target</th>
+<th>R² (train)</th>
+<th>R² (held-out)</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>recorded thermal</td>
+<td>0.157</td>
+<td><strong>−0.050</strong></td>
+</tr>
+<tr class="even">
+<td>recorded cpu</td>
+<td>0.172</td>
+<td>0.170</td>
+</tr>
+<tr class="odd">
+<td>recorded memory</td>
+<td>0.075</td>
+<td>0.030</td>
+</tr>
+</tbody>
+</table>
+<p>A held-out R² of −0.05 means the model is <em>worse than predicting the mean</em>. The reflex at this point is to reach for capacity — surely an MLP finds what linear missed. The sanity pass had one more table that killed that reflex.</p>
+</section>
+<section id="the-information-gap" class="level2">
+<h2 class="anchored" data-anchor-id="the-information-gap">4. The information gap</h2>
+<p>Recorded thermal pressure in this stack is <strong>FP-op density</strong>: the executor’s instrumentation counts every binary operation where at least one operand is a float — comparisons included — and <code>thermal_intensity = fp_ops / instructions</code> per trace window. Floating-point units burn more power per retired op than integer ALUs; density of FP work is the static-analysis-shaped proxy for heat.</p>
+<p>Now look at what the features knew. The per-function feature record contained CFG metrics (block counts, loop depths, branch counts), memory proxies (allocation sites, copy-on-write sites, tensor ops, <em>total expression count</em>), and reduction classifications. The workload estimate fed to the cost model was:</p>
+<pre><code>flops_estimate = expr_count × loop_amplification</code></pre>
+<p>Every expression. Float or int. <strong>Nothing anywhere in the feature set distinguished a floating-point operation from an integer one.</strong> The label was FP density; the features were type-blind. The signal wasn’t noisy — it was <em>absent</em>. No model class recovers information that isn’t in its inputs, and an MLP trained on these features would have been an exercise in memorizing 103 training programs.</p>
+<p>This reframes the problem completely: it’s not a modeling task, it’s a feature-engineering task. The fix is <code>TypeMix</code> — a conservative intra-function float-propagation walk over MIR:</p>
+<ul>
+<li><strong>Seed:</strong> parameters annotated <code>f64</code> (CJC-Lang requires parameter type annotations, which makes this tractable).</li>
+<li><strong>Propagate:</strong> <code>FloatLit</code> is float; a variable is float once anything float is assigned to it; arithmetic (<code>+ − × ÷ % **</code>) produces float iff either operand is float; comparisons produce bool. Iterate to fixpoint — the lattice is monotone (bindings only ever <em>become</em> float), so loop-carried accumulators converge in two rounds.</li>
+<li><strong>Count:</strong> every <code>Binary</code> node with ≥1 float operand, <em>any operator</em> — deliberately mirroring the runtime counter’s definition, comparisons included, so the static proxy and the measured label quantify the same phenomenon.</li>
+<li><strong>Direction of error:</strong> calls are conservatively non-float, so the analysis under-counts. For a density signal that’s the safe direction — it can make a hot function look cooler, never invent heat that would withhold optimizations from cold code.</li>
+</ul>
+<p>Two implementation notes for fellow travelers. First, the walker had a bug my own test caught: the expression-children enumerator handled if-<em>bodies</em> but forgot the if-<em>condition</em>, so every <code>x &gt; 0.5</code> comparison silently vanished from the count — a one-arm fix, locked by a regression test. Second, adding the field changes the content-addressed <code>FeatureHash</code> for every program, which is the fingerprint doing its job: the features genuinely changed, and the profile-database schema version bumped 1 → 2 with it.</p>
+<p>The derived signal is one ratio: <code>float_ops_estimate / flops_estimate</code> — static FP density, amplification-invariant by construction (numerator and denominator carry the same loop and pass amplification factors).</p>
+</section>
+<section id="one-feature-later" class="level2">
+<h2 class="anchored" data-anchor-id="one-feature-later">5. One feature later</h2>
+<p>Corpus regenerated (35 seconds, deterministic, parity 100%, row hashes double-run stable), sanity pass re-run:</p>
+<table class="table">
+<colgroup>
+<col style="width: 33%">
+<col style="width: 33%">
+<col style="width: 33%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>metric</th>
+<th>before TypeMix</th>
+<th>after</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>corr(static FP density, recorded thermal)</td>
+<td>— (no feature)</td>
+<td><strong>+0.947</strong></td>
+</tr>
+<tr class="even">
+<td>thermal OLS R², held-out, by-program split</td>
+<td><strong>−0.050</strong></td>
+<td><strong>+0.956</strong></td>
+</tr>
+</tbody>
+</table>
+<p>One feature. The planned MLP didn’t survive contact with that table: with n=134 programs and a linear model already explaining 95% of held-out variance, a neural network chasing the residual is overfit theater. The honest model class is linear, and the §2.2 decision — <em>“model class decided by re-run sanity numbers, not by fiat”</em> — wrote itself.</p>
+<p>So the shipped PINN v2 is: <strong>the v1 closed form for every dimension except thermal, plus a trained linear thermal head.</strong> Seven features, all derivable from the same workload query the cost model already builds (log1p of flops / bytes-read / bytes-written / alloc-bytes / working-set / float-ops, plus the raw FP-density ratio), z-scored with training statistics, dotted with trained coefficients, clamped to [0, 1].</p>
+<p>Twenty-two numbers.</p>
+</section>
+<section id="training-a-model-a-deterministic-compiler-can-live-with" class="level2">
+<h2 class="anchored" data-anchor-id="training-a-model-a-deterministic-compiler-can-live-with">6. Training a model a deterministic compiler can live with</h2>
+<p>This is the part with no precedent to crib from, because the constraint set is unusual: CJC-Lang’s compiler reports embed a content hash, and two compilations of the same program with the same model must produce byte-identical reports — across runs, machines, and time. A model that trains differently on each invocation, or loads approximately, breaks the language’s core promise. The choices that follow from that:</p>
+<p><strong>Training is a pure function.</strong> The trainer fits the head by closed-form ridge regression — normal equations accumulated with Kahan compensation, solved by Gaussian elimination with deterministic partial pivoting (<code>f64::total_cmp</code> on absolute values), ridge λ = 10⁻⁸ for the collinearity the feature basis inevitably has. No SGD, no shuffling, no learning-rate schedule, no RNG anywhere. Same corpus in, same 22 numbers out, to the bit. (The GradGraph + Adam training loop the handoff sketched exists in this codebase and is proven — the chess-RL and PINN-demo posts run on it — but reaching for it here would have added nondeterminism-management work to buy nothing the closed form doesn’t already give.)</p>
+<p><strong>Weights are a content-addressed artifact.</strong> The head persists as a <code>CPB0</code> bundle: magic, schema version, then a losslessly-compressed payload (the codec embeds its own input hash, so corruption is detected on read) carrying the model id, model version, and the raw <code>f64</code> bits of every parameter. Same weights → byte-identical file; the round-trip test asserts bit equality, and double-writing the bundle produces identical bytes. Loaders reject wrong magic, wrong version, wrong feature count, truncation, trailing bytes, and — separately — <em>valid encodings of invalid weights</em> (NaN coefficients, zero standard deviations). A corrupted bundle is an error, never a silently-degraded model.</p>
+<p><strong>Model identity flows into report hashes.</strong> Attaching the head flips the cost model’s reported identity from <code>pinn_coeffs_v1</code> to <code>pinn_thermal_v2</code>, and that identity participates in report hashing — so two compilations under different models are <em>distinguishable by hash</em>, which is what reproducibility means when models become swappable.</p>
+<p><strong>Promotion is gated on evidence, in shadow mode.</strong> Trained weights don’t get trusted because the training metrics looked good; v2 ran against v1 on the same measured per-program thermal labels, same held-out split:</p>
+<table class="table">
+<colgroup>
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+<col style="width: 20%">
+</colgroup>
+<thead>
+<tr class="header">
+<th>cohort</th>
+<th>v1 MAE</th>
+<th>v1 corr</th>
+<th>v2 MAE</th>
+<th>v2 corr</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>train (103 programs)</td>
+<td>0.142</td>
+<td>+0.43</td>
+<td>0.016</td>
+<td>+0.99</td>
+</tr>
+<tr class="even">
+<td><strong>held-out (31 programs)</strong></td>
+<td><strong>0.190</strong></td>
+<td><strong>+0.18</strong></td>
+<td><strong>0.021</strong></td>
+<td><strong>+0.98</strong></td>
+</tr>
+<tr class="odd">
+<td>overall (134)</td>
+<td>0.153</td>
+<td>+0.37</td>
+<td>0.017</td>
+<td>+0.99</td>
+</tr>
+</tbody>
+</table>
+<p>A 9× held-out error reduction, and a correlation jump that tells the real story: v1’s closed-form thermal predictions topped out at 0.0001 against labels spanning [0, 1] — it was not weakly informative, it was <em>blind</em>. The gate’s verdict: <strong>promote</strong>.</p>
+<p>One more physics-informed touch, in the literal sense: the post-fit checks assert that the standardized FP-density coefficient is positive (+0.194 — more FP work rate must predict more heat; a sign flip would mean the model learned something physically wrong from a quirk of the corpus) and that a zero-workload query predicts cold (raw −0.81, clamps to 0). Cheap assertions, but they’re the difference between “the loss went down” and “the model believes something compatible with thermodynamics.”</p>
+</section>
+<section id="did-the-compiler-actually-change-its-mind" class="level2">
+<h2 class="anchored" data-anchor-id="did-the-compiler-actually-change-its-mind">7. Did the compiler actually change its mind?</h2>
+<p>Yes — measurably, and in the right places. A new ablation configuration ranks the corpus under the trained head, and <strong>14 of 134 programs get different pass plans</strong> than under v1. The diffs all have the same shape: on functions the gradient family deliberately made FP-dense, v2 predicts thermal pressure above the withholding threshold and the ranker drops <code>licm</code> and <code>loop_unroll</code> — the passes that amplify sustained FP throughput — while keeping the cheap structural cleanups. v1, predicting ≈0 thermal everywhere, withheld nothing. The trained model isn’t just more accurate in a table; it changes decisions, and the decisions are physically coherent.</p>
+<p>It’s also wired end-to-end: <code>cjcl run --pinn-weights path/to/pinn_thermal_v2.cpb</code> loads the bundle, attaches the head, and compiles under it (implying <code>--mir-opt</code>; superseding the older single-axis <code>--thermal-aware</code> wrapper, because stacking both would double-penalize heat). A four-test parity suite locks the load-bearing claim: output under the trained head is byte-identical to output without it, on integer-only and FP-heavy programs alike — the model changes <em>which optimizations run</em>, never <em>what the program computes</em>.</p>
+<p>Now the honest caveat, because this is where overclaiming lives: <strong>on the modeled energy scoreboard, thermal withholding roughly breaks even</strong> (best case −3.3% on a single program; ties elsewhere). That is not a failure of the head — it’s a structural limitation of the metric. The value of refusing to unroll a hot loop is <em>avoiding thermal throttling on real silicon</em>, a benefit that a deterministic scalar energy proxy cannot represent and that the determinism rules correctly forbid measuring inside the compiler (wall-clock and sensors are diagnostic-only, excluded from every decision path and every hash). The plans are different and defensible; the end-to-end hardware win is an explicitly open claim, queued for diagnostic measurement <em>outside</em> the deterministic boundary.</p>
+</section>
+<section id="the-section-where-i-report-zeros" class="level2">
+<h2 class="anchored" data-anchor-id="the-section-where-i-report-zeros">8. The section where I report zeros</h2>
+<p>Three negative results, each with a mechanism. I think these are the most useful part of the post.</p>
+<p><strong>The quantum-inspired energy ranker changes nothing — architecturally, not fixably-by-training.</strong> The <code>EnergyAwarePassRanker</code> wraps the base ranker, computes an Ising-style energy decomposition per recommendation (compute cost, memory traffic, thermal pressure, code-size, reconstruction-error terms — Kahan-summed, deterministically tie-broken), and re-sorts each function’s recommendation list by ascending energy. It carries an explicit invariant: it never adds a pass and never drops one. Which means the <em>set</em> of passes — the thing that determines compiled output — is decided entirely upstream. Measured across every quantum-flavored configuration and 2,680 rows: <strong>zero plan-set changes, zero score changes</strong>. An energy minimizer is only as useful as the candidate space it discriminates over, and this one was handed a one-candidate space per function. A perfect energy function evaluated over a single candidate still selects that candidate. The fix is architectural — give it candidates — and that’s part two, not a training run. (Worth saying: the layer was <em>designed</em> advisory-first on purpose; “cannot override selection” is the safe default in a deterministic compiler. The zero is the cost of that safety, now measured rather than assumed.)</p>
+<p><strong>The cpu and memory heads will probably never be trained — and that’s a data verdict, not a modeling one.</strong> Measured label standard deviations across the corpus: cpu 0.013, memory 0.0007. The corpus programs are arithmetic kernels; they barely touch the allocator. There is nothing for any model to learn until the corpus contains workloads that actually generate memory-pressure variance. (This is the same lesson the thermal head taught in reverse: thermal only became learnable after a deliberately-constructed gradient family of programs created label variance. Datasets are built, not found.)</p>
+<p><strong>The first energy-head probe fails spectacularly, and the failure is informative.</strong> With the new forced-plan rows (next section) providing real energy variance, a linear probe on the divergent rows scores held-out R² ≈ <strong>−32</strong>. Not noise — structure the basis can’t express: energy ratios are multiplicative and span [0.91, 11.2], so a linear model on raw ratios gets shredded by the long tail. The constraint it buys for part two: log-ratio target, and possibly the nonlinearity the thermal head never needed.</p>
+</section>
+<section id="buying-the-next-dataset" class="level2">
+<h2 class="anchored" data-anchor-id="buying-the-next-dataset">9. Buying the next dataset</h2>
+<p>The thinnest thing in the original corpus was energy-label variance — 39 informative rows, because ranked configurations mostly agree with baseline. This session closed that the blunt way: eight <strong>forced-plan configurations</strong> that apply a fixed pass list to every function (<code>force_none</code> through <code>force_all</code>, one per canonical pass), bypassing the cost model but <em>not</em> the legality gate — every (function, pass) pair is individually gate-checked, and the gate vetoed pairs on 282 of the new rows, because “forced” must never mean “illegal.”</p>
+<p>The corpus is now 134 × 20 = 2,680 rows, with <strong>295 energy-informative rows</strong> spanning [0.909, 11.16] — and one genuinely exciting measurement hiding in them: <code>force_unroll</code> and <code>force_all</code> <em>sometimes beat the ranked baseline</em>. The current cost model measurably mis-ranks on some programs. That’s not an embarrassment; that’s <strong>headroom</strong> — proof there’s signal for a trained energy selector to exploit, which closes the loop on the quantum layer’s zero: candidate plans (the forced variants are exactly that) + a trained energy head as the selection criterion, replacing the hand-tuned <code>FP_ENERGY_WEIGHT = 3.0</code> that currently prices FP ops in the energy score.</p>
+<p>That’s part two, and its training data now exists.</p>
+</section>
+<section id="takeaways" class="level2">
+<h2 class="anchored" data-anchor-id="takeaways">10. Takeaways</h2>
+<ol type="1">
+<li><strong>Run the sanity pass before the training loop.</strong> One session of deterministic statistics killed a doomed MLP, found a 402-row label bug, and located the real problem (features, not models). Cheapest experiment of the year.</li>
+<li><strong>Information beats capacity.</strong> Held-out R² went −0.05 → +0.96 by adding one physically-motivated feature. No architecture search touches that.</li>
+<li><strong>Match the static proxy to the measured label’s <em>definition</em>.</strong> TypeMix counts exactly what the runtime instrumentation counts — same op classes, comparisons included. Proxy-label agreement is a design decision, not luck.</li>
+<li><strong>Deterministic ML is mostly subtraction.</strong> Closed-form training, bit-stable artifacts, identity-in-hashes, validity-gated loading — each choice <em>removes</em> a source of nondeterminism rather than managing one. The result trains the same way twice.</li>
+<li><strong>Gate promotion on measured labels, in shadow.</strong> “Training metrics looked good” and “beats the incumbent on held-out ground truth” are different claims; only the second one ships.</li>
+<li><strong>Publish the zeros with mechanisms.</strong> The quantum layer’s zero took an afternoon to explain structurally, and the explanation is the roadmap.</li>
+</ol>
+</section>
+<section id="pointers" class="level2">
+<h2 class="anchored" data-anchor-id="pointers">11. Pointers</h2>
+<p>Everything is in the <a href="https://github.com/AdamEzzat1/CJC">CJC-Lang repository</a>: the <code>TypeMix</code> analysis (<code>crates/cjc-cana/src/type_mix.rs</code>), the trained head and its swap-in surface (<code>crates/cjc-cana/src/pinn_thermal_v2.rs</code>, <code>pinn_cost_model.rs</code>), the CPB0 bundle codec (<code>crates/cjc-cana-compress/src/pinn_bundle.rs</code>), the sanity/train/shadow harness (<code>bench/cana_train_pinn/</code>), the ablation corpus generator (<code>bench/cana_ablation/</code>), the committed weights (<code>bench_results/cana_train_pinn/pinn_thermal_v2.cpb</code>), and the design note with every number in this post (<code>docs/cana/PINN_V2_DESIGN.md</code>). The session landed as two feature commits and a merge, 31 new tests, with the cross-executor parity gate green at every step.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode bash code-with-copy"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a><span class="co"># install</span></span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a><span class="ex">cargo</span> install cjc-lang</span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a><span class="co"># compile + run under the trained thermal head</span></span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a><span class="ex">cjcl</span> run <span class="at">--pinn-weights</span> bench_results/cana_train_pinn/pinn_thermal_v2.cpb program.cjcl</span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a><span class="co"># output is byte-identical to a plain run — the model changes which</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a><span class="co"># optimizations are attempted, never what the program computes</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<p>If you’re building anything where a learned component has to coexist with a reproducibility contract — compilers, scientific pipelines, anything audited — I’d genuinely like to compare notes.</p>
+
+
+</section>
+
+</main> <!-- /main -->
+<script id="quarto-html-after-body" type="application/javascript">
+window.document.addEventListener("DOMContentLoaded", function (event) {
+  const toggleBodyColorMode = (bsSheetEl) => {
+    const mode = bsSheetEl.getAttribute("data-mode");
+    const bodyEl = window.document.querySelector("body");
+    if (mode === "dark") {
+      bodyEl.classList.add("quarto-dark");
+      bodyEl.classList.remove("quarto-light");
+    } else {
+      bodyEl.classList.add("quarto-light");
+      bodyEl.classList.remove("quarto-dark");
+    }
+  }
+  const toggleBodyColorPrimary = () => {
+    const bsSheetEl = window.document.querySelector("link#quarto-bootstrap");
+    if (bsSheetEl) {
+      toggleBodyColorMode(bsSheetEl);
+    }
+  }
+  toggleBodyColorPrimary();  
+  const disableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'prefetch';
+    }
+  }
+  const enableStylesheet = (stylesheets) => {
+    for (let i=0; i < stylesheets.length; i++) {
+      const stylesheet = stylesheets[i];
+      stylesheet.rel = 'stylesheet';
+    }
+  }
+  const manageTransitions = (selector, allowTransitions) => {
+    const els = window.document.querySelectorAll(selector);
+    for (let i=0; i < els.length; i++) {
+      const el = els[i];
+      if (allowTransitions) {
+        el.classList.remove('notransition');
+      } else {
+        el.classList.add('notransition');
+      }
+    }
+  }
+  const toggleColorMode = (alternate) => {
+    // Switch the stylesheets
+    const alternateStylesheets = window.document.querySelectorAll('link.quarto-color-scheme.quarto-color-alternate');
+    manageTransitions('#quarto-margin-sidebar .nav-link', false);
+    if (alternate) {
+      enableStylesheet(alternateStylesheets);
+      for (const sheetNode of alternateStylesheets) {
+        if (sheetNode.id === "quarto-bootstrap") {
+          toggleBodyColorMode(sheetNode);
+        }
+      }
+    } else {
+      disableStylesheet(alternateStylesheets);
+      toggleBodyColorPrimary();
+    }
+    manageTransitions('#quarto-margin-sidebar .nav-link', true);
+    // Switch the toggles
+    const toggles = window.document.querySelectorAll('.quarto-color-scheme-toggle');
+    for (let i=0; i < toggles.length; i++) {
+      const toggle = toggles[i];
+      if (toggle) {
+        if (alternate) {
+          toggle.classList.add("alternate");     
+        } else {
+          toggle.classList.remove("alternate");
+        }
+      }
+    }
+    // Hack to workaround the fact that safari doesn't
+    // properly recolor the scrollbar when toggling (#1455)
+    if (navigator.userAgent.indexOf('Safari') > 0 && navigator.userAgent.indexOf('Chrome') == -1) {
+      manageTransitions("body", false);
+      window.scrollTo(0, 1);
+      setTimeout(() => {
+        window.scrollTo(0, 0);
+        manageTransitions("body", true);
+      }, 40);  
+    }
+  }
+  const isFileUrl = () => { 
+    return window.location.protocol === 'file:';
+  }
+  const hasAlternateSentinel = () => {  
+    let styleSentinel = getColorSchemeSentinel();
+    if (styleSentinel !== null) {
+      return styleSentinel === "alternate";
+    } else {
+      return false;
+    }
+  }
+  const setStyleSentinel = (alternate) => {
+    const value = alternate ? "alternate" : "default";
+    if (!isFileUrl()) {
+      window.localStorage.setItem("quarto-color-scheme", value);
+    } else {
+      localAlternateSentinel = value;
+    }
+  }
+  const getColorSchemeSentinel = () => {
+    if (!isFileUrl()) {
+      const storageValue = window.localStorage.getItem("quarto-color-scheme");
+      return storageValue != null ? storageValue : localAlternateSentinel;
+    } else {
+      return localAlternateSentinel;
+    }
+  }
+  let localAlternateSentinel = 'default';
+  // Dark / light mode switch
+  window.quartoToggleColorScheme = () => {
+    // Read the current dark / light value 
+    let toAlternate = !hasAlternateSentinel();
+    toggleColorMode(toAlternate);
+    setStyleSentinel(toAlternate);
+  };
+  // Ensure there is a toggle, if there isn't float one in the top right
+  if (window.document.querySelector('.quarto-color-scheme-toggle') === null) {
+    const a = window.document.createElement('a');
+    a.classList.add('top-right');
+    a.classList.add('quarto-color-scheme-toggle');
+    a.href = "";
+    a.onclick = function() { try { window.quartoToggleColorScheme(); } catch {} return false; };
+    const i = window.document.createElement("i");
+    i.classList.add('bi');
+    a.appendChild(i);
+    window.document.body.appendChild(a);
+  }
+  // Switch to dark mode if need be
+  if (hasAlternateSentinel()) {
+    toggleColorMode(true);
+  } else {
+    toggleColorMode(false);
+  }
+  const icon = "";
+  const anchorJS = new window.AnchorJS();
+  anchorJS.options = {
+    placement: 'right',
+    icon: icon
+  };
+  anchorJS.add('.anchored');
+  const isCodeAnnotation = (el) => {
+    for (const clz of el.classList) {
+      if (clz.startsWith('code-annotation-')) {                     
+        return true;
+      }
+    }
+    return false;
+  }
+  const clipboard = new window.ClipboardJS('.code-copy-button', {
+    text: function(trigger) {
+      const codeEl = trigger.previousElementSibling.cloneNode(true);
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+  });
+  clipboard.on('success', function(e) {
+    // button target
+    const button = e.trigger;
+    // don't keep focus
+    button.blur();
+    // flash "checked"
+    button.classList.add('code-copy-button-checked');
+    var currentTitle = button.getAttribute("title");
+    button.setAttribute("title", "Copied!");
+    let tooltip;
+    if (window.bootstrap) {
+      button.setAttribute("data-bs-toggle", "tooltip");
+      button.setAttribute("data-bs-placement", "left");
+      button.setAttribute("data-bs-title", "Copied!");
+      tooltip = new bootstrap.Tooltip(button, 
+        { trigger: "manual", 
+          customClass: "code-copy-button-tooltip",
+          offset: [0, -8]});
+      tooltip.show();    
+    }
+    setTimeout(function() {
+      if (tooltip) {
+        tooltip.hide();
+        button.removeAttribute("data-bs-title");
+        button.removeAttribute("data-bs-toggle");
+        button.removeAttribute("data-bs-placement");
+      }
+      button.setAttribute("title", currentTitle);
+      button.classList.remove('code-copy-button-checked');
+    }, 1000);
+    // clear code selection
+    e.clearSelection();
+  });
+  function tippyHover(el, contentFn) {
+    const config = {
+      allowHTML: true,
+      content: contentFn,
+      maxWidth: 500,
+      delay: 100,
+      arrow: false,
+      appendTo: function(el) {
+          return el.parentElement;
+      },
+      interactive: true,
+      interactiveBorder: 10,
+      theme: 'quarto',
+      placement: 'bottom-start'
+    };
+    window.tippy(el, config); 
+  }
+  const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+  for (var i=0; i<noterefs.length; i++) {
+    const ref = noterefs[i];
+    tippyHover(ref, function() {
+      // use id or data attribute instead here
+      let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+      try { href = new URL(href).hash; } catch {}
+      const id = href.replace(/^#\/?/, "");
+      const note = window.document.getElementById(id);
+      return note.innerHTML;
+    });
+  }
+      let selectedAnnoteEl;
+      const selectorForAnnotation = ( cell, annotation) => {
+        let cellAttr = 'data-code-cell="' + cell + '"';
+        let lineAttr = 'data-code-annotation="' +  annotation + '"';
+        const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+        return selector;
+      }
+      const selectCodeLines = (annoteEl) => {
+        const doc = window.document;
+        const targetCell = annoteEl.getAttribute("data-target-cell");
+        const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+        const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+        const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+        const lineIds = lines.map((line) => {
+          return targetCell + "-" + line;
+        })
+        let top = null;
+        let height = null;
+        let parent = null;
+        if (lineIds.length > 0) {
+            //compute the position of the single el (top and bottom and make a div)
+            const el = window.document.getElementById(lineIds[0]);
+            top = el.offsetTop;
+            height = el.offsetHeight;
+            parent = el.parentElement.parentElement;
+          if (lineIds.length > 1) {
+            const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+            const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+            height = bottom - top;
+          }
+          if (top !== null && height !== null && parent !== null) {
+            // cook up a div (if necessary) and position it 
+            let div = window.document.getElementById("code-annotation-line-highlight");
+            if (div === null) {
+              div = window.document.createElement("div");
+              div.setAttribute("id", "code-annotation-line-highlight");
+              div.style.position = 'absolute';
+              parent.appendChild(div);
+            }
+            div.style.top = top - 2 + "px";
+            div.style.height = height + 4 + "px";
+            let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+            if (gutterDiv === null) {
+              gutterDiv = window.document.createElement("div");
+              gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+              gutterDiv.style.position = 'absolute';
+              const codeCell = window.document.getElementById(targetCell);
+              const gutter = codeCell.querySelector('.code-annotation-gutter');
+              gutter.appendChild(gutterDiv);
+            }
+            gutterDiv.style.top = top - 2 + "px";
+            gutterDiv.style.height = height + 4 + "px";
+          }
+          selectedAnnoteEl = annoteEl;
+        }
+      };
+      const unselectCodeLines = () => {
+        const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+        elementsIds.forEach((elId) => {
+          const div = window.document.getElementById(elId);
+          if (div) {
+            div.remove();
+          }
+        });
+        selectedAnnoteEl = undefined;
+      };
+      // Attach click handler to the DT
+      const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+      for (const annoteDlNode of annoteDls) {
+        annoteDlNode.addEventListener('click', (event) => {
+          const clickedEl = event.target;
+          if (clickedEl !== selectedAnnoteEl) {
+            unselectCodeLines();
+            const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+            if (activeEl) {
+              activeEl.classList.remove('code-annotation-active');
+            }
+            selectCodeLines(clickedEl);
+            clickedEl.classList.add('code-annotation-active');
+          } else {
+            // Unselect the line
+            unselectCodeLines();
+            clickedEl.classList.remove('code-annotation-active');
+          }
+        });
+      }
+  const findCites = (el) => {
+    const parentEl = el.parentElement;
+    if (parentEl) {
+      const cites = parentEl.dataset.cites;
+      if (cites) {
+        return {
+          el,
+          cites: cites.split(' ')
+        };
+      } else {
+        return findCites(el.parentElement)
+      }
+    } else {
+      return undefined;
+    }
+  };
+  var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+  for (var i=0; i<bibliorefs.length; i++) {
+    const ref = bibliorefs[i];
+    const citeInfo = findCites(ref);
+    if (citeInfo) {
+      tippyHover(citeInfo.el, function() {
+        var popup = window.document.createElement('div');
+        citeInfo.cites.forEach(function(cite) {
+          var citeDiv = window.document.createElement('div');
+          citeDiv.classList.add('hanging-indent');
+          citeDiv.classList.add('csl-entry');
+          var biblioDiv = window.document.getElementById('ref-' + cite);
+          if (biblioDiv) {
+            citeDiv.innerHTML = biblioDiv.innerHTML;
+          }
+          popup.appendChild(citeDiv);
+        });
+        return popup.innerHTML;
+      });
+    }
+  }
+});
+</script>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+      &nbsp;
+    </div>   
+    <div class="nav-footer-center">© 2026 Adam Ezzat. Built with <a href="https://quarto.org/">Quarto</a>.</div>
+    <div class="nav-footer-right">
+      &nbsp;
+    </div>
+  </div>
+</footer>
+
+
+
+<script src="../../../site_libs/quarto-html/zenscroll-min.js"></script>
+</body></html>

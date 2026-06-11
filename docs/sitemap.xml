@@ -2,106 +2,110 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://adamezzat1.github.io/about.html</loc>
-    <lastmod>2026-05-29T03:16:17.592Z</lastmod>
+    <lastmod>2026-06-11T07:08:43.016Z</lastmod>
   </url>
   <url>
     <loc>https://adamezzat1.github.io/blog/index.html</loc>
-    <lastmod>2026-06-02T20:12:01.296Z</lastmod>
+    <lastmod>2026-06-11T07:08:55.114Z</lastmod>
   </url>
   <url>
     <loc>https://adamezzat1.github.io/blog/posts/abng-architecture/index.html</loc>
-    <lastmod>2026-05-29T03:16:29.118Z</lastmod>
+    <lastmod>2026-06-11T07:08:59.824Z</lastmod>
   </url>
   <url>
     <loc>https://adamezzat1.github.io/blog/posts/abng-benchmarks/index.html</loc>
-    <lastmod>2026-05-29T03:16:41.086Z</lastmod>
+    <lastmod>2026-06-11T07:09:07.392Z</lastmod>
   </url>
   <url>
     <loc>https://adamezzat1.github.io/blog/posts/abng-benchmarks-part-2/index.html</loc>
-    <lastmod>2026-05-29T03:16:48.505Z</lastmod>
+    <lastmod>2026-06-11T07:09:13.058Z</lastmod>
   </url>
   <url>
     <loc>https://adamezzat1.github.io/blog/posts/abng-deterministic-systems/index.html</loc>
-    <lastmod>2026-05-29T03:16:52.268Z</lastmod>
+    <lastmod>2026-06-11T07:09:16.966Z</lastmod>
   </url>
   <url>
     <loc>https://adamezzat1.github.io/blog/posts/abng-diabetes-readmission/index.html</loc>
-    <lastmod>2026-05-29T03:16:55.936Z</lastmod>
+    <lastmod>2026-06-11T07:09:19.245Z</lastmod>
   </url>
   <url>
     <loc>https://adamezzat1.github.io/blog/posts/abng-diabetes-revisited-with-locke/index.html</loc>
-    <lastmod>2026-05-29T05:28:01.119Z</lastmod>
+    <lastmod>2026-06-11T07:09:24.577Z</lastmod>
   </url>
   <url>
     <loc>https://adamezzat1.github.io/blog/posts/abng-experimental-bayesian-graph/index.html</loc>
-    <lastmod>2026-05-29T03:17:15.327Z</lastmod>
+    <lastmod>2026-06-11T07:09:31.442Z</lastmod>
   </url>
   <url>
     <loc>https://adamezzat1.github.io/blog/posts/chess-rl-v2/index.html</loc>
-    <lastmod>2026-05-29T03:17:18.981Z</lastmod>
+    <lastmod>2026-06-11T07:09:33.405Z</lastmod>
   </url>
   <url>
     <loc>https://adamezzat1.github.io/blog/posts/cjc-locke-v0.1-released/index.html</loc>
-    <lastmod>2026-05-29T03:17:29.560Z</lastmod>
+    <lastmod>2026-06-11T07:09:37.679Z</lastmod>
   </url>
   <url>
     <loc>https://adamezzat1.github.io/blog/posts/cjc-v0.1-released/index.html</loc>
-    <lastmod>2026-05-29T03:17:33.341Z</lastmod>
+    <lastmod>2026-06-11T07:09:39.399Z</lastmod>
   </url>
   <url>
     <loc>https://adamezzat1.github.io/blog/posts/cjc-v0.1.1-syntax-guide/index.html</loc>
-    <lastmod>2026-05-29T03:17:52.422Z</lastmod>
+    <lastmod>2026-06-11T07:09:43.596Z</lastmod>
   </url>
   <url>
     <loc>https://adamezzat1.github.io/blog/posts/cjcl-cli-reference/index.html</loc>
-    <lastmod>2026-05-29T03:17:58.128Z</lastmod>
+    <lastmod>2026-06-11T07:09:46.917Z</lastmod>
   </url>
   <url>
     <loc>https://adamezzat1.github.io/blog/posts/deterministic-green-compute/index.html</loc>
-    <lastmod>2026-05-29T03:18:01.536Z</lastmod>
+    <lastmod>2026-06-11T07:09:49.327Z</lastmod>
   </url>
   <url>
     <loc>https://adamezzat1.github.io/blog/posts/gibran-v0.1.0/index.html</loc>
-    <lastmod>2026-05-29T03:18:05.145Z</lastmod>
+    <lastmod>2026-06-11T07:09:51.299Z</lastmod>
   </url>
   <url>
     <loc>https://adamezzat1.github.io/blog/posts/gibran-windowed-ctes-and-row-filters/index.html</loc>
-    <lastmod>2026-05-29T03:18:07.330Z</lastmod>
+    <lastmod>2026-06-11T07:09:52.317Z</lastmod>
   </url>
   <url>
     <loc>https://adamezzat1.github.io/blog/posts/introducing-cjc/index.html</loc>
-    <lastmod>2026-05-29T03:18:09.902Z</lastmod>
-  </url>
-  <url>
-    <loc>https://adamezzat1.github.io/blog/posts/neural-networks-in-cjc/index.html</loc>
-    <lastmod>2026-05-29T03:18:11.951Z</lastmod>
-  </url>
-  <url>
-    <loc>https://adamezzat1.github.io/blog/posts/qalam-v0.1/index.html</loc>
-    <lastmod>2026-05-29T03:18:14.462Z</lastmod>
-  </url>
-  <url>
-    <loc>https://adamezzat1.github.io/blog/posts/tidyview-data-engine/index.html</loc>
-    <lastmod>2026-05-29T03:18:19.435Z</lastmod>
-  </url>
-  <url>
-    <loc>https://adamezzat1.github.io/blog/posts/tidyview-v3-and-dharht/index.html</loc>
-    <lastmod>2026-05-29T03:18:23.430Z</lastmod>
-  </url>
-  <url>
-    <loc>https://adamezzat1.github.io/index.html</loc>
-    <lastmod>2026-05-29T03:18:25.079Z</lastmod>
-  </url>
-  <url>
-    <loc>https://adamezzat1.github.io/projects.html</loc>
-    <lastmod>2026-05-29T03:18:28.208Z</lastmod>
+    <lastmod>2026-06-11T07:09:53.592Z</lastmod>
   </url>
   <url>
     <loc>https://adamezzat1.github.io/blog/posts/locke-side-by-side-pandera-ge/index.html</loc>
-    <lastmod>2026-05-30T22:46:22.332Z</lastmod>
+    <lastmod>2026-06-11T07:09:57.258Z</lastmod>
   </url>
   <url>
     <loc>https://adamezzat1.github.io/blog/posts/locke-v0.8-lendingclub-and-the-three-gaps/index.html</loc>
-    <lastmod>2026-06-02T20:11:56.255Z</lastmod>
+    <lastmod>2026-06-11T07:10:03.726Z</lastmod>
+  </url>
+  <url>
+    <loc>https://adamezzat1.github.io/blog/posts/neural-networks-in-cjc/index.html</loc>
+    <lastmod>2026-06-11T07:10:05.479Z</lastmod>
+  </url>
+  <url>
+    <loc>https://adamezzat1.github.io/blog/posts/pinn-v2-deterministic-compiler-ml/index.html</loc>
+    <lastmod>2026-06-11T07:10:08.560Z</lastmod>
+  </url>
+  <url>
+    <loc>https://adamezzat1.github.io/blog/posts/qalam-v0.1/index.html</loc>
+    <lastmod>2026-06-11T07:10:10.650Z</lastmod>
+  </url>
+  <url>
+    <loc>https://adamezzat1.github.io/blog/posts/tidyview-data-engine/index.html</loc>
+    <lastmod>2026-06-11T07:10:13.619Z</lastmod>
+  </url>
+  <url>
+    <loc>https://adamezzat1.github.io/blog/posts/tidyview-v3-and-dharht/index.html</loc>
+    <lastmod>2026-06-11T07:10:15.806Z</lastmod>
+  </url>
+  <url>
+    <loc>https://adamezzat1.github.io/index.html</loc>
+    <lastmod>2026-06-11T07:10:16.842Z</lastmod>
+  </url>
+  <url>
+    <loc>https://adamezzat1.github.io/projects.html</loc>
+    <lastmod>2026-06-11T07:10:18.078Z</lastmod>
   </url>
 </urlset>
